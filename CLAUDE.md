@@ -1,0 +1,110 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+3pio is an AI-first test runner adapter that acts as a "protocol droid" for test frameworks. It translates traditional test runner output (Jest, Vitest) into a format optimized for AI agents - providing persistent, structured, file-based records that are context-efficient and searchable.
+
+## Key Architecture Components
+
+### Core Components
+1. **CLI Orchestrator** (`src/cli.ts`) - Main entry point, manages test lifecycle
+2. **Report Manager** (`src/ReportManager.ts`) - Handles all report file I/O with debounced writes
+3. **IPC Manager** (`src/ipc.ts`) - File-based communication between adapters and CLI
+4. **Test Runner Adapters** (`src/adapters/`) - Silent reporters running inside test processes
+
+### Data Flow
+- CLI performs dry run → creates run directory → spawns test runner with adapter → adapter captures output via IPC → Report Manager writes structured logs → final report at `.3pio/runs/[timestamp]/test-run.md`
+
+## Development Commands
+
+### Build
+```bash
+npm run build  # Use esbuild to compile TypeScript
+```
+
+### Test
+```bash
+# Run all tests
+npm test
+
+# Test specific adapter
+npm test -- src/adapters/jest.test.ts
+npm test -- src/adapters/vitest.test.ts
+
+# Test CLI orchestrator
+npm test -- src/cli.test.ts
+```
+
+### Development
+```bash
+npm run dev    # Watch mode for development
+npm run lint   # Run linter
+npm run typecheck  # Type checking with tsc
+```
+
+### Local Testing
+```bash
+# Link package locally for testing
+npm link
+
+# Test with sample projects
+3pio run jest
+3pio run vitest
+3pio run npm test
+```
+
+## Implementation Guidelines
+
+### IPC Event Schema
+Events written to `.3pio/ipc/[timestamp].jsonl`:
+- `stdoutChunk`: `{ eventType: "stdoutChunk", payload: { filePath, chunk } }`
+- `stderrChunk`: `{ eventType: "stderrChunk", payload: { filePath, chunk } }`
+- `testFileResult`: `{ eventType: "testFileResult", payload: { filePath, status: "PASS"|"FAIL" } }`
+
+### Adapter Development
+- Adapters must be **silent** - no stdout/stderr output
+- Read `THREEPIO_IPC_PATH` environment variable for IPC file location
+- Patch `process.stdout.write` and `process.stderr.write` during test execution
+- Restore original functions after test completion
+
+### Error Handling
+- Mirror exit codes from underlying test runners
+- No report generation if startup fails (before test runner starts)
+- All startup failures should exit with non-zero code and clear error to stderr
+
+### File Structure Conventions
+- Reports: `.3pio/runs/[ISO8601_timestamp]/`
+- IPC files: `.3pio/ipc/[timestamp].jsonl`
+- Log files: `.3pio/runs/[timestamp]/logs/[sanitized_test_path].log`
+
+## Testing Requirements
+
+### Unit Tests Required For
+- Argument parsing logic (CLI)
+- Test runner detection from package.json
+- Command modification for adapter injection
+- IPC event serialization/deserialization
+- Report state management and debounced writes
+
+### Integration Tests Required For
+- Full CLI flow with mock components
+- Adapter lifecycle hooks with real test runners
+- IPC file watching and event handling
+- Report generation accuracy
+
+### End-to-End Tests Required For
+- Complete runs against sample Jest/Vitest projects
+- Correct preamble generation
+- Accurate report file generation
+- Exit code mirroring
+
+## Technical Stack
+- **Language**: TypeScript
+- **Runtime**: Node.js
+- **Build**: esbuild (for speed)
+- **CLI Framework**: commander.js
+- **Shell Execution**: zx (for robust command handling)
+- **File Watching**: chokidar (for IPC monitoring)
+- **Debouncing**: lodash.debounce (for report writes)
