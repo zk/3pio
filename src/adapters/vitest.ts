@@ -22,6 +22,10 @@ export default class ThreePioVitestReporter implements Reporter {
     if (!ipcPath) {
       // Silent operation - adapters must not output to console
     }
+    
+    // Start capturing stdout/stderr immediately
+    // This ensures we capture output even when onTestFileStart is not called
+    this.startCapture();
   }
 
   onPathsCollected(paths: string[]): void {
@@ -112,12 +116,14 @@ export default class ThreePioVitestReporter implements Reporter {
 
     // Patch stdout
     process.stdout.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
-      if (this.currentTestFile && chunk) {
+      if (chunk) {
         const chunkStr = chunk.toString();
+        // Use currentTestFile if available, otherwise use 'global' for suite-level output
+        const filePath = this.currentTestFile || 'global';
         IPCManager.sendEvent({
           eventType: 'stdoutChunk',
           payload: {
-            filePath: this.currentTestFile,
+            filePath,
             chunk: chunkStr
           }
         }).catch(() => {});
@@ -127,12 +133,14 @@ export default class ThreePioVitestReporter implements Reporter {
 
     // Patch stderr
     process.stderr.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
-      if (this.currentTestFile && chunk) {
+      if (chunk) {
         const chunkStr = chunk.toString();
+        // Use currentTestFile if available, otherwise use 'global' for suite-level output
+        const filePath = this.currentTestFile || 'global';
         IPCManager.sendEvent({
           eventType: 'stderrChunk',
           payload: {
-            filePath: this.currentTestFile,
+            filePath,
             chunk: chunkStr
           }
         }).catch(() => {});

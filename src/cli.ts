@@ -253,8 +253,29 @@ class CLIOrchestrator {
   private startIPCListening(): void {
     if (!this.ipcManager || !this.reportManager) return;
 
+    // Process events sequentially to avoid concurrent file writes
+    const eventQueue: IPCEvent[] = [];
+    let processing = false;
+
+    const processQueue = async () => {
+      if (processing || eventQueue.length === 0) return;
+      processing = true;
+
+      while (eventQueue.length > 0) {
+        const event = eventQueue.shift()!;
+        try {
+          await this.reportManager!.handleEvent(event);
+        } catch (error) {
+          console.error('Error handling event:', error);
+        }
+      }
+
+      processing = false;
+    };
+
     this.ipcManager.watchEvents((event: IPCEvent) => {
-      this.reportManager!.handleEvent(event).catch(console.error);
+      eventQueue.push(event);
+      processQueue();
     });
   }
 
