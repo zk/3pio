@@ -45,11 +45,18 @@ export class ReportManager {
 
     // Initialize state with pending test files
     this.state.totalFiles = testFiles.length;
-    this.state.testFiles = testFiles.map(filePath => ({
-      status: 'PENDING' as const,
-      file: filePath,
-      logFile: `./logs/${this.sanitizeFilePath(filePath)}.log`
-    }));
+    this.state.testFiles = testFiles.map(filePath => {
+      // Convert absolute path to relative for display
+      const relativePath = filePath.startsWith(process.cwd()) 
+        ? path.relative(process.cwd(), filePath) 
+        : filePath;
+      
+      return {
+        status: 'PENDING' as const,
+        file: filePath,
+        logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`
+      };
+    });
 
     // Write initial report
     await this.writeTestRunReport();
@@ -86,7 +93,12 @@ export class ReportManager {
     chunk: string,
     isStderr: boolean = false
   ): Promise<void> {
-    const logPath = path.join(this.logsDirectory, `${this.sanitizeFilePath(filePath)}.log`);
+    // Convert absolute path to relative for sanitization
+    const relativePath = filePath.startsWith(process.cwd()) 
+      ? path.relative(process.cwd(), filePath) 
+      : filePath;
+    
+    const logPath = path.join(this.logsDirectory, `${this.sanitizeFilePath(relativePath)}.log`);
     
     // Create file with header if it doesn't exist
     if (!this.logFileHandles.has(filePath)) {
@@ -125,10 +137,15 @@ export class ReportManager {
     // If file wasn't in the initial list (e.g., Vitest couldn't do dry run),
     // add it dynamically
     if (!testFile) {
-      const sanitizedPath = this.sanitizeFilePath(filePath);
+      // Convert absolute path to relative for sanitization
+      const relativePath = filePath.startsWith(process.cwd()) 
+        ? path.relative(process.cwd(), filePath) 
+        : filePath;
+      
+      const sanitizedPath = this.sanitizeFilePath(relativePath);
       testFile = {
         file: filePath,
-        logFile: `[details](./logs/${sanitizedPath}.log)`,
+        logFile: `./logs/${sanitizedPath}.log`,
         status: 'PENDING'
       };
       this.state.testFiles.push(testFile);
