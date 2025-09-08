@@ -1,4 +1,5 @@
 import { IPCManager } from '../ipc';
+import { Logger } from '../utils/logger';
 import type { File, Reporter, Vitest } from 'vitest';
 
 export default class ThreePioVitestReporter implements Reporter {
@@ -6,42 +7,57 @@ export default class ThreePioVitestReporter implements Reporter {
   private originalStderrWrite: typeof process.stderr.write;
   private currentTestFile: string | null = null;
   private captureEnabled: boolean = false;
+  private logger: Logger;
 
   constructor() {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
+    this.logger = Logger.create('vitest-adapter');
     
-    // Debug: Log that reporter was instantiated
-    require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - ThreePioVitestReporter instantiated, IPC=${process.env.THREEPIO_IPC_PATH}\n`);
+    // Log startup preamble
+    this.logger.startupPreamble([
+      '==================================',
+      '3pio Vitest Adapter v1.0.0',
+      'Configuration:',
+      `  - IPC Path: ${process.env.THREEPIO_IPC_PATH || 'not set'}`,
+      `  - Process ID: ${process.pid}`,
+      '=================================='
+    ]);
   }
 
   onInit(ctx: Vitest): void {
+    this.logger.lifecycle('Test run initializing');
     // Initialize IPC if needed
     const ipcPath = process.env.THREEPIO_IPC_PATH;
-    require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - onInit called, IPC=${ipcPath}\n`);
     if (!ipcPath) {
+      this.logger.error('THREEPIO_IPC_PATH not set - adapter cannot function');
       // Silent operation - adapters must not output to console
+    } else {
+      this.logger.info('IPC communication channel ready', { path: ipcPath });
     }
+    
+    this.logger.initComplete({ ipcPath });
     
     // Start capturing stdout/stderr immediately
     // This ensures we capture output even when onTestFileStart is not called
+    this.logger.debug('Starting global capture for test output');
     this.startCapture();
   }
 
   onPathsCollected(paths: string[]): void {
     // Called when test files are discovered
+    this.logger.info('Test paths collected', { count: paths.length });
   }
 
   onCollected(files: File[]): void {
     // Called when test files are collected
+    this.logger.info('Test files collected', { count: files.length });
   }
 
   onTestFileStart(file: File): void {
+    this.logger.testFlow('Starting test file', file.filepath);
     this.currentTestFile = file.filepath;
     this.startCapture();
-    
-    // Debug: Log file start
-    require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - onTestFileStart: ${file.filepath}\n`);
   }
 
   onTestFileResult(file: File): void {
@@ -55,11 +71,16 @@ export default class ThreePioVitestReporter implements Reporter {
     } else if (file.result?.state === 'skip' || file.mode === 'skip') {
       status = 'SKIP';
     }
+    
+    const testStats = file.result ? {
+      tests: file.result.tests?.length || 0,
+      duration: file.result.duration || 0,
+      state: file.result.state
+    } : {};
+    
+    this.logger.testFlow('Test file completed', file.filepath, { status, ...testStats });
 
-    // Debug: Write to a known location to verify reporter is working
-    const debugPath = '/tmp/vitest-debug.log';
-    require('fs').appendFileSync(debugPath, `${new Date().toISOString()} - Sending event for ${file.filepath}: ${status}, IPC=${process.env.THREEPIO_IPC_PATH}\n`);
-
+    this.logger.ipc('send', 'testFileResult', { filePath: file.filepath, status });
     IPCManager.sendEvent({
       eventType: 'testFileResult',
       payload: {
@@ -67,22 +88,25 @@ export default class ThreePioVitestReporter implements Reporter {
         status
       }
     }).catch(error => {
-      // Debug: Log error to debug file
-      require('fs').appendFileSync(debugPath, `${new Date().toISOString()} - Error: ${error.message}\n`);
+      this.logger.error('Failed to send testFileResult', error);
     });
 
     this.currentTestFile = null;
   }
 
   async onFinished(files?: File[], errors?: unknown[]): Promise<void> {
+    this.logger.lifecycle('Test run finishing', { 
+      files: files?.length || 0,
+      errors: errors?.length || 0 
+    });
+    
     // Ensure capture is stopped
     this.stopCapture();
     
-    // Debug: Log that onFinished was called
-    require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - onFinished called with ${files?.length || 0} files\n`);
-    
     // For Vitest 3.x, we need to send results here if they weren't sent via onTestFileResult
     if (files && files.length > 0) {
+      this.logger.info('Processing files in onFinished (fallback mode)', { count: files.length });
+      
       for (const file of files) {
         let status: 'PASS' | 'FAIL' | 'SKIP' = 'PASS';
         
@@ -92,9 +116,10 @@ export default class ThreePioVitestReporter implements Reporter {
           status = 'SKIP';
         }
         
-        require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - File ${file.filepath}: ${status}\n`);
+        this.logger.debug('Sending deferred test result', { file: file.filepath, status });
         
         try {
+          this.logger.ipc('send', 'testFileResult', { filePath: file.filepath, status });
           await IPCManager.sendEvent({
             eventType: 'testFileResult',
             payload: {
@@ -102,17 +127,19 @@ export default class ThreePioVitestReporter implements Reporter {
               status
             }
           });
-          require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Successfully sent event for ${file.filepath}\n`);
         } catch (error: any) {
-          require('fs').appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Error sending: ${error.message}\n`);
+          this.logger.error('Failed to send deferred test result', error, { file: file.filepath });
         }
       }
     }
+    
+    this.logger.lifecycle('Vitest adapter shutdown complete');
   }
 
   private startCapture(): void {
     if (this.captureEnabled) return;
     this.captureEnabled = true;
+    this.logger.debug('Starting stdout/stderr capture', { currentFile: this.currentTestFile });
 
     // Patch stdout
     process.stdout.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
@@ -152,6 +179,7 @@ export default class ThreePioVitestReporter implements Reporter {
   private stopCapture(): void {
     if (!this.captureEnabled) return;
     this.captureEnabled = false;
+    this.logger.debug('Stopping stdout/stderr capture');
 
     // Restore original functions
     process.stdout.write = this.originalStdoutWrite;

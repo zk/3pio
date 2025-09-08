@@ -4,6 +4,7 @@ import { JestDefinition } from './runners/jest/JestDefinition';
 import { JestOutputParser } from './runners/jest/JestOutputParser';
 import { VitestDefinition } from './runners/vitest/VitestDefinition';
 import { VitestOutputParser } from './runners/vitest/VitestOutputParser';
+import { Logger } from './utils/logger';
 
 /**
  * Static strategy pattern for test runner management
@@ -26,20 +27,27 @@ export type TestRunnerName = keyof typeof TEST_RUNNERS;
  * Manager for test runner detection and access
  */
 export class TestRunnerManager {
+  private static logger = Logger.create('test-runner-manager');
+  
   /**
    * Detect which test runner should be used for the given command
    */
   static detect(args: string[], packageJsonContent?: string): TestRunnerName | null {
+    this.logger.info('Detecting test runner', { command: args.join(' ') });
+    
     // Try each test runner in priority order
     const runners: TestRunnerName[] = ['jest', 'vitest'];
     
     for (const runnerName of runners) {
+      this.logger.debug(`Checking if command matches ${runnerName}`);
       const runner = TEST_RUNNERS[runnerName];
       if (runner.definition.matches(args, packageJsonContent)) {
+        this.logger.decision('Test runner detected', runnerName, `Command matched ${runnerName} patterns`);
         return runnerName;
       }
     }
     
+    this.logger.warn('No test runner detected', { args });
     return null;
   }
   
@@ -47,6 +55,7 @@ export class TestRunnerManager {
    * Get the definition for a specific test runner
    */
   static getDefinition(runner: TestRunnerName): TestRunnerDefinition {
+    this.logger.debug('Getting test runner definition', { runner });
     return TEST_RUNNERS[runner].definition;
   }
   
@@ -54,6 +63,7 @@ export class TestRunnerManager {
    * Get the output parser for a specific test runner
    */
   static getParser(runner: TestRunnerName): OutputParser {
+    this.logger.debug('Getting output parser', { runner });
     return TEST_RUNNERS[runner].parser;
   }
   
@@ -61,6 +71,8 @@ export class TestRunnerManager {
    * Get all available test runner names
    */
   static getAvailableRunners(): TestRunnerName[] {
-    return Object.keys(TEST_RUNNERS) as TestRunnerName[];
+    const runners = Object.keys(TEST_RUNNERS) as TestRunnerName[];
+    this.logger.debug('Available test runners', { runners });
+    return runners;
   }
 }

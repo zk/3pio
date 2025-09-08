@@ -125,3 +125,11 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 - Adapter paths must use absolute paths to avoid resolution issues
 
 For detailed information about these issues and their solutions, see `docs/known-issues.md`.
+- Never use emojis in output
+- System debug logging is avaialable at `.3pio/debug.log`
+
+
+
+## Misc
+
+- There are sample projects for jest and vitest at `sample-projects/`

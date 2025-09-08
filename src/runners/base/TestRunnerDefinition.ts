@@ -17,8 +17,9 @@ export interface TestRunnerDefinition {
   
   /** 
    * Build the main command with the adapter injected 
+   * Returns array of command arguments for proper shell execution
    */
-  buildMainCommand(args: string[], adapterPath: string): string;
+  buildMainCommand(args: string[], adapterPath: string): string[];
   
   /** 
    * Get the adapter filename for this test runner 

@@ -64,12 +64,12 @@ export class JestDefinition implements TestRunnerDefinition {
     }
   }
   
-  buildMainCommand(args: string[], adapterPath: string): string {
+  buildMainCommand(args: string[], adapterPath: string): string[] {
     const hasReporters = args.some(arg => arg.includes('--reporters'));
     if (hasReporters) {
-      return `${args.join(' ')} ${adapterPath}`;
+      return [...args, adapterPath];
     } else {
-      return `${args.join(' ')} --reporters default --reporters ${adapterPath}`;
+      return [...args, '--reporters', 'default', '--reporters', adapterPath];
     }
   }
   

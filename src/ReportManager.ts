@@ -3,6 +3,7 @@ import path from 'path';
 import debounce from 'lodash.debounce';
 import { IPCEvent, TestRunState } from './types/events';
 import { OutputParser } from './runners/base/OutputParser';
+import { Logger } from './utils/logger';
 
 export class ReportManager {
   private runDirectory: string;
@@ -13,13 +14,22 @@ export class ReportManager {
   private outputLogHandle: fs.FileHandle | null = null;
   private debouncedWrite: () => void;
   private outputParser: OutputParser;
+  private logger: Logger;
 
   constructor(runId: string, testCommand: string, outputParser: OutputParser) {
+    this.logger = Logger.create('report-manager');
     this.runDirectory = path.join(process.cwd(), '.3pio', 'runs', runId);
     this.outputLogPath = path.join(this.runDirectory, 'output.log');
     this.logsDirectory = path.join(this.runDirectory, 'logs');
     this.testRunPath = path.join(this.runDirectory, 'test-run.md');
     this.outputParser = outputParser;
+    
+    this.logger.info('ReportManager initialized', {
+      runId,
+      runDirectory: this.runDirectory,
+      outputLogPath: this.outputLogPath,
+      testRunPath: this.testRunPath
+    });
 
     this.state = {
       timestamp: runId,
@@ -36,7 +46,11 @@ export class ReportManager {
 
     // Debounced write function - batches updates every 250ms
     this.debouncedWrite = debounce(() => {
-      this.writeTestRunReport().catch(console.error);
+      this.logger.debug('Debounced write triggered');
+      this.writeTestRunReport().catch(error => {
+        this.logger.error('Failed to write test run report', error);
+        console.error(error);
+      });
     }, 250, { maxWait: 1000 });
   }
 
@@ -44,10 +58,14 @@ export class ReportManager {
    * Initialize the report with list of test files
    */
   async initialize(testFiles: string[]): Promise<void> {
+    this.logger.lifecycle('Initializing report structure', { testFiles: testFiles.length });
+    
     // Create directories
+    this.logger.debug('Creating report directories');
     await fs.mkdir(this.runDirectory, { recursive: true });
 
     // Initialize state with pending test files
+    this.logger.info(`Initializing state with ${testFiles.length} test files`);
     this.state.totalFiles = testFiles.length;
     this.state.testFiles = testFiles.map(filePath => {
       // Convert absolute path to relative for display
@@ -72,17 +90,23 @@ export class ReportManager {
       ''
     ].join('\n');
 
+    this.logger.debug('Creating output.log file with header');
     this.outputLogHandle = await fs.open(this.outputLogPath, 'w');
     await this.outputLogHandle.writeFile(header);
 
     // Write initial report
+    this.logger.info('Writing initial test run report');
     await this.writeTestRunReport();
+    
+    this.logger.lifecycle('Report initialization complete');
   }
 
   /**
    * Handle incoming IPC events
    */
   async handleEvent(event: IPCEvent): Promise<void> {
+    this.logger.debug('Handling IPC event', { type: event.eventType, file: event.payload?.filePath });
+    
     switch (event.eventType) {
       case 'stdoutChunk':
       case 'stderrChunk':
@@ -94,11 +118,15 @@ export class ReportManager {
         break;
 
       case 'testFileResult':
+        this.logger.testFlow('Test file completed', event.payload.filePath, { status: event.payload.status });
         await this.updateTestFileStatus(
           event.payload.filePath,
           event.payload.status
         );
         break;
+        
+      default:
+        this.logger.debug('Ignoring unknown event type', { type: event.eventType });
     }
   }
 
@@ -112,7 +140,15 @@ export class ReportManager {
   ): Promise<void> {
     // Append to the single output.log file
     if (this.outputLogHandle) {
+      const chunkSize = chunk.length;
+      this.logger.debug('Appending output chunk', { 
+        file: filePath, 
+        isStderr, 
+        size: chunkSize 
+      });
       await this.outputLogHandle.appendFile(chunk);
+    } else {
+      this.logger.warn('Output log handle not available, dropping chunk', { file: filePath });
     }
   }
 
@@ -128,6 +164,7 @@ export class ReportManager {
     // If file wasn't in the initial list (e.g., Vitest couldn't do dry run),
     // add it dynamically
     if (!testFile) {
+      this.logger.info('Adding dynamically discovered test file', { file: filePath });
       const relativePath = filePath.startsWith(process.cwd())
         ? path.relative(process.cwd(), filePath)
         : filePath;
@@ -142,13 +179,27 @@ export class ReportManager {
     }
 
     // Update status
+    const previousStatus = testFile.status;
     testFile.status = status;
+    this.logger.debug('Test file status updated', { 
+      file: filePath, 
+      previousStatus, 
+      newStatus: status 
+    });
 
     // Update counters
     this.state.filesCompleted++;
     if (status === 'PASS') this.state.filesPassed++;
     else if (status === 'FAIL') this.state.filesFailed++;
     else if (status === 'SKIP') this.state.filesSkipped++;
+    
+    this.logger.debug('Test run progress', {
+      completed: this.state.filesCompleted,
+      total: this.state.totalFiles,
+      passed: this.state.filesPassed,
+      failed: this.state.filesFailed,
+      skipped: this.state.filesSkipped
+    });
 
     // Update timestamp
     this.state.updatedAt = new Date().toISOString();
@@ -161,6 +212,7 @@ export class ReportManager {
    * Write the test-run.md report file
    */
   private async writeTestRunReport(): Promise<void> {
+    this.logger.debug('Writing test run report to', { path: this.testRunPath });
     // Removed emoji function - no longer using emojis in output
 
     // Convert absolute paths to relative paths for display
@@ -198,29 +250,36 @@ export class ReportManager {
     ].join('\n');
 
     await fs.writeFile(this.testRunPath, markdown);
+    this.logger.debug('Test run report written successfully', { size: markdown.length });
   }
 
   /**
    * Get the current summary statistics
    */
   getSummary(): { totalFiles: number; filesCompleted: number } {
-    return {
+    const summary = {
       totalFiles: this.state.totalFiles,
       filesCompleted: this.state.filesCompleted
     };
+    this.logger.debug('Summary requested', summary);
+    return summary;
   }
 
   /**
    * Finalize the report when test run completes
    */
   async finalize(exitCode: number): Promise<void> {
+    this.logger.lifecycle('Finalizing report', { exitCode });
+    
     // Close the output log handle
     if (this.outputLogHandle) {
+      this.logger.debug('Closing output log file handle');
       await this.outputLogHandle.close();
       this.outputLogHandle = null;
     }
 
     // Parse output.log into individual test file logs
+    this.logger.info('Parsing output into individual test logs');
     await this.parseOutputIntoTestLogs();
 
     // Update state
@@ -229,10 +288,23 @@ export class ReportManager {
     // Common exit codes: 0 = success, 1 = test failures, 127 = command not found, etc.
     this.state.status = 'COMPLETE';
     this.state.updatedAt = new Date().toISOString();
+    
+    this.logger.info('Test run completed', {
+      exitCode,
+      status: this.state.status,
+      totalFiles: this.state.totalFiles,
+      filesCompleted: this.state.filesCompleted,
+      filesPassed: this.state.filesPassed,
+      filesFailed: this.state.filesFailed,
+      filesSkipped: this.state.filesSkipped
+    });
 
     // Cancel any pending debounced writes and do final write
+    this.logger.debug('Canceling pending debounced writes and writing final report');
     this.debouncedWrite.cancel();
     await this.writeTestRunReport();
+    
+    this.logger.lifecycle('Report finalization complete');
   }
 
   /**
@@ -240,19 +312,24 @@ export class ReportManager {
    */
   private async parseOutputIntoTestLogs(): Promise<void> {
     try {
+      this.logger.debug('Creating logs directory', { path: this.logsDirectory });
       // Create logs directory
       await fs.mkdir(this.logsDirectory, { recursive: true });
 
       // Read the output.log file
+      this.logger.debug('Reading output.log for parsing');
       const outputContent = await fs.readFile(this.outputLogPath, 'utf8');
 
       // Use the pluggable parser to parse the output
+      this.logger.debug('Parsing output with output parser');
       const fileOutputs = this.outputParser.parseOutputIntoTestLogs(outputContent);
+      this.logger.info(`Parsed output into ${fileOutputs.size} test file logs`);
 
       // Write individual log files
       for (const [fileName, outputLines] of fileOutputs) {
         const sanitizedName = this.sanitizeFilePath(fileName);
         const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
+        this.logger.debug('Writing test log file', { fileName, logPath, lines: outputLines.length });
 
         const header = [
           `# File: ${fileName}`,
@@ -266,8 +343,10 @@ export class ReportManager {
         const content = header + outputLines.join('\n') + '\n';
         await fs.writeFile(logPath, content);
       }
+      this.logger.debug('All test log files written successfully');
     } catch (error) {
       // If parsing fails, it's not critical - we still have output.log
+      this.logger.error('Failed to parse output into individual logs', error as Error);
       console.error('Warning: Failed to parse output into individual logs:', error);
     }
   }

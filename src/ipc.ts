@@ -2,14 +2,18 @@ import { promises as fs } from 'fs';
 import { watch } from 'chokidar';
 import { IPCEvent } from './types/events';
 import path from 'path';
+import { Logger } from './utils/logger';
 
 export class IPCManager {
   private ipcFilePath: string;
   private lastReadPosition: number = 0;
   private watcher: any = null;
+  private logger: Logger;
 
   constructor(ipcFilePath: string) {
     this.ipcFilePath = ipcFilePath;
+    this.logger = Logger.create('ipc-manager');
+    this.logger.info('IPCManager initialized', { ipcFilePath });
   }
 
   /**
@@ -17,6 +21,7 @@ export class IPCManager {
    */
   async writeEvent(event: IPCEvent): Promise<void> {
     const line = JSON.stringify(event) + '\n';
+    this.logger.debug('Writing IPC event', { eventType: event.eventType });
     await fs.appendFile(this.ipcFilePath, line, 'utf8');
   }
 
@@ -33,15 +38,10 @@ export class IPCManager {
     // Use synchronous file operations for reliability in test runner context
     const syncFs = require('fs');
     
-    // Debug: Log the write attempt
-    syncFs.appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Writing to IPC: ${ipcPath}, event: ${event.eventType}\n`);
-    
     try {
       // Use synchronous write for immediate file creation
       syncFs.appendFileSync(ipcPath, line, 'utf8');
-      syncFs.appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Successfully wrote to IPC file\n`);
     } catch (error: any) {
-      syncFs.appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Failed to write to IPC: ${error.message}\n`);
       throw error;
     }
   }
@@ -50,8 +50,13 @@ export class IPCManager {
    * Reader method for CLI to watch events
    */
   watchEvents(callback: (event: IPCEvent) => void): void {
+    this.logger.info('Starting IPC event watcher', { path: this.ipcFilePath });
+    
     // Ensure the IPC file exists
-    fs.writeFile(this.ipcFilePath, '', { flag: 'a' }).catch(console.error);
+    fs.writeFile(this.ipcFilePath, '', { flag: 'a' }).catch(error => {
+      this.logger.error('Failed to ensure IPC file exists', error);
+      console.error(error);
+    });
 
     this.watcher = watch(this.ipcFilePath, {
       persistent: true,
@@ -63,25 +68,31 @@ export class IPCManager {
     });
 
     this.watcher.on('change', async () => {
+      this.logger.debug('IPC file changed, processing new events');
       try {
         const content = await fs.readFile(this.ipcFilePath, 'utf8');
         const lines = content.split('\n');
         
         // Process only new lines since last read
         const newLines = lines.slice(this.lastReadPosition);
+        const newEventCount = newLines.filter(l => l.trim()).length;
+        this.logger.debug(`Found ${newEventCount} new events to process`);
         this.lastReadPosition = lines.length - 1; // -1 because last line might be empty
 
         for (const line of newLines) {
           if (line.trim()) {
             try {
               const event = JSON.parse(line) as IPCEvent;
+              this.logger.debug('Parsed IPC event', { type: event.eventType });
               callback(event);
             } catch (parseError) {
+              this.logger.error('Failed to parse IPC event', parseError as Error, { line });
               console.error('Failed to parse IPC event:', parseError);
             }
           }
         }
       } catch (error) {
+        this.logger.error('Error reading IPC file', error as Error);
         console.error('Error reading IPC file:', error);
       }
     });
@@ -92,6 +103,7 @@ export class IPCManager {
    */
   async stopWatching(): Promise<void> {
     if (this.watcher) {
+      this.logger.debug('Stopping IPC file watcher');
       await this.watcher.close();
       this.watcher = null;
     }
@@ -101,9 +113,11 @@ export class IPCManager {
    * Clean up the IPC file
    */
   async cleanup(): Promise<void> {
+    this.logger.lifecycle('Cleaning up IPC resources');
     await this.stopWatching();
     // Don't delete the IPC file - it's useful for debugging and is in a timestamped directory anyway
     // The file will be cleaned up when the entire .3pio directory is removed if needed
+    this.logger.debug('IPC cleanup complete');
   }
 
   /**
@@ -111,7 +125,10 @@ export class IPCManager {
    */
   static async ensureIPCDirectory(): Promise<string> {
     const ipcDir = path.join(process.cwd(), '.3pio', 'ipc');
+    const logger = Logger.create('ipc-manager-static');
+    logger.debug('Ensuring IPC directory exists', { path: ipcDir });
     await fs.mkdir(ipcDir, { recursive: true });
+    logger.debug('IPC directory ready');
     return ipcDir;
   }
 }

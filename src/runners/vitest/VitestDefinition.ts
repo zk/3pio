@@ -41,12 +41,12 @@ export class VitestDefinition implements TestRunnerDefinition {
     return providedFiles;
   }
   
-  buildMainCommand(args: string[], adapterPath: string): string {
+  buildMainCommand(args: string[], adapterPath: string): string[] {
     const hasReporter = args.some(arg => arg.includes('--reporter'));
     if (hasReporter) {
-      return `${args.join(' ')} --reporter ${adapterPath}`;
+      return [...args, '--reporter', adapterPath];
     } else {
-      return `${args.join(' ')} --reporter default --reporter ${adapterPath}`;
+      return [...args, '--reporter', 'default', '--reporter', adapterPath];
     }
   }
   
