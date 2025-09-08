@@ -11,6 +11,9 @@ import { TestRunnerManager, TestRunnerName } from './TestRunnerManager';
 import { TestRunnerDefinition } from './runners/base/TestRunnerDefinition';
 import { Logger } from './utils/logger';
 
+// Import package.json for version
+const packageJson = require('../package.json');
+
 // Disable zx verbosity
 $.verbose = false;
 
@@ -36,7 +39,7 @@ class CLIOrchestrator {
       // Log startup preamble
       this.logger.startupPreamble([
         '=========================================',
-        'Starting 3pio test runner adapter v1.0.0',
+        `Starting 3pio test runner adapter v${packageJson.version}`,
         'Configuration:',
         `  - Run ID: ${this.runId}`,
         `  - Working directory: ${process.cwd()}`,
@@ -337,11 +340,9 @@ const program = new Command();
 program
   .name('3pio')
   .description('AI-first test runner adapter')
-  .version('0.1.0');
-
-program
-  .command('run <command...>')
-  .description('Run tests with 3pio adapter')
+  .version(packageJson.version)
+  .allowUnknownOption()
+  .argument('<command...>', 'test command to run')
   .action(async (commandArgs: string[]) => {
     const orchestrator = new CLIOrchestrator();
     await orchestrator.run(commandArgs);

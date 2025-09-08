@@ -36,9 +36,9 @@
 
 ```bash
 npm install -g @heyzk/3pio
-3pio run vitest
-3pio run jest --watch
-3pio run npm test
+3pio vitest
+3pio jest --watch
+3pio npm test
 ```
 
 Reports are generated at `.3pio/runs/[timestamp]/test-run.md` with individual test logs in the `logs/` subdirectory.

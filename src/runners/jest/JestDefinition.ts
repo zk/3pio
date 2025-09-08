@@ -46,19 +46,27 @@ export class JestDefinition implements TestRunnerDefinition {
     }
     
     try {
-      // Jest dry run with --listTests
-      const dryRunCommand = args.join(' ') + ' --listTests';
+      // For npm scripts, we'll use a direct jest command to avoid running tests twice
+      const isNpmScript = args[0] === 'npm' || args[0] === 'yarn' || args[0] === 'pnpm';
+      let dryRunCommand: string;
+      
+      if (isNpmScript) {
+        // Instead of running npm test which might execute tests,
+        // directly call jest with --listTests
+        // We need to find jest in node_modules
+        dryRunCommand = 'npx jest --listTests 2>/dev/null';
+      } else {
+        // For direct jest/npx jest commands
+        dryRunCommand = args.join(' ') + ' --listTests';
+      }
+      
       const result = await $`sh -c ${dryRunCommand}`;
       
-      // Jest outputs JSON array
-      try {
-        return JSON.parse(result.stdout);
-      } catch {
-        // Fallback to line parsing
-        return result.stdout
-          .split('\n')
-          .filter(line => line.trim() && (line.endsWith('.test.js') || line.endsWith('.test.ts')));
-      }
+      // Jest outputs test file paths, one per line
+      return result.stdout
+        .split('\n')
+        .filter(line => line.trim() && (line.endsWith('.test.js') || line.endsWith('.test.ts') || 
+                                        line.endsWith('.spec.js') || line.endsWith('.spec.ts')));
     } catch {
       return [];
     }
@@ -66,10 +74,31 @@ export class JestDefinition implements TestRunnerDefinition {
   
   buildMainCommand(args: string[], adapterPath: string): string[] {
     const hasReporters = args.some(arg => arg.includes('--reporters'));
+    
+    // For npm/yarn scripts, we need to use -- to pass arguments to the underlying command
+    const isNpmScript = args[0] === 'npm' || args[0] === 'yarn' || args[0] === 'pnpm';
+    
     if (hasReporters) {
+      // User has already specified reporters, just add ours
       return [...args, adapterPath];
+    } else if (isNpmScript) {
+      // For npm scripts, we need to use -- to pass arguments to jest
+      // Use ONLY our adapter to prevent duplicate output
+      // e.g., npm test -> npm test -- --reporters /path/to/adapter
+      const scriptIndex = args.findIndex(arg => arg === 'test' || arg.startsWith('test:'));
+      if (scriptIndex !== -1) {
+        return [
+          ...args.slice(0, scriptIndex + 1),
+          '--',  // This is crucial for npm to pass arguments to the underlying command
+          '--reporters', adapterPath,
+          ...args.slice(scriptIndex + 1)
+        ];
+      }
+      // Fallback for other npm scripts
+      return [...args, '--', '--reporters', adapterPath];
     } else {
-      return [...args, '--reporters', 'default', '--reporters', adapterPath];
+      // For direct jest/npx jest commands
+      return [...args, '--reporters', adapterPath];
     }
   }
   

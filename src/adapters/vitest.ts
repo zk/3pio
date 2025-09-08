@@ -2,6 +2,8 @@ import { IPCManager } from '../ipc';
 import { Logger } from '../utils/logger';
 import type { File, Reporter, Vitest } from 'vitest';
 
+const packageJson = require('../../package.json');
+
 export default class ThreePioVitestReporter implements Reporter {
   private originalStdoutWrite: typeof process.stdout.write;
   private originalStderrWrite: typeof process.stderr.write;
@@ -17,7 +19,7 @@ export default class ThreePioVitestReporter implements Reporter {
     // Log startup preamble
     this.logger.startupPreamble([
       '==================================',
-      '3pio Vitest Adapter v1.0.0',
+      `3pio Vitest Adapter v${packageJson.version}`,
       'Configuration:',
       `  - IPC Path: ${process.env.THREEPIO_IPC_PATH || 'not set'}`,
       `  - Process ID: ${process.pid}`,

@@ -8,6 +8,8 @@ import type {
   TestContext
 } from '@jest/reporters';
 
+const packageJson = require('../../package.json');
+
 export default class ThreePioJestReporter implements Reporter {
   private originalStdoutWrite: typeof process.stdout.write;
   private originalStderrWrite: typeof process.stderr.write;
@@ -23,7 +25,7 @@ export default class ThreePioJestReporter implements Reporter {
     // Log startup preamble
     this.logger.startupPreamble([
       '==================================',
-      '3pio Jest Adapter v1.0.0',
+      `3pio Jest Adapter v${packageJson.version}`,
       'Configuration:',
       `  - IPC Path: ${process.env.THREEPIO_IPC_PATH || 'not set'}`,
       `  - Process ID: ${process.pid}`,
@@ -60,6 +62,20 @@ export default class ThreePioJestReporter implements Reporter {
     const status = testResult.numFailingTests > 0 ? 'FAIL' : 
                    testResult.skipped ? 'SKIP' : 'PASS';
     
+    // Output to console like default reporter would
+    const testPath = test.path.replace(process.cwd() + '/', '');
+    console.log(`${status} ./${testPath}`);
+    
+    // Output test results
+    if (testResult.testResults) {
+      for (const suite of testResult.testResults) {
+        if (suite.ancestorTitles.length > 0) {
+          console.log(`  ${suite.ancestorTitles.join(' › ')}`);
+        }
+        console.log(`    ${suite.status === 'passed' ? '✓' : '✕'} ${suite.title} (${suite.duration || 0} ms)`);
+      }
+    }
+    
     this.logger.testFlow('Test file completed', test.path, { 
       status, 
       failures: testResult.numFailingTests,
@@ -94,6 +110,19 @@ export default class ThreePioJestReporter implements Reporter {
       failedTests: results.numFailedTests
     });
     
+    // Output summary like default reporter
+    console.log('\nTest Suites:', 
+      results.numFailedTestSuites > 0 ? `${results.numFailedTestSuites} failed, ` : '',
+      `${results.numPassedTestSuites} passed, ${results.numTotalTestSuites} total`);
+    console.log('Tests:',
+      results.numFailedTests > 0 ? `${results.numFailedTests} failed, ` : '',
+      results.numPendingTests > 0 ? `${results.numPendingTests} skipped, ` : '',
+      `${results.numPassedTests} passed, ${results.numTotalTests} total`);
+    console.log('Snapshots:  ', results.snapshot ? 
+      `${results.snapshot.total} total` : '0 total');
+    console.log('Time:       ', 
+      `${((results.testResults[0]?.perfStats?.end || 0) - (results.testResults[0]?.perfStats?.start || 0)) / 1000}s`);
+    
     // Ensure capture is stopped
     this.stopCapture();
     
@@ -122,11 +151,13 @@ export default class ThreePioJestReporter implements Reporter {
     if (this.captureEnabled) return;
     this.captureEnabled = true;
     this.logger.debug('Starting stdout/stderr capture for', { file: this.currentTestFile });
-
-    // Patch stdout
+    
+    // Patch stdout to capture test output
     process.stdout.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
-      if (this.currentTestFile && chunk) {
-        const chunkStr = chunk.toString();
+      const chunkStr = chunk.toString();
+      
+      // Capture for IPC if we have a current test file
+      if (this.currentTestFile) {
         IPCManager.sendEvent({
           eventType: 'stdoutChunk',
           payload: {
@@ -135,13 +166,17 @@ export default class ThreePioJestReporter implements Reporter {
           }
         }).catch(() => {});
       }
+      
+      // Always output to console
       return this.originalStdoutWrite(chunk, ...args);
     };
-
-    // Patch stderr
+    
+    // Patch stderr to capture test output
     process.stderr.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
-      if (this.currentTestFile && chunk) {
-        const chunkStr = chunk.toString();
+      const chunkStr = chunk.toString();
+      
+      // Capture for IPC if we have a current test file
+      if (this.currentTestFile) {
         IPCManager.sendEvent({
           eventType: 'stderrChunk',
           payload: {
@@ -150,6 +185,8 @@ export default class ThreePioJestReporter implements Reporter {
           }
         }).catch(() => {});
       }
+      
+      // Always output to console
       return this.originalStderrWrite(chunk, ...args);
     };
   }

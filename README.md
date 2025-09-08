@@ -12,12 +12,12 @@ npm install @heyzk/3pio
 
 ```bash
 # Run with automatic test runner detection
-3pio run npm test
+3pio npm test
 
 # Run with specific test runners
-3pio run jest
-3pio run vitest
-3pio run npx vitest run
+3pio jest
+3pio vitest
+3pio npx vitest run
 ```
 
 ## Supported Test Runners
