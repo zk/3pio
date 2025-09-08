@@ -249,9 +249,9 @@ describe('IPCManager', () => {
   });
 
   describe('cleanup', () => {
-    it('should stop watching and delete IPC file', async () => {
+    it('should stop watching but preserve IPC file for debugging', async () => {
       // Create the file first
-      await fs.writeFile(ipcFilePath, '', 'utf8');
+      await fs.writeFile(ipcFilePath, 'test content', 'utf8');
       
       // Start watching
       ipcManager.watchEvents(() => {});
@@ -261,8 +261,12 @@ describe('IPCManager', () => {
       
       await ipcManager.cleanup();
       
-      // File should be deleted
-      await expect(fs.access(ipcFilePath)).rejects.toThrow();
+      // File should still exist (not deleted)
+      await expect(fs.access(ipcFilePath)).resolves.not.toThrow();
+      
+      // Verify file content is preserved
+      const content = await fs.readFile(ipcFilePath, 'utf8');
+      expect(content).toBe('test content');
     });
 
     it('should not throw if file does not exist', async () => {

@@ -310,8 +310,23 @@ class CLIOrchestrator {
   }
 
   private async finalize(exitCode: number): Promise<void> {
+    // Give adapters a small grace period to write final events
+    // This prevents race conditions where the test runner exits before
+    // the adapter has finished writing all events
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     if (this.reportManager) {
       await this.reportManager.finalize(exitCode);
+      
+      // Validate that we received test results
+      const summary = this.reportManager.getSummary();
+      if (summary.totalFiles === 0 && exitCode === 0) {
+        console.error('\nWarning: No test results were captured. This may indicate:');
+        console.error('- The test runner adapter failed to inject properly');
+        console.error('- The test runner exited before results could be written');
+        console.error('- An incompatibility with your test runner version');
+        console.error('\nCheck the IPC file for debugging:', this.ipcPath);
+      }
     }
 
     if (this.ipcManager) {

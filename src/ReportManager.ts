@@ -90,8 +90,13 @@ export class ReportManager {
     
     // Create file with header if it doesn't exist
     if (!this.logFileHandles.has(filePath)) {
+      // Convert absolute path to relative for display
+      const relativePath = filePath.startsWith(process.cwd()) 
+        ? path.relative(process.cwd(), filePath) 
+        : filePath;
+      
       const header = [
-        `File: ${filePath}`,
+        `File: ${relativePath}`,
         `Timestamp: ${new Date().toISOString()}`,
         `This file represents output from a test run for the listed test file. See \`../test-run.md\`.`,
         '---',
@@ -167,6 +172,15 @@ export class ReportManager {
       }
     };
 
+    // Convert absolute paths to relative paths for display
+    const getRelativePath = (filePath: string): string => {
+      const cwd = process.cwd();
+      if (filePath.startsWith(cwd)) {
+        return path.relative(cwd, filePath);
+      }
+      return filePath;
+    };
+
     const markdown = [
       '# 3pio Test Run Summary',
       '',
@@ -185,12 +199,22 @@ export class ReportManager {
       '| Status | File | Log File |',
       '| --- | --- | --- |',
       ...this.state.testFiles.map(tf => 
-        `| ${getStatusEmoji(tf.status)} ${tf.status} | \`${tf.file}\` | [details](${tf.logFile}) |`
+        `| ${getStatusEmoji(tf.status)} ${tf.status} | \`${getRelativePath(tf.file)}\` | [details](${tf.logFile}) |`
       ),
       ''
     ].join('\n');
 
     await fs.writeFile(this.testRunPath, markdown);
+  }
+
+  /**
+   * Get the current summary statistics
+   */
+  getSummary(): { totalFiles: number; filesCompleted: number } {
+    return {
+      totalFiles: this.state.totalFiles,
+      filesCompleted: this.state.filesCompleted
+    };
   }
 
   /**

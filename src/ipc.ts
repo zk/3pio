@@ -102,11 +102,8 @@ export class IPCManager {
    */
   async cleanup(): Promise<void> {
     await this.stopWatching();
-    try {
-      await fs.unlink(this.ipcFilePath);
-    } catch (error) {
-      // Ignore error if file doesn't exist
-    }
+    // Don't delete the IPC file - it's useful for debugging and is in a timestamped directory anyway
+    // The file will be cleaned up when the entire .3pio directory is removed if needed
   }
 
   /**
