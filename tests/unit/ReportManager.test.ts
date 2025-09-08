@@ -135,8 +135,8 @@ describe('ReportManager', () => {
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
       expect(reportContent).toContain('✅ PASS');
-      expect(reportContent).toContain('Files Passed:** 1');
-      expect(reportContent).toContain('Files Completed:** 1');
+      expect(reportContent).toContain('Files Passed: 1');
+      expect(reportContent).toContain('Files Completed: 1');
     });
 
     it('should handle testFileResult event with FAIL status', async () => {
@@ -157,7 +157,7 @@ describe('ReportManager', () => {
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
       expect(reportContent).toContain('❌ FAIL');
-      expect(reportContent).toContain('Files Failed:** 1');
+      expect(reportContent).toContain('Files Failed: 1');
     });
 
     it('should handle testFileResult event with SKIP status', async () => {
@@ -178,7 +178,7 @@ describe('ReportManager', () => {
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
       expect(reportContent).toContain('⏭️ SKIP');
-      expect(reportContent).toContain('Files Skipped:** 1');
+      expect(reportContent).toContain('Files Skipped: 1');
     });
   });
 
@@ -226,16 +226,16 @@ describe('ReportManager', () => {
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const content = await fs.readFile(reportPath, 'utf8');
       
-      expect(content).toContain('Status:** COMPLETE');
+      expect(content).toContain('Status: COMPLETE');
     });
 
-    it('should set status to ERROR for non-zero exit code', async () => {
+    it('should set status to COMPLETE even for non-zero exit code (test failures)', async () => {
       await reportManager.finalize(1);
       
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const content = await fs.readFile(reportPath, 'utf8');
       
-      expect(content).toContain('Status:** ERROR');
+      expect(content).toContain('Status: COMPLETE');
     });
 
     it('should close all open file handles', async () => {

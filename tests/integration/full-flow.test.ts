@@ -108,11 +108,11 @@ describe('Full Integration Flow', () => {
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
-      expect(reportContent).toContain('Status:** ERROR'); // Due to exit code 1
-      expect(reportContent).toContain('Files Completed:** 3');
-      expect(reportContent).toContain('Files Passed:** 1');
-      expect(reportContent).toContain('Files Failed:** 1');
-      expect(reportContent).toContain('Files Skipped:** 1');
+      expect(reportContent).toContain('Status: COMPLETE'); // Even with test failures
+      expect(reportContent).toContain('Files Completed: 3');
+      expect(reportContent).toContain('Files Passed: 1');
+      expect(reportContent).toContain('Files Failed: 1');
+      expect(reportContent).toContain('Files Skipped: 1');
       
       // Verify log files
       const log1Path = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test1.js.log');
@@ -187,7 +187,7 @@ describe('Full Integration Flow', () => {
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
-      expect(reportContent).toContain('Files Completed:** 10');
+      expect(reportContent).toContain('Files Completed: 10');
       
       // Check log files exist and have content
       for (let i = 0; i < 10; i++) {
@@ -238,7 +238,7 @@ describe('Full Integration Flow', () => {
       
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const reportContent = await fs.readFile(reportPath, 'utf8');
-      expect(reportContent).toContain('Files Passed:** 1');
+      expect(reportContent).toContain('Files Passed: 1');
     });
   });
 });

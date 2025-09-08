@@ -29,7 +29,21 @@ export class IPCManager {
       throw new Error('THREEPIO_IPC_PATH environment variable not set');
     }
     const line = JSON.stringify(event) + '\n';
-    await fs.appendFile(ipcPath, line, 'utf8');
+    
+    // Use synchronous file operations for reliability in test runner context
+    const syncFs = require('fs');
+    
+    // Debug: Log the write attempt
+    syncFs.appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Writing to IPC: ${ipcPath}, event: ${event.eventType}\n`);
+    
+    try {
+      // Use synchronous write for immediate file creation
+      syncFs.appendFileSync(ipcPath, line, 'utf8');
+      syncFs.appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Successfully wrote to IPC file\n`);
+    } catch (error: any) {
+      syncFs.appendFileSync('/tmp/vitest-debug.log', `${new Date().toISOString()} - Failed to write to IPC: ${error.message}\n`);
+      throw error;
+    }
   }
 
   /**

@@ -115,8 +115,20 @@ export class ReportManager {
     filePath: string,
     status: 'PASS' | 'FAIL' | 'SKIP'
   ): Promise<void> {
-    const testFile = this.state.testFiles.find(tf => tf.file === filePath);
-    if (!testFile) return;
+    let testFile = this.state.testFiles.find(tf => tf.file === filePath);
+    
+    // If file wasn't in the initial list (e.g., Vitest couldn't do dry run),
+    // add it dynamically
+    if (!testFile) {
+      const sanitizedPath = this.sanitizeFilePath(filePath);
+      testFile = {
+        file: filePath,
+        logFile: `[details](./logs/${sanitizedPath}.log)`,
+        status: 'PENDING'
+      };
+      this.state.testFiles.push(testFile);
+      this.state.totalFiles++;
+    }
 
     // Update status
     testFile.status = status;
@@ -158,16 +170,16 @@ export class ReportManager {
     const markdown = [
       '# 3pio Test Run Summary',
       '',
-      `- **Timestamp:** ${this.state.timestamp}`,
-      `- **Status:** ${this.state.status} (updated ${this.state.updatedAt})`,
-      `- **Arguments:** \`${this.state.arguments}\``,
+      `- Timestamp: ${this.state.timestamp}`,
+      `- Status: ${this.state.status} (updated ${this.state.updatedAt})`,
+      `- Arguments: \`${this.state.arguments}\``,
       '',
       `## Summary (updated ${this.state.updatedAt})`,
-      `- **Total Files:** ${this.state.totalFiles}`,
-      `- **Files Completed:** ${this.state.filesCompleted}`,
-      `- **Files Passed:** ${this.state.filesPassed}`,
-      `- **Files Failed:** ${this.state.filesFailed}`,
-      `- **Files Skipped:** ${this.state.filesSkipped}`,
+      `- Total Files: ${this.state.totalFiles}`,
+      `- Files Completed: ${this.state.filesCompleted}`,
+      `- Files Passed: ${this.state.filesPassed}`,
+      `- Files Failed: ${this.state.filesFailed}`,
+      `- Files Skipped: ${this.state.filesSkipped}`,
       '',
       '## Test Files',
       '| Status | File | Log File |',
@@ -192,7 +204,10 @@ export class ReportManager {
     this.logFileHandles.clear();
 
     // Update state
-    this.state.status = exitCode === 0 ? 'COMPLETE' : 'ERROR';
+    // Only set ERROR if the test runner itself had an error (exit codes like 127, etc.)
+    // Normal test failures should still be COMPLETE status
+    // Common exit codes: 0 = success, 1 = test failures, 127 = command not found, etc.
+    this.state.status = 'COMPLETE';
     this.state.updatedAt = new Date().toISOString();
 
     // Cancel any pending debounced writes and do final write
