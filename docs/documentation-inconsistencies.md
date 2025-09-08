@@ -98,12 +98,12 @@ After systematically comparing each documentation file with the source code, I f
 ### 6. Project Plan (docs/project-plan.md)
 
 **Package Name**
-- **Documentation**: Claims package will be `@3pio/core`
+- **Documentation**: Claims package will be `@heyzk/3pio`
 - **Implementation**: Package.json shows different structure
 - **Impact**: Publishing/distribution inconsistency
 
 **Command Injection Examples**
-- **Documentation**: Shows `@3pio/core/jest` and `@3pio/core/vitest`
+- **Documentation**: Shows `@heyzk/3pio/jest` and `@heyzk/3pio/vitest`
 - **Implementation**: Uses relative paths resolved from `__dirname`
 - **Impact**: Different module resolution approach
 

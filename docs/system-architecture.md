@@ -80,7 +80,7 @@ A typical run of 3pio run vitest would proceed as follows:
 5. **Orchestrator** instantiates the **Report Manager**.
 6. **Report Manager** creates the initial test-run.md with all tests marked PENDING.
 7. **Orchestrator** prints the formatted preamble to the console.
-8. **Orchestrator** uses zx to spawn the final vitest command with the --reporter @3pio/core/vitest flag injected. It begins piping the raw stdout/stderr from this process to the console.
+8. **Orchestrator** uses zx to spawn the final vitest command with the --reporter @heyzk/3pio/vitest flag injected. It begins piping the raw stdout/stderr from this process to the console.
 9. Inside the vitest process, the **Vitest Adapter** is initialized with the path to the IPC file.
 10. The **Adapter** patches process.stdout.write and begins capturing output.
 11. As a test file runs and logs to the console, the **Adapter** captures the chunk and uses the **IPC Manager** to append a stdoutChunk event to the IPC file.

@@ -38,7 +38,7 @@ The agent interacts with 3pio primarily through a Command Line Interface (CLI).
 * **Package Manager:** npm
 * **Package Name:** 3pio (current implementation uses local paths)
 * **Installation:** The CLI will be installed globally via a single command. This package contains the main 3pio executable and all supported test runner adapters.
-  npm install -g @3pio/core
+  npm install -g @heyzk/3pio
 
 * **Execution:** Once installed, the 3pio command will be available in the user's path.
 
@@ -72,7 +72,7 @@ To ensure robust and predictable behavior, especially in automated environments,
 
 #### 6.2. Test Runner Adapters
 
-* **Responsibility:** The adapters are bundled within the main @3pio/core package. They are activated via command-line flags injected by the 3pio CLI wrapper, not through user configuration files. They interface with specific test runners to capture structured data and transmit it back to the main CLI process via the IPC mechanism.
+* **Responsibility:** The adapters are bundled within the main @heyzk/3pio package. They are activated via command-line flags injected by the 3pio CLI wrapper, not through user configuration files. They interface with specific test runners to capture structured data and transmit it back to the main CLI process via the IPC mechanism.
 * **Behavior:** The adapters are designed to be **"silent"**. They do not write any output to stdout or stderr. Their sole purpose is to capture test result data from the runner's API and transmit it via the IPC channel. This ensures that 3pio does not interfere with the console output from the user's default or pre-configured reporters.
 * **Initial Targets:** Jest, Vitest.
 * **Usage (Automatic via CLI):** The 3pio command will automatically add the correct flag to the user's command. This provides a "zero-config" experience.

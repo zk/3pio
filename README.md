@@ -5,7 +5,7 @@ An AI-first test runner adapter that acts as a "protocol droid" for test framewo
 ## Installation
 
 ```bash
-npm install @3pio/core
+npm install @heyzk/3pio
 ```
 
 ## Usage

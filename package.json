@@ -1,7 +1,7 @@
 {
-  "name": "@3pio/core",
-  "version": "0.1.0",
-  "description": "AI-first test runner adapter - a protocol droid for test frameworks",
+  "name": "@heyzk/3pio",
+  "version": "0.0.1",
+  "description": "A context-competent test runner for coding agents",
   "main": "dist/index.js",
   "bin": {
     "3pio": "./dist/cli.js"

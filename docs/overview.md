@@ -35,7 +35,7 @@
 ## Quick Start
 
 ```bash
-npm install -g @3pio/core
+npm install -g @heyzk/3pio
 3pio run vitest
 3pio run jest --watch
 3pio run npm test
