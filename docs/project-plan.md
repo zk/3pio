@@ -1,9 +1,5 @@
 # Project Plan: 3pio - The AI Test Protocol Droid
 
-* **Version:** 0.1.0
-* **Status:** Architectural Plan
-* **Last Updated:** 2025-09-07T21:04:00Z
-
 ### 1. Core Problem
 
 Current test libraries are optimized for human developers who can watch real-time execution and interpret verbose, colorful output. AI coding agents require a different approach: one that is context-efficient, machine-readable, persistent, and queryable using standard tools. 3pio acts as a "protocol droid," translating traditional test framework output into a format optimized for AI agents.

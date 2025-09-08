@@ -1,9 +1,5 @@
 # Component Design: CLI Orchestrator
 
-* **Version:** 1.0
-* **Owner:** CLI Team
-* **Status:** Final
-
 ## 1. Core Purpose
 
 The CLI Orchestrator is the main entry point and central controller for the 3pio application. It is responsible for parsing user input, managing the entire lifecycle of a test run, coordinating the other components, and handling all top-level process management.

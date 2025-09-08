@@ -1,9 +1,5 @@
 # Component Design: Test Runner Adapters
 
-* **Version:** 1.0
-* **Owner:** Adapters Team
-* **Status:** Final
-
 ## 1. General Responsibilities
 
 The Test Runner Adapters are modules that run *inside* the test runner's process. Their sole purpose is to capture test lifecycle events and raw output, and transmit this data as structured events back to the CLI Orchestrator via the IPC channel.

@@ -1,9 +1,5 @@
 # Component Design: IPC Manager
 
-* **Version:** 1.0
-* **Owner:** Core Team
-* **Status:** Final
-
 ## 1. Core Purpose
 
 The IPC (Inter-Process Communication) Manager provides a simple, reliable, and performant file-based event bus. It allows the Test Runner Adapters (running in a child process) to send a stream of structured events to the CLI Orchestrator (running in the main process).

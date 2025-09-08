@@ -1,9 +1,5 @@
 # 3pio: System Architecture Design
 
-* **Version:** 1.0
-* **Status:** Final
-* **Date:** 2025-09-07T13:16:00Z
-
 ## 1. Introduction
 
 This document outlines the system architecture for 3pio, an AI-first test runner adapter. The design is based on the detailed project plan and is intended to provide a clear blueprint for implementation. The architecture prioritizes performance, reliability, and a seamless "zero-config" user experience.

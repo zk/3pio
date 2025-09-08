@@ -1,9 +1,5 @@
 # Component Design: Report Manager
 
-* **Version:** 1.0
-* **Owner:** Core Team
-* **Status:** Final
-
 ## 1. Core Purpose
 
 The Report Manager encapsulates all file system logic related to the creation and real-time updating of the persistent test reports. It acts as the single source of truth for report-related I/O, ensuring that file access is safe, performant, and free of race conditions. It is controlled exclusively by the CLI Orchestrator.
