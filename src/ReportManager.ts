@@ -61,11 +61,11 @@ export class ReportManager {
 
     // Create output.log with header
     const header = [
-      `3pio Test Output Log`,
-      `Timestamp: ${new Date().toISOString()}`,
-      `Command: ${this.state.arguments}`,
-      `This file contains all stdout/stderr output from the test run.`,
-      '=' .repeat(80),
+      `# 3pio Test Output Log`,
+      `# Timestamp: ${new Date().toISOString()}`,
+      `# Command: ${this.state.arguments}`,
+      `# This file contains all stdout/stderr output from the test run.`,
+      '# ---',
       ''
     ].join('\n');
 
@@ -262,7 +262,7 @@ export class ReportManager {
       for (const line of lines) {
         // Skip header lines (first 5 lines)
         if (inHeader) {
-          if (line.startsWith('='.repeat(80))) {
+          if (line.startsWith('# ---')) {
             inHeader = false;
           }
           continue;
@@ -273,23 +273,40 @@ export class ReportManager {
         // Jest format might be different
         const vitestMatch = line.match(/^(stdout|stderr) \| ([^>]+\.(?:test|spec)\.[jt]sx?) > /);
         if (vitestMatch) {
-          currentFile = vitestMatch[2];
+          const streamType = vitestMatch[1]; // 'stdout' or 'stderr'
+          const newCurrentFile = vitestMatch[2];
+          
+          // If we're switching to a new section in the same file or different file,
+          // add a blank line to separate sections
+          if (currentFile && fileOutputs.has(currentFile) && fileOutputs.get(currentFile)!.length > 0) {
+            const lastLine = fileOutputs.get(currentFile)![fileOutputs.get(currentFile)!.length - 1];
+            if (lastLine.trim() !== '') {
+              fileOutputs.get(currentFile)!.push('');
+            }
+          }
+          
+          currentFile = newCurrentFile;
           if (!fileOutputs.has(currentFile)) {
             fileOutputs.set(currentFile, []);
           }
-          // Don't push the header line itself, just extract content after the ">"
+          // Add as markdown heading with stream type indicator
           const content = line.split(' > ').slice(1).join(' > ');
           if (content.trim()) {
-            fileOutputs.get(currentFile)!.push(content);
+            fileOutputs.get(currentFile)!.push(`# ${content} (${streamType})`);
           }
         } else if (currentFile && line.trim()) {
           // Continue adding lines to current file until we see a new file marker
           // Check if this is a summary line (starts with test runner symbols)
           if (line.match(/^\s*(✓|✔|×|✗|↓|⚠|❯|\[PASS\]|\[FAIL\]|\[SKIP\])/)) {
+            // Add a blank line before ending the current section
+            fileOutputs.get(currentFile)!.push('');
             currentFile = null; // Reset when we hit summary lines
           } else {
             fileOutputs.get(currentFile)!.push(line);
           }
+        } else if (currentFile && !line.trim()) {
+          // Handle empty lines within a section
+          fileOutputs.get(currentFile)!.push(line);
         }
       }
 
@@ -299,10 +316,11 @@ export class ReportManager {
         const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
 
         const header = [
-          `File: ${fileName}`,
-          `Timestamp: ${new Date().toISOString()}`,
-          `This file contains all stdout/stderr output from the test file execution.`,
-          '---',
+          `# File: ${fileName}`,
+          `# Timestamp: ${new Date().toISOString()}`,
+          `# This file contains all stdout/stderr output from the test file execution.`,
+          '# ---',
+          '',
           ''
         ].join('\n');
 
