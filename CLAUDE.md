@@ -77,7 +77,7 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 ### File Structure Conventions
 - Reports: `.3pio/runs/[ISO8601_timestamp]/`
 - IPC files: `.3pio/ipc/[timestamp].jsonl`
-- Log files: `.3pio/runs/[timestamp]/logs/[sanitized_test_path].log`
+- Output log: `.3pio/runs/[timestamp]/output.log` (contains all stdout/stderr from test run)
 
 ## Testing Requirements
 

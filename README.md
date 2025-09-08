@@ -33,7 +33,7 @@ npm install @3pio/core
 
 3pio generates structured reports in `.3pio/runs/[timestamp]/`:
 - `test-run.md` - Main report with test summary and results
-- `logs/` - Individual log files for each test file
+- `output.log` - Complete stdout/stderr output from the entire test run
 
 ## Development
 

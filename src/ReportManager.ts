@@ -5,15 +5,15 @@ import { IPCEvent, TestRunState } from './types/events';
 
 export class ReportManager {
   private runDirectory: string;
-  private logsDirectory: string;
+  private outputLogPath: string;
   private testRunPath: string;
   private state: TestRunState;
-  private logFileHandles: Map<string, fs.FileHandle> = new Map();
+  private outputLogHandle: fs.FileHandle | null = null;
   private debouncedWrite: () => void;
 
   constructor(runId: string, testCommand: string) {
     this.runDirectory = path.join(process.cwd(), '.3pio', 'runs', runId);
-    this.logsDirectory = path.join(this.runDirectory, 'logs');
+    this.outputLogPath = path.join(this.runDirectory, 'output.log');
     this.testRunPath = path.join(this.runDirectory, 'test-run.md');
 
     this.state = {
@@ -41,7 +41,6 @@ export class ReportManager {
   async initialize(testFiles: string[]): Promise<void> {
     // Create directories
     await fs.mkdir(this.runDirectory, { recursive: true });
-    await fs.mkdir(this.logsDirectory, { recursive: true });
 
     // Initialize state with pending test files
     this.state.totalFiles = testFiles.length;
@@ -54,9 +53,22 @@ export class ReportManager {
       return {
         status: 'PENDING' as const,
         file: filePath,
-        logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`
+        logFile: '' // No individual log files anymore
       };
     });
+
+    // Create output.log with header
+    const header = [
+      `3pio Test Output Log`,
+      `Timestamp: ${new Date().toISOString()}`,
+      `Command: ${this.state.arguments}`,
+      `This file contains all stdout/stderr output from the test run.`,
+      '=' .repeat(80),
+      ''
+    ].join('\n');
+
+    this.outputLogHandle = await fs.open(this.outputLogPath, 'w');
+    await this.outputLogHandle.writeFile(header);
 
     // Write initial report
     await this.writeTestRunReport();
@@ -86,43 +98,17 @@ export class ReportManager {
   }
 
   /**
-   * Append output chunk to log file
+   * Append output chunk to the unified output log
    */
   private async appendToLogFile(
     filePath: string,
     chunk: string,
     isStderr: boolean = false
   ): Promise<void> {
-    // Convert absolute path to relative for sanitization
-    const relativePath = filePath.startsWith(process.cwd()) 
-      ? path.relative(process.cwd(), filePath) 
-      : filePath;
-    
-    const logPath = path.join(this.logsDirectory, `${this.sanitizeFilePath(relativePath)}.log`);
-    
-    // Create file with header if it doesn't exist
-    if (!this.logFileHandles.has(filePath)) {
-      // Convert absolute path to relative for display
-      const relativePath = filePath.startsWith(process.cwd()) 
-        ? path.relative(process.cwd(), filePath) 
-        : filePath;
-      
-      const header = [
-        `File: ${relativePath}`,
-        `Timestamp: ${new Date().toISOString()}`,
-        `This file represents output from a test run for the listed test file. See \`../test-run.md\`.`,
-        '---',
-        ''
-      ].join('\n');
-
-      const handle = await fs.open(logPath, 'w');
-      await handle.writeFile(header);
-      this.logFileHandles.set(filePath, handle);
+    // Append to the single output.log file
+    if (this.outputLogHandle) {
+      await this.outputLogHandle.appendFile(chunk);
     }
-
-    // Append chunk to file
-    const handle = this.logFileHandles.get(filePath)!;
-    await handle.appendFile(chunk);
   }
 
   /**
@@ -137,15 +123,9 @@ export class ReportManager {
     // If file wasn't in the initial list (e.g., Vitest couldn't do dry run),
     // add it dynamically
     if (!testFile) {
-      // Convert absolute path to relative for sanitization
-      const relativePath = filePath.startsWith(process.cwd()) 
-        ? path.relative(process.cwd(), filePath) 
-        : filePath;
-      
-      const sanitizedPath = this.sanitizeFilePath(relativePath);
       testFile = {
         file: filePath,
-        logFile: `./logs/${sanitizedPath}.log`,
+        logFile: '', // No individual log files
         status: 'PENDING'
       };
       this.state.testFiles.push(testFile);
@@ -160,13 +140,6 @@ export class ReportManager {
     if (status === 'PASS') this.state.filesPassed++;
     else if (status === 'FAIL') this.state.filesFailed++;
     else if (status === 'SKIP') this.state.filesSkipped++;
-
-    // Close log file handle
-    const handle = this.logFileHandles.get(filePath);
-    if (handle) {
-      await handle.close();
-      this.logFileHandles.delete(filePath);
-    }
 
     // Update timestamp
     this.state.updatedAt = new Date().toISOString();
@@ -213,12 +186,14 @@ export class ReportManager {
       `- Files Skipped: ${this.state.filesSkipped}`,
       '',
       '## Test Files',
-      '| Status | File | Log File |',
-      '| --- | --- | --- |',
+      '| Status | File |',
+      '| --- | --- |',
       ...this.state.testFiles.map(tf => 
-        `| ${tf.status} | \`${getRelativePath(tf.file)}\` | [details](${tf.logFile}) |`
+        `| ${tf.status} | \`${getRelativePath(tf.file)}\` |`
       ),
-      ''
+      '',
+      '',
+      `Full test output: [output.log](./output.log)`
     ].join('\n');
 
     await fs.writeFile(this.testRunPath, markdown);
@@ -238,11 +213,11 @@ export class ReportManager {
    * Finalize the report when test run completes
    */
   async finalize(exitCode: number): Promise<void> {
-    // Close any remaining file handles
-    for (const [filePath, handle] of this.logFileHandles) {
-      await handle.close();
+    // Close the output log handle
+    if (this.outputLogHandle) {
+      await this.outputLogHandle.close();
+      this.outputLogHandle = null;
     }
-    this.logFileHandles.clear();
 
     // Update state
     // Only set ERROR if the test runner itself had an error (exit codes like 127, etc.)
