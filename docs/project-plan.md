@@ -36,7 +36,7 @@ The agent interacts with 3pio primarily through a Command Line Interface (CLI).
 ### 5. Distribution
 
 * **Package Manager:** npm
-* **Package Name:** @3pio/core (planned)
+* **Package Name:** 3pio (current implementation uses local paths)
 * **Installation:** The CLI will be installed globally via a single command. This package contains the main 3pio executable and all supported test runner adapters.
   npm install -g @3pio/core
 
@@ -77,8 +77,8 @@ To ensure robust and predictable behavior, especially in automated environments,
 * **Initial Targets:** Jest, Vitest.
 * **Usage (Automatic via CLI):** The 3pio command will automatically add the correct flag to the user's command. This provides a "zero-config" experience.
 * **Injection Logic:** To remain unobtrusive, the 3pio adapter is always appended to the end of the reporter chain.
-  * **For Jest:** The CLI will inject the --reporters flag. It will detect if the user has already specified reporters via the command line. If so, it appends @3pio/core/jest. If not, it sets the reporters to \['default', '@3pio/core/jest'\] to ensure both the standard console output and the 3pio report are generated. For example, 3pio run jest --watch would be transformed and executed as jest --watch --reporters default @3pio/core/jest.
-  * **For Vitest:** The logic is similar. The CLI injects the --reporter flag, appending @3pio/core/vitest to any existing reporters or setting it alongside the default reporter if none are provided by the user. For example, 3pio run vitest --ui would be transformed and executed as vitest --ui --reporter default --reporter @3pio/core/vitest.
+  * **For Jest:** The CLI injects the --reporters flag using absolute paths. It detects existing reporters and either appends the adapter or adds both default and 3pio reporters. Example: `jest --watch --reporters default --reporters /path/to/jest.js`.
+  * **For Vitest:** Similar logic with --reporter flag using absolute paths. Example: `vitest --ui --reporter default --reporter /path/to/vitest.js`.
 
 #### 6.3. Real-Time stdout Output
 
@@ -148,42 +148,40 @@ This is the complete, official record of the test run, designed for detailed ana
   * /.3pio/runs/20250907T210400Z/
 * **Initial Report State:** Immediately after the dry run is complete and the list of test files is known, the CLI will create the test-run.md file. The file will be populated with the header and the "Test Files" table, with every discovered test file listed with an initial status of PENDING. This ensures that a record of the intended run exists even if the main process crashes immediately upon starting.
 * **File Structure:**
-  * **test-run.md**: A Markdown file that acts as the main entry point and summary. The file's contents are updated periodically during the run and finalized upon completion, managed by the debounced write strategy (see below).
-    \# 3pio Test Run Summary
-    - \*\*Timestamp:\*\* 2025-09-07T21:04:00Z
-    - \*\*Status:\*\* Complete (updated 2025-09-07T21:05:15Z)
-    - \*\*Arguments:\*\* \`vitest run src/\`
+  * **test-run.md**: A Markdown file that acts as the main entry point and summary. Updated via debounced writes during execution and finalized upon completion.
+    ```markdown
+    # 3pio Test Run Summary
+    - Timestamp: 2025-09-07T21:04:00Z
+    - Status: COMPLETE (updated 2025-09-07T21:05:15Z)
+    - Arguments: `vitest run src/`
 
-    \#\# Summary (updated 2025-09-07T21:05:15Z)
-    - \*\*Total Files:\*\* 3
-    - \*\*Files Passed:\*\* 2
-    - \*\*Files Failed:\*\* 1
+    ## Summary (updated 2025-09-07T21:05:15Z)
+    - Total Files: 3
+    - Files Completed: 3
+    - Files Passed: 2
+    - Files Failed: 1
+    - Files Skipped: 0
 
-    \#\# Test Files
+    ## Test Files
     | Status | File | Log File |
     | --- | --- | --- |
-    | PASS | \`src/tests/auth/login.test.js\` | \[details\](./logs/login.test.js.log) |
-    | FAIL | \`src/tests/auth/logout.test.js\` | \[details\](./logs/logout.test.js.log) |
-    | PASS | \`src/tests/cart/add.test.js\` | \[details\](./logs/add.test.js.log) |
+    | PASS | `src/tests/auth/login.test.js` | [details](./logs/login.test.js.log) |
+    | FAIL | `src/tests/auth/logout.test.js` | [details](./logs/logout.test.js.log) |
+    | PASS | `src/tests/cart/add.test.js` | [details](./logs/add.test.js.log) |
 
-  * **Individual Log Files (e.g., logs/src\_tests\_auth\_logout.test.js.log)**: A log file for each test, created as soon as the test file completes. The filename is a sanitized version of the test file's relative path to prevent collisions. It contains a simple preamble with metadata followed by the raw stdout and stderr captured during that test file's execution.
-    File: src/tests/auth/logout.test.js
-    Timestamp: 2025-09-07T21:04:05Z
-    This file represents output from a test run for the listed test file. See \`../test-run.md\`.
-    ---
-     FAIL  src/tests/auth/logout.test.js
-      ❯ User Authentication \> should correctly log out a user
-        AssertionError: expected true to be false
-         at /path/to/project/src/tests/auth/logout.test.js:25:32
+    Full test output: [output.log](./output.log)
+    ```
+  * **output.log**: Unified log file containing all stdout/stderr output captured during the entire test run, with header metadata.
+  * **Individual Log Files (logs/)**: Created post-execution by parsing output.log, extracting test-specific output using pattern matching (e.g., Vitest format: `stdout | filename.test.js > content`).
 
-#### 6.5. Real-Time Update Strategy (Debounced Writes)
+#### 6.5. Real-Time Update Strategy (Unified Logging + Debounced Writes)
 
-To ensure high performance and prevent file corruption from frequent writes, the test-run.md file is not updated for every single test result. Instead, a debounced write strategy is used:
+The implementation uses a two-phase approach for performance and reliability:
 
-1. **In-Memory State:** A complete representation of the test-run.md report is held in memory.
-2. **Immediate Update:** When a test result is received via IPC, only the fast in-memory state is updated.
-3. **Batched File Writes:** The in-memory state is written to the actual test-run.md file on disk periodically (e.g., every 250ms). This batches potentially hundreds of updates into a single, efficient file write.
-4. **Finalization:** A final, guaranteed write occurs when the entire test run is complete to ensure the report on disk is 100% accurate.
+1. **Real-time Unified Logging:** All stdout/stderr output is immediately written to a single `output.log` file via file handle.
+2. **Debounced Report Updates:** TestRunState changes trigger debounced writes (250ms delay, 1000ms maxWait) to test-run.md using lodash.debounce.
+3. **Post-processing:** During finalize(), output.log is parsed to create individual test file logs using pattern matching.
+4. **Final Guarantee:** A non-debounced write ensures test-run.md reflects final state.
 
 #### 6.6. Inter-Process Communication (IPC)
 
@@ -191,7 +189,7 @@ A file-based IPC mechanism is used for the adapter to send a stream of structure
 
 1. **IPC File Creation:** The main CLI process creates a dedicated IPC directory at /.3pio/ipc/. Inside this directory, it creates a unique, temporary event log file for the current run (e.g., /.3pio/ipc/20250907T210400Z.jsonl).
 2. **Path Communication:** The absolute path to this IPC file is passed as a reporter option or an environment variable to the child process.
-3. **Event Writing:** The adapter, running within the test runner, receives this file path. It will write different event types to the IPC file as they occur. It hooks into the runner's stdout/stderr streams and immediately writes chunk events. When a test file completes, it writes the final result event.
+3. **Event Writing:** The adapter uses static `IPCManager.sendEvent()` method with the file path from environment variable. It patches stdout/stderr streams to capture and forward output chunks. Uses synchronous file operations for reliability in test runner context.
 4. **Event Watching:** The main 3pio CLI process watches the IPC file for changes. When a new line is appended, it reads the line, parses the JSON event, and takes the appropriate action (e.g., appends a chunk to a log file, updates the in-memory state for the summary report).
 5. **Cleanup:** After the test run is complete, the main CLI process is responsible for deleting the temporary IPC file.
 
@@ -218,13 +216,15 @@ The following JSON schema defines the events that will be written to the ipc.jso
   }
 
 * **For the final test file result:**
+  ```json
   {
     "eventType": "testFileResult",
     "payload": {
       "filePath": "src/tests/auth/login.test.js",
-      "status": "PASS"
+      "status": "PASS" | "FAIL" | "SKIP"
     }
   }
+  ```
 
 ### 7. Agent Workflow Example
 

@@ -37,7 +37,7 @@ The manager is responsible for handling the following event structures. All comm
 * **testFileResult**: For the final result of a single test file.
   {
     "eventType": "testFileResult",
-    "payload": { "filePath": "...", "status": "PASS" | "FAIL" }
+    "payload": { "filePath": "...", "status": "PASS" | "FAIL" | "SKIP" }
   }
 
 ## 4. Failure Modes

@@ -6,45 +6,58 @@ The Test Runner Adapters are modules that run *inside* the test runner's process
 
 All adapters must adhere to the following principles:
 
-* **Silent Operation:** Adapters **must not** write to stdout or stderr. They are designed to be "silent" reporters that do not interfere with the user's default console output.
-* **Event Transmission:** Adapters must use the IPCManager's writer to send events adhering to the official IPC Event Schema.
-* **Configuration:** Adapters will discover the path to the IPC event file by reading the THREEPIO\_IPC\_PATH environment variable set by the CLI Orchestrator.
+* **Silent Operation:** Adapters **must not** write to stdout or stderr for normal operations. They are designed to be "silent" reporters that do not interfere with the user's default console output. (Debug logging to /tmp/vitest-debug.log is acceptable for development/troubleshooting.)
+* **Event Transmission:** Adapters must use `IPCManager.sendEvent()` static method to send events adhering to the official IPC Event Schema.
+* **Configuration:** Adapters discover the IPC file path by reading the THREEPIO_IPC_PATH environment variable set by the CLI Orchestrator.
+* **Error Resilience:** All IPC operations must be wrapped in try/catch or .catch() to prevent adapter failures from crashing the test runner.
 
 ## 2. Stream Tapping Strategy
 
 To enable real-time streaming of log output, adapters will patch the global process.stdout.write and process.stderr.write functions within the test runner's process.
 
 * **Lifecycle:**
-  1. When the adapter's onTestFileStart (or equivalent) hook is called, it replaces the native .write functions with its own wrappers.
-  2. These wrappers capture the output chunk and immediately send a stdoutChunk or stderrChunk event via the IPC writer.
-  3. When the onTestFileResult hook is called, the adapter restores the original .write functions to their native state.
+  1. Adapters store references to original stdout/stderr write functions in constructor.
+  2. startCapture() replaces the native .write functions with wrappers that:
+     - Capture output chunks and send stdoutChunk/stderrChunk events via IPCManager.sendEvent()
+     - Pass through the original output to maintain normal console behavior
+  3. stopCapture() restores the original write functions.
+  4. Jest adapter: Capture lifecycle tied to onTestStart/onTestResult hooks.
+  5. Vitest adapter: Capture started in onInit() and maintained throughout run, with currentTestFile context switching.
+
+* **Error Handling:** All IPC send operations use .catch(() => {}) for silent failure to avoid disrupting test execution.
 
 ## 3. Specific Adapter Implementations
 
-### 3.1. Jest Adapter (@3pio/core/jest)
+### 3.1. Jest Adapter (ThreePioJestReporter)
 
-* **Implementation:** class JestAdapter extends DefaultReporter (from @jest/reporters). This ensures it can coexist with Jest's default reporter.
+* **Implementation:** `class ThreePioJestReporter implements Reporter` (from @jest/reporters). This ensures it can coexist with Jest's default reporter.
 * **Key Hooks:**
-  * onRunStart(): Initializes the IPC writer.
-  * onTestStart(test): Begins stream tapping for test.path.
-  * onTestResult(test, testResult): Ends stream tapping and sends the final testFileResult event with the pass/fail status from testResult.
-  * onRunComplete(): Can be used for final cleanup if necessary.
+  * onRunStart(): Initializes connection and validates THREEPIO_IPC_PATH environment variable.
+  * onTestStart(test): Sets currentTestFile and begins stream tapping for test.path.
+  * onTestResult(test, testResult, aggregatedResult): Ends stream tapping and sends testFileResult event with status derived from testResult.numFailingTests and testResult.skipped.
+  * onRunComplete(testContexts, results): Ensures capture is stopped and performs cleanup.
+  * getLastError(): Required by Reporter interface (no-op implementation).
 
-### 3.2. Vitest Adapter (@3pio/core/vitest)
+### 3.2. Vitest Adapter (ThreePioVitestReporter)
 
-* **Implementation:** class VitestAdapter implements Reporter (from vitest/node).
+* **Implementation:** `class ThreePioVitestReporter implements Reporter` (from vitest).
 * **Key Hooks:**
-  * onRunStart(files): Initializes the IPC writer.
-  * onTestFileStart(file): Begins stream tapping for file.filepath.
-  * onTestFileResult(file): Ends stream tapping and sends the final testFileResult event with the status derived from file.result.state.
-  * onRunComplete(files): Can be used for final cleanup.
+  * onInit(ctx): Initializes connection, validates THREEPIO_IPC_PATH, and starts capturing immediately.
+  * onPathsCollected(paths): Called when test files are discovered.
+  * onCollected(files): Called when test files are collected.
+  * onTestFileStart(file): Sets currentTestFile and ensures capture is started for file.filepath.
+  * onTestFileResult(file): Ends stream tapping and sends testFileResult event with status derived from file.result.state or file.mode.
+  * onFinished(files, errors): Ensures capture is stopped, includes fallback logic to send results for files that may not have triggered onTestFileResult.
+
+**Note:** The Vitest adapter includes extensive debug logging to `/tmp/vitest-debug.log` for troubleshooting integration issues.
 
 ## 4. Failure Modes
 
 * **Missing Environment Variable:** The THREEPIO\_IPC\_PATH environment variable is not set, so the adapter does not know where to send events.
-* **Test Runner API Changes:** A new version of Jest or Vitest introduces a breaking change to their reporter API, causing the adapter to crash or fail to capture events.
+* **Test Runner API Changes:** Breaking changes in Jest/Vitest reporter APIs between versions causing adapter to crash or fail to capture events.
 * **Adapter Crash:** An unhandled exception within the adapter's code causes it to crash, which may or may not crash the entire test runner process.
 * **Stream Patching Conflicts:** Another reporter in the user's configuration also tries to patch process.stdout.write, leading to unpredictable behavior or lost output.
+* **Context Switching Issues:** In Vitest, output may occur without clear test file context, handled by using 'global' as fallback filepath.
 
 ## 5. Testing Strategy
 

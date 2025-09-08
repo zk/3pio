@@ -14,17 +14,18 @@ The orchestrator executes the following sequence for a typical 3pio run command:
 4. **Initialize Run:**
    * Create the unique run directory (e.g., /.3pio/runs/20250907T131600Z/).
    * Create the unique IPC event file (e.g., /.3pio/ipc/20250907T131600Z.jsonl).
-5. **Initialize Report:** Instantiate the ReportManager and call reportManager.initialize(testFiles) to create the initial test-run.md with all tests marked PENDING.
+5. **Initialize Report:** Instantiate the ReportManager and call `await reportManager.initialize(testFiles)` to create the initial test-run.md with all tests marked PENDING.
 6. **Print Preamble:** Generate and print the formatted preamble to the console.
-7. **Start IPC Listening:** Use the IPCManager to start watching the IPC event file for new events. Delegate received events to reportManager.handleEvent(event).
+7. **Start IPC Listening:** Use the IPCManager to start watching the IPC event file for new events. Process events sequentially through a queue to avoid concurrent file writes. Delegate received events to `await reportManager.handleEvent(event)`.
 8. **Execute Main Command:**
-   * Programmatically modify the user's command to inject the correct adapter flags (e.g., --reporters default @3pio/core/jest).
-   * Use zx to spawn the modified command as a child process.
+   * Programmatically modify the user's command to inject the correct adapter flags with absolute paths.
+   * Use zx with explicit environment: `$({ env })`sh -c ${modifiedCommand}``
    * Pipe the child process's stdout and stderr directly to the user's console.
+   * Handle zx exceptions to extract exit codes from failed processes.
 9. **Await Completion:** Wait for the zx process to exit.
 10. **Finalize and Clean Up:**
-    * Call reportManager.finalize() to ensure the final report is written to disk.
-    * Clean up (delete) the IPC event file.
+    * Call `await reportManager.finalize(exitCode)` to ensure the final report is written to disk and individual logs are parsed.
+    * Call `await ipcManager.cleanup()` to stop watching and clean up resources.
     * Exit the 3pio process with the same exit code as the child process.
 
 ## 3. Key Dependencies
@@ -36,10 +37,14 @@ The orchestrator executes the following sequence for a typical 3pio run command:
 
 ## 4. Configuration and Environment
 
-The orchestrator is responsible for passing the path to the unique IPC event file to the adapter running in the child process. The most robust method for this is an environment variable.
+The orchestrator is responsible for passing the path to the unique IPC event file to the adapter running in the child process. 
 
-* **Environment Variable:** THREEPIO\_IPC\_PATH
-* **Example:** When spawning the test runner, the orchestrator will set process.env.THREEPIO\_IPC\_PATH \= "/path/to/.3pio/ipc/RUN\_ID.jsonl". The adapter will then read this variable to know where to send its events.
+* **Environment Variable:** THREEPIO_IPC_PATH
+* **Implementation:** 
+  1. Sets `process.env.THREEPIO_IPC_PATH = this.ipcPath` in the main process.
+  2. Explicitly passes environment to child process: `$({ env: { ...process.env, THREEPIO_IPC_PATH: this.ipcPath } })`
+  3. Uses absolute adapter paths: `path.join(__dirname, 'jest.js')` or `path.join(__dirname, 'vitest.js')`
+* **Command Modification:** Appends reporter flags like `--reporters default --reporters ${adapterPath}` for Jest or `--reporter default --reporter ${adapterPath}` for Vitest.
 
 ## 5. Failure Modes
 
