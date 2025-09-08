@@ -108,3 +108,20 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 - **Shell Execution**: zx (for robust command handling)
 - **File Watching**: chokidar (for IPC monitoring)
 - **Debouncing**: lodash.debounce (for report writes)
+
+## Known Issues and Gotchas
+
+### Test Runner Detection
+- Commands invoked via `npx`, `yarn`, or `pnpm` require special handling to detect the actual test runner
+- The system checks both the package manager and the subsequent test runner argument
+
+### Vitest-Specific Behaviors
+- **Important**: `vitest list` doesn't just list files - it runs tests in watch mode
+- When specific test files are provided as arguments, they are extracted directly rather than using dry run
+- Duplicate output may appear (from both default reporter and 3pio adapter) - this is expected behavior
+
+### Environment Variables
+- `THREEPIO_IPC_PATH` must be explicitly passed to child processes
+- Adapter paths must use absolute paths to avoid resolution issues
+
+For detailed information about these issues and their solutions, see `docs/known-issues.md`.
