@@ -58,14 +58,12 @@ describe('ReportManager', () => {
       
       // Check directories were created
       const runDir = path.join(tempDir, '.3pio', 'runs', runId);
-      const logsDir = path.join(runDir, 'logs');
       const reportPath = path.join(runDir, 'test-run.md');
       
       const runDirStats = await fs.stat(runDir);
       expect(runDirStats.isDirectory()).toBe(true);
       
-      const logsDirStats = await fs.stat(logsDir);
-      expect(logsDirStats.isDirectory()).toBe(true);
+      // Note: logs directory is created during finalize(), not initialize()
       
       // Check initial report was created
       const reportContent = await fs.readFile(reportPath, 'utf8');
@@ -106,11 +104,11 @@ describe('ReportManager', () => {
       
       await reportManager.handleEvent(event);
       
-      const logPath = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test.js.log');
-      const logContent = await fs.readFile(logPath, 'utf8');
+      // Check that content is written to output.log
+      const outputLogPath = path.join(tempDir, '.3pio', 'runs', runId, 'output.log');
+      const outputContent = await fs.readFile(outputLogPath, 'utf8');
       
-      expect(logContent).toContain('File: test.js');
-      expect(logContent).toContain('Test output line 1');
+      expect(outputContent).toContain('Test output line 1');
     });
 
     it('should handle stderrChunk event', async () => {
@@ -124,10 +122,11 @@ describe('ReportManager', () => {
       
       await reportManager.handleEvent(event);
       
-      const logPath = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test.js.log');
-      const logContent = await fs.readFile(logPath, 'utf8');
+      // Check that content is written to output.log
+      const outputLogPath = path.join(tempDir, '.3pio', 'runs', runId, 'output.log');
+      const outputContent = await fs.readFile(outputLogPath, 'utf8');
       
-      expect(logContent).toContain('Error output line 1');
+      expect(outputContent).toContain('Error output line 1');
     });
 
     it('should handle testFileResult event with PASS status', async () => {
@@ -200,31 +199,24 @@ describe('ReportManager', () => {
       await reportManager.initialize(['test.js']);
     });
 
-    it('should create log file with header on first write', async () => {
+    it('should append to output.log file', async () => {
       await (reportManager as any).appendToLogFile('test.js', 'First chunk\n');
       
-      const logPath = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test.js.log');
-      const content = await fs.readFile(logPath, 'utf8');
+      const outputLogPath = path.join(tempDir, '.3pio', 'runs', runId, 'output.log');
+      const content = await fs.readFile(outputLogPath, 'utf8');
       
-      expect(content).toContain('File: test.js');
-      expect(content).toContain('Timestamp:');
-      expect(content).toContain('This file represents output from a test run');
       expect(content).toContain('First chunk');
     });
 
-    it('should append subsequent chunks without header', async () => {
+    it('should append subsequent chunks to output.log', async () => {
       await (reportManager as any).appendToLogFile('test.js', 'First chunk\n');
       await (reportManager as any).appendToLogFile('test.js', 'Second chunk\n');
       
-      const logPath = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test.js.log');
-      const content = await fs.readFile(logPath, 'utf8');
+      const outputLogPath = path.join(tempDir, '.3pio', 'runs', runId, 'output.log');
+      const content = await fs.readFile(outputLogPath, 'utf8');
       
       expect(content).toContain('First chunk');
       expect(content).toContain('Second chunk');
-      
-      // Should only have one header
-      const headerCount = (content.match(/File: test.js/g) || []).length;
-      expect(headerCount).toBe(1);
     });
   });
 
@@ -251,19 +243,19 @@ describe('ReportManager', () => {
       expect(content).toContain('Status: COMPLETE');
     });
 
-    it('should close all open file handles', async () => {
-      // Write to create file handles
+    it('should close output log handle', async () => {
+      // Write to output log
       await (reportManager as any).appendToLogFile('test1.js', 'chunk1');
       await (reportManager as any).appendToLogFile('test2.js', 'chunk2');
       
-      // Verify handles exist
-      const handles = (reportManager as any).logFileHandles;
-      expect(handles.size).toBe(2);
+      // Verify handle exists
+      const handle = (reportManager as any).outputLogHandle;
+      expect(handle).toBeTruthy();
       
       await reportManager.finalize(0);
       
-      // Handles should be cleared
-      expect(handles.size).toBe(0);
+      // Handle should be closed
+      expect((reportManager as any).outputLogHandle).toBeNull();
     });
   });
 

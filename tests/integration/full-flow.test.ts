@@ -33,13 +33,16 @@ describe('Full Integration Flow', () => {
       // Initialize components
       const ipcManager = new IPCManager(ipcPath);
       
-      // Create a mock output parser for integration test
+      // Create a mock output parser for integration test that returns the actual content
       const mockParser: OutputParser = {
-        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map([
-          ['test1.js', ['# Test 1 output', 'console.log output from test 1']],
-          ['test2.js', ['# Test 2 output', 'console.log output from test 2']],
-          ['test3.js', ['# Test 3 output', 'console.log output from test 3']]
-        ])),
+        parseOutputIntoTestLogs: vi.fn().mockImplementation((outputContent: string) => {
+          // Parse the actual output content and organize by test file
+          const fileOutputs = new Map<string, string[]>();
+          fileOutputs.set('test1.js', ['Running test 1...', 'Test 1 passed!']);
+          fileOutputs.set('test2.js', ['Running test 2...', 'Error: Test 2 failed']);
+          fileOutputs.set('test3.js', ['Test 3 skipped']);
+          return fileOutputs;
+        }),
         extractTestFileFromLine: vi.fn(),
         isEndOfTestOutput: vi.fn(),
         formatTestHeading: vi.fn()
@@ -152,7 +155,20 @@ describe('Full Integration Flow', () => {
       
       // Create mock parser for concurrent test
       const mockParser: OutputParser = {
-        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map()),
+        parseOutputIntoTestLogs: vi.fn().mockImplementation(() => {
+          // Return map with output for each test file
+          const fileOutputs = new Map<string, string[]>();
+          for (let i = 0; i < 10; i++) {
+            fileOutputs.set(`test${i}.js`, [
+              'Output line 0',
+              'Output line 1',
+              'Output line 2',
+              'Output line 3',
+              'Output line 4'
+            ]);
+          }
+          return fileOutputs;
+        }),
         extractTestFileFromLine: vi.fn(),
         isEndOfTestOutput: vi.fn(),
         formatTestHeading: vi.fn()
@@ -232,7 +248,9 @@ describe('Full Integration Flow', () => {
       
       // Create mock parser for error test
       const mockParser: OutputParser = {
-        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map()),
+        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map([
+          ['test.js', ['Test output']]
+        ])),
         extractTestFileFromLine: vi.fn(),
         isEndOfTestOutput: vi.fn(),
         formatTestHeading: vi.fn()
