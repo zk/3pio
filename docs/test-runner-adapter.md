@@ -13,7 +13,7 @@ All adapters must adhere to the following principles:
 
 ## 2. Stream Tapping Strategy
 
-To enable real-time streaming of log output, adapters will patch the global process.stdout.write and process.stderr.write functions within the test runner's process.
+To enable real-time streaming of log output, adapters will patch the global process.stdout.write and process.stderr.write functions within the test runner's process. This approach is necessary because Jest's `testResult.console` property is not populated (see [Jest Console Handling](./jest-console-handling.md) for details).
 
 * **Lifecycle:**
   1. Adapters store references to original stdout/stderr write functions in constructor.
@@ -34,7 +34,7 @@ To enable real-time streaming of log output, adapters will patch the global proc
 * **Key Hooks:**
   * onRunStart(): Initializes connection and validates THREEPIO_IPC_PATH environment variable.
   * onTestStart(test): Sets currentTestFile and begins stream tapping for test.path.
-  * onTestResult(test, testResult, aggregatedResult): Ends stream tapping and sends testFileResult event with status derived from testResult.numFailingTests and testResult.skipped.
+  * onTestResult(test, testResult, aggregatedResult): Ends stream tapping and sends testFileResult event with status derived from testResult.numFailingTests and testResult.skipped. Note: `testResult.console` is not used as it's always undefined (see [Jest Console Handling](./jest-console-handling.md)).
   * onRunComplete(testContexts, results): Ensures capture is stopped and performs cleanup.
   * getLastError(): Required by Reporter interface (no-op implementation).
 
