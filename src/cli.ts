@@ -7,14 +7,13 @@ import path from 'path';
 import { IPCManager } from './ipc';
 import { ReportManager } from './ReportManager';
 import { IPCEvent } from './types/events';
+import { TestRunnerManager, TestRunnerName } from './TestRunnerManager';
+import { TestRunnerDefinition } from './runners/base/TestRunnerDefinition';
 
 // Disable zx verbosity
 $.verbose = false;
 
-interface TestRunner {
-  name: 'jest' | 'vitest' | 'unknown';
-  command: string;
-}
+// Removed old TestRunner interface - now using TestRunnerDefinition
 
 class CLIOrchestrator {
   private runId: string;
@@ -35,16 +34,18 @@ class CLIOrchestrator {
       console.log();
 
       // Detect test runner
-      const runner = await this.detectTestRunner(commandArgs);
+      const runnerName = await this.detectTestRunner(commandArgs);
       
-      if (runner.name === 'unknown') {
+      if (!runnerName) {
         console.error('Oh dear! I cannot determine which test runner you are using.');
-        console.error('3pio currently supports Jest and Vitest.');
+        console.error(`3pio currently supports: ${TestRunnerManager.getAvailableRunners().join(', ')}`);
         process.exit(1);
       }
+      
+      const runner = TestRunnerManager.getDefinition(runnerName);
 
       // Perform dry run to get test files
-      const testFiles = await this.performDryRun(runner, commandArgs);
+      const testFiles = await runner.getTestFiles(commandArgs);
       
       if (testFiles.length === 0) {
         console.log('No test files found to run. Proceeding without file list...');
@@ -52,7 +53,7 @@ class CLIOrchestrator {
       }
 
       // Initialize IPC and Report
-      await this.initialize(testCommand, testFiles);
+      await this.initialize(testCommand, testFiles, runnerName);
 
       // Print preamble
       this.printPreamble(testFiles);
@@ -61,7 +62,7 @@ class CLIOrchestrator {
       this.startIPCListening();
 
       // Execute main command with adapter injected
-      const exitCode = await this.executeMainCommand(runner, commandArgs);
+      const exitCode = await this.executeMainCommand(runnerName, commandArgs);
 
       // Finalize
       await this.finalize(exitCode);
@@ -73,117 +74,24 @@ class CLIOrchestrator {
     }
   }
 
-  private async detectTestRunner(args: string[]): Promise<TestRunner> {
-    const command = args[0];
+  private async detectTestRunner(args: string[]): Promise<TestRunnerName | null> {
+    let packageJsonContent: string | undefined;
     
-    // Direct runner commands
-    if (command === 'jest') {
-      return { name: 'jest', command: 'jest' };
-    }
-    if (command === 'vitest') {
-      return { name: 'vitest', command: 'vitest' };
-    }
-    
-    // npx/yarn/pnpm commands
-    if ((command === 'npx' || command === 'yarn' || command === 'pnpm') && args[1]) {
-      if (args[1] === 'jest') {
-        return { name: 'jest', command: args.slice(0, 2).join(' ') };
-      }
-      if (args[1] === 'vitest') {
-        return { name: 'vitest', command: args.slice(0, 2).join(' ') };
-      }
-    }
-
-    // NPM scripts
-    if (command === 'npm' && (args[1] === 'test' || args[1] === 'run')) {
+    // Only read package.json if we might need it (npm commands)
+    if (args[0] === 'npm' && (args[1] === 'test' || args[1] === 'run')) {
       try {
-        const packageJson = JSON.parse(
-          await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf8')
-        );
-
-        // Check scripts
-        const scriptName = args[1] === 'test' ? 'test' : args[2];
-        const script = packageJson.scripts?.[scriptName];
-        
-        if (script) {
-          if (script.includes('jest')) {
-            return { name: 'jest', command: script };
-          }
-          if (script.includes('vitest')) {
-            return { name: 'vitest', command: script };
-          }
-        }
-
-        // Check dependencies
-        const deps = {
-          ...packageJson.dependencies,
-          ...packageJson.devDependencies
-        };
-
-        if (deps.jest) return { name: 'jest', command: script || 'jest' };
-        if (deps.vitest) return { name: 'vitest', command: script || 'vitest' };
-      } catch (error) {
-        // Package.json not found or invalid
+        packageJsonContent = await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf8');
+      } catch {
+        // package.json not found - continue without it
       }
     }
-
-    return { name: 'unknown', command: args[0] };
-  }
-
-  private async performDryRun(
-    runner: TestRunner,
-    args: string[]
-  ): Promise<string[]> {
-    // Check if specific test files are provided
-    const testFileExtensions = ['.test.js', '.test.ts', '.test.mjs', '.test.jsx', '.test.tsx', '.spec.js', '.spec.ts', '.spec.mjs'];
-    const providedFiles = args.filter(arg => 
-      !arg.startsWith('-') && testFileExtensions.some(ext => arg.includes(ext))
-    );
     
-    if (providedFiles.length > 0) {
-      // User provided specific test files, use those
-      return providedFiles;
-    }
-
-    try {
-      let dryRunCommand: string;
-      
-      if (runner.name === 'jest') {
-        // For Jest, use --listTests
-        dryRunCommand = args.join(' ') + ' --listTests';
-      } else if (runner.name === 'vitest') {
-        // For Vitest, we can't easily list files without running them
-        // So we'll just return empty and let the adapter handle it
-        console.log('Note: Vitest dry run not available. Proceeding...');
-        return [];
-      } else {
-        return [];
-      }
-
-      // Execute dry run
-      const result = await $`sh -c ${dryRunCommand}`;
-      
-      // Parse output
-      if (runner.name === 'jest') {
-        // Jest outputs JSON array
-        try {
-          return JSON.parse(result.stdout);
-        } catch {
-          // Fallback to line parsing
-          return result.stdout
-            .split('\n')
-            .filter(line => line.trim() && line.endsWith('.test.js') || line.endsWith('.test.ts'));
-        }
-      } else {
-        return [];
-      }
-    } catch (error) {
-      console.error('Warning: Dry run failed. Proceeding optimistically...');
-      return [];
-    }
+    return TestRunnerManager.detect(args, packageJsonContent);
   }
 
-  private async initialize(testCommand: string, testFiles: string[]): Promise<void> {
+  // Removed performDryRun - now handled by TestRunnerDefinition.getTestFiles()
+
+  private async initialize(testCommand: string, testFiles: string[], runnerName: TestRunnerName): Promise<void> {
     // Create IPC directory and file
     const ipcDir = await IPCManager.ensureIPCDirectory();
     this.ipcPath = path.join(ipcDir, `${this.runId}.jsonl`);
@@ -191,9 +99,12 @@ class CLIOrchestrator {
     // Set environment variable for adapters
     process.env.THREEPIO_IPC_PATH = this.ipcPath;
     
+    // Get the output parser for this test runner
+    const parser = TestRunnerManager.getParser(runnerName);
+    
     // Initialize managers
     this.ipcManager = new IPCManager(this.ipcPath);
-    this.reportManager = new ReportManager(this.runId, testCommand);
+    this.reportManager = new ReportManager(this.runId, testCommand, parser);
     
     // Initialize report with test files
     await this.reportManager.initialize(testFiles);
@@ -280,38 +191,16 @@ class CLIOrchestrator {
   }
 
   private async executeMainCommand(
-    runner: TestRunner,
+    runnerName: TestRunnerName,
     args: string[]
   ): Promise<number> {
-    let modifiedCommand: string;
+    const runner = TestRunnerManager.getDefinition(runnerName);
+    
     // Use absolute path to the adapter
-    const adapterPath = runner.name === 'jest' 
-      ? path.join(__dirname, 'jest.js')
-      : path.join(__dirname, 'vitest.js');
-
-    if (runner.name === 'jest') {
-      // Inject Jest reporter
-      const hasReporters = args.some(arg => arg.includes('--reporters'));
-      if (hasReporters) {
-        // Append to existing reporters
-        modifiedCommand = args.join(' ') + ` ${adapterPath}`;
-      } else {
-        // Add default and 3pio reporters
-        modifiedCommand = args.join(' ') + ` --reporters default --reporters ${adapterPath}`;
-      }
-    } else if (runner.name === 'vitest') {
-      // Inject Vitest reporter
-      const hasReporter = args.some(arg => arg.includes('--reporter'));
-      if (hasReporter) {
-        // Append to existing reporters
-        modifiedCommand = args.join(' ') + ` --reporter ${adapterPath}`;
-      } else {
-        // Add default and 3pio reporters
-        modifiedCommand = args.join(' ') + ` --reporter default --reporter ${adapterPath}`;
-      }
-    } else {
-      modifiedCommand = args.join(' ');
-    }
+    const adapterPath = path.join(__dirname, runner.getAdapterFileName());
+    
+    // Build command using runner definition
+    const modifiedCommand = runner.buildMainCommand(args, adapterPath);
 
     try {
       // Set THREEPIO_IPC_PATH for the child process

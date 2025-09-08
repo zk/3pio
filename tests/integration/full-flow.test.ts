@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IPCManager } from '../../src/ipc';
 import { ReportManager } from '../../src/ReportManager';
+import { OutputParser } from '../../src/runners/base/OutputParser';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -31,7 +32,20 @@ describe('Full Integration Flow', () => {
       
       // Initialize components
       const ipcManager = new IPCManager(ipcPath);
-      const reportManager = new ReportManager(runId, 'test command');
+      
+      // Create a mock output parser for integration test
+      const mockParser: OutputParser = {
+        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map([
+          ['test1.js', ['# Test 1 output', 'console.log output from test 1']],
+          ['test2.js', ['# Test 2 output', 'console.log output from test 2']],
+          ['test3.js', ['# Test 3 output', 'console.log output from test 3']]
+        ])),
+        extractTestFileFromLine: vi.fn(),
+        isEndOfTestOutput: vi.fn(),
+        formatTestHeading: vi.fn()
+      };
+      
+      const reportManager = new ReportManager(runId, 'test command', mockParser);
       
       const testFiles = ['test1.js', 'test2.js', 'test3.js'];
       await reportManager.initialize(testFiles);
@@ -135,7 +149,16 @@ describe('Full Integration Flow', () => {
       await IPCManager.ensureIPCDirectory();
       
       const ipcManager = new IPCManager(ipcPath);
-      const reportManager = new ReportManager(runId, 'concurrent test');
+      
+      // Create mock parser for concurrent test
+      const mockParser: OutputParser = {
+        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map()),
+        extractTestFileFromLine: vi.fn(),
+        isEndOfTestOutput: vi.fn(),
+        formatTestHeading: vi.fn()
+      };
+      
+      const reportManager = new ReportManager(runId, 'concurrent test', mockParser);
       
       const testFiles = Array.from({ length: 10 }, (_, i) => `test${i}.js`);
       await reportManager.initialize(testFiles);
@@ -206,7 +229,16 @@ describe('Full Integration Flow', () => {
       await IPCManager.ensureIPCDirectory();
       
       const ipcManager = new IPCManager(ipcPath);
-      const reportManager = new ReportManager(runId, 'error test');
+      
+      // Create mock parser for error test
+      const mockParser: OutputParser = {
+        parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map()),
+        extractTestFileFromLine: vi.fn(),
+        isEndOfTestOutput: vi.fn(),
+        formatTestHeading: vi.fn()
+      };
+      
+      const reportManager = new ReportManager(runId, 'error test', mockParser);
       
       await reportManager.initialize(['test.js']);
       

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ReportManager } from '../../src/ReportManager';
+import { OutputParser } from '../../src/runners/base/OutputParser';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -9,6 +10,7 @@ describe('ReportManager', () => {
   let runId: string;
   let reportManager: ReportManager;
   let originalCwd: () => string;
+  let mockParser: OutputParser;
 
   beforeEach(async () => {
     // Save original cwd function
@@ -21,7 +23,18 @@ describe('ReportManager', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
     
     runId = '20240101T120000Z';
-    reportManager = new ReportManager(runId, 'npm test');
+    
+    // Create a mock output parser
+    mockParser = {
+      parseOutputIntoTestLogs: vi.fn().mockReturnValue(new Map([
+        ['test.js', ['# Test output', 'console.log output', '# Test passed']]
+      ])),
+      extractTestFileFromLine: vi.fn(),
+      isEndOfTestOutput: vi.fn(),
+      formatTestHeading: vi.fn()
+    };
+    
+    reportManager = new ReportManager(runId, 'npm test', mockParser);
   });
 
   afterEach(async () => {

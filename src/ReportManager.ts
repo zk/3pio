@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import debounce from 'lodash.debounce';
 import { IPCEvent, TestRunState } from './types/events';
+import { OutputParser } from './runners/base/OutputParser';
 
 export class ReportManager {
   private runDirectory: string;
@@ -11,12 +12,14 @@ export class ReportManager {
   private state: TestRunState;
   private outputLogHandle: fs.FileHandle | null = null;
   private debouncedWrite: () => void;
+  private outputParser: OutputParser;
 
-  constructor(runId: string, testCommand: string) {
+  constructor(runId: string, testCommand: string, outputParser: OutputParser) {
     this.runDirectory = path.join(process.cwd(), '.3pio', 'runs', runId);
     this.outputLogPath = path.join(this.runDirectory, 'output.log');
     this.logsDirectory = path.join(this.runDirectory, 'logs');
     this.testRunPath = path.join(this.runDirectory, 'test-run.md');
+    this.outputParser = outputParser;
 
     this.state = {
       timestamp: runId,
@@ -241,7 +244,7 @@ export class ReportManager {
   }
 
   /**
-   * Parse output.log into individual test file logs
+   * Parse output.log into individual test file logs using the pluggable parser
    */
   private async parseOutputIntoTestLogs(): Promise<void> {
     try {
@@ -251,64 +254,8 @@ export class ReportManager {
       // Read the output.log file
       const outputContent = await fs.readFile(this.outputLogPath, 'utf8');
 
-      // Split by lines
-      const lines = outputContent.split('\n');
-
-      // Track current file being processed
-      const fileOutputs = new Map<string, string[]>();
-      let currentFile: string | null = null;
-      let inHeader = true;
-
-      for (const line of lines) {
-        // Skip header lines (first 5 lines)
-        if (inHeader) {
-          if (line.startsWith('# ---')) {
-            inHeader = false;
-          }
-          continue;
-        }
-
-        // Check if this line indicates output from a specific test file
-        // Vitest format: "stdout | math.test.js > ..."
-        // Jest format might be different
-        const vitestMatch = line.match(/^(stdout|stderr) \| ([^>]+\.(?:test|spec)\.[jt]sx?) > /);
-        if (vitestMatch) {
-          const streamType = vitestMatch[1]; // 'stdout' or 'stderr'
-          const newCurrentFile = vitestMatch[2];
-          
-          // If we're switching to a new section in the same file or different file,
-          // add a blank line to separate sections
-          if (currentFile && fileOutputs.has(currentFile) && fileOutputs.get(currentFile)!.length > 0) {
-            const lastLine = fileOutputs.get(currentFile)![fileOutputs.get(currentFile)!.length - 1];
-            if (lastLine.trim() !== '') {
-              fileOutputs.get(currentFile)!.push('');
-            }
-          }
-          
-          currentFile = newCurrentFile;
-          if (!fileOutputs.has(currentFile)) {
-            fileOutputs.set(currentFile, []);
-          }
-          // Add as markdown heading with stream type indicator
-          const content = line.split(' > ').slice(1).join(' > ');
-          if (content.trim()) {
-            fileOutputs.get(currentFile)!.push(`# ${content} (${streamType})`);
-          }
-        } else if (currentFile && line.trim()) {
-          // Continue adding lines to current file until we see a new file marker
-          // Check if this is a summary line (starts with test runner symbols)
-          if (line.match(/^\s*(✓|✔|×|✗|↓|⚠|❯|\[PASS\]|\[FAIL\]|\[SKIP\])/)) {
-            // Add a blank line before ending the current section
-            fileOutputs.get(currentFile)!.push('');
-            currentFile = null; // Reset when we hit summary lines
-          } else {
-            fileOutputs.get(currentFile)!.push(line);
-          }
-        } else if (currentFile && !line.trim()) {
-          // Handle empty lines within a section
-          fileOutputs.get(currentFile)!.push(line);
-        }
-      }
+      // Use the pluggable parser to parse the output
+      const fileOutputs = this.outputParser.parseOutputIntoTestLogs(outputContent);
 
       // Write individual log files
       for (const [fileName, outputLines] of fileOutputs) {
