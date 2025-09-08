@@ -14,8 +14,9 @@ import { Logger } from './utils/logger';
 // Import package.json for version
 const packageJson = require('../package.json');
 
-// Disable zx verbosity
+// Configure zx for quiet mode
 $.verbose = false;
+$.quiet = true;
 
 // Removed old TestRunner interface - now using TestRunnerDefinition
 

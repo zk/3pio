@@ -152,7 +152,7 @@ export default class ThreePioJestReporter implements Reporter {
     this.captureEnabled = true;
     this.logger.debug('Starting stdout/stderr capture for', { file: this.currentTestFile });
     
-    // Patch stdout to capture test output
+    // Patch stdout to capture test output (silent - no passthrough)
     process.stdout.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
       const chunkStr = chunk.toString();
       
@@ -167,11 +167,11 @@ export default class ThreePioJestReporter implements Reporter {
         }).catch(() => {});
       }
       
-      // Always output to console
-      return this.originalStdoutWrite(chunk, ...args);
+      // Return true to indicate success, but don't actually write anything
+      return true;
     };
     
-    // Patch stderr to capture test output
+    // Patch stderr to capture test output (silent - no passthrough)
     process.stderr.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
       const chunkStr = chunk.toString();
       
@@ -186,8 +186,8 @@ export default class ThreePioJestReporter implements Reporter {
         }).catch(() => {});
       }
       
-      // Always output to console
-      return this.originalStderrWrite(chunk, ...args);
+      // Return true to indicate success, but don't actually write anything
+      return true;
     };
   }
 
