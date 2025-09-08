@@ -7,7 +7,7 @@ This document describes known issues, limitations, and failure modes discovered 
 ### npx/yarn/pnpm Command Detection
 **Issue**: The CLI initially failed to detect test runners when invoked via package managers like `npx`, `yarn`, or `pnpm`.
 
-**Symptoms**: 
+**Symptoms**:
 - Commands like `npx vitest` would timeout
 - The system wouldn't recognize the test runner type
 
@@ -40,7 +40,7 @@ if ((command === 'npx' || command === 'yarn' || command === 'pnpm') && args[1]) 
 ```typescript
 // For Vitest with specific test files, extract them from arguments
 const testFileExtensions = ['.test.js', '.test.ts', '.test.mjs', '.test.jsx', '.test.tsx', '.spec.js', '.spec.ts', '.spec.mjs'];
-const providedFiles = args.filter(arg => 
+const providedFiles = args.filter(arg =>
   !arg.startsWith('-') && testFileExtensions.some(ext => arg.includes(ext))
 );
 ```
