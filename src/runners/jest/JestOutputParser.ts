@@ -79,7 +79,7 @@ export class JestOutputParser implements OutputParser {
 
   isEndOfTestOutput(line: string): boolean {
     // Jest summary patterns
-    return line.match(/^\s*(Test Suites|Tests:|Snapshots:|Time:|Ran all test suites|✓|×|✗)/i) !== null;
+    return line.match(/^\s*(Test Suites|Tests:|Snapshots:|Time:|Ran all test suites|PASS|FAIL)/i) !== null;
   }
 
   formatTestHeading(line: string): string | null {

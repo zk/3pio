@@ -68,8 +68,9 @@ export class VitestOutputParser implements OutputParser {
   }
 
   isEndOfTestOutput(line: string): boolean {
-    // Check if this is a summary line (starts with test runner symbols)
-    return line.match(/^\s*(✓|✔|×|✗|↓|⚠|❯|\[PASS\]|\[FAIL\]|\[SKIP\])/) !== null;
+    // Check if this is a summary line (starts with test runner status indicators)
+    // Common patterns: checkmarks, x marks, arrows, or bracketed status
+    return line.match(/^\s*(\[PASS\]|\[FAIL\]|\[SKIP\]|PASS|FAIL|SKIP|Test Suites|Tests:)/) !== null;
   }
 
   formatTestHeading(line: string): string | null {

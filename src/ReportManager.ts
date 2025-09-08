@@ -161,15 +161,7 @@ export class ReportManager {
    * Write the test-run.md report file
    */
   private async writeTestRunReport(): Promise<void> {
-    const getStatusEmoji = (status: string) => {
-      switch (status) {
-        case 'PASS': return '✅';
-        case 'FAIL': return '❌';
-        case 'SKIP': return '⏭️';
-        case 'RUNNING': return '🔄';
-        default: return '❓';
-      }
-    };
+    // Removed emoji function - no longer using emojis in output
 
     // Convert absolute paths to relative paths for display
     const getRelativePath = (filePath: string): string => {
@@ -198,7 +190,7 @@ export class ReportManager {
       '| Status | File | Log File |',
       '| --- | --- | --- |',
       ...this.state.testFiles.map(tf =>
-        `| ${getStatusEmoji(tf.status)} ${tf.status} | \`${getRelativePath(tf.file)}\` | [details](${tf.logFile}) |`
+        `| ${tf.status} | \`${getRelativePath(tf.file)}\` | [details](${tf.logFile}) |`
       ),
       '',
       '',
