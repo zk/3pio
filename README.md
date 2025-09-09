@@ -1,32 +1,26 @@
 # 3pio
 
-Your agent's context-concious test reporter for Jest and Vitest.
+Your agent's context-concious test runner.
 
-3pio is an AI-first test runner that translates traditional test output into a format optimized for AI agents - providing persistent, structured, file-based records that are context-efficient and searchable.
+3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
-## Installation
-
-```bash
-npm install @heyzk/3pio
-```
-
-## Usage
+## Installation / Usage
 
 ```bash
-# Run with automatic test runner detection
+npm install -g @heyzk/3pio
+3pio [your test command]
+
+# or 
+
+npx @heyzk/3pio [your test command]
+
+# examples:
+
 3pio npm test
-3pio npm run test
-
-# Run with specific test runners
-3pio jest
-3pio vitest
+3pio npm test -- test/unit
+3pio npx jest
 3pio npx vitest run
-
-# Run with specific test files
-3pio jest tests/unit/*.test.js
-3pio vitest tests/integration/
 ```
-
 ## Supported Test Runners
 
 ### Jest
@@ -47,16 +41,6 @@ The run directories use memorable names (e.g., `2025-09-09T104138198Z-upset-boba
 
 ## Features
 
-### Dynamic Test Discovery
-3pio supports both static and dynamic test discovery:
-- **Static Discovery**: When test files are explicitly provided or can be determined upfront
-- **Dynamic Discovery**: Automatically discovers and tracks test files as they run (e.g., when using `npm run test`)
-
-This means 3pio works seamlessly with any test configuration, including:
-- Custom test scripts
-- Dynamically generated tests
-- Test runners that don't support listing files upfront
-
 ### Individual Test Case Tracking
 3pio tracks and reports individual test cases within each file:
 - Pass/fail status for each test
@@ -69,19 +53,6 @@ All console output is captured and organized:
 - Complete output in `output.log`
 - Per-file output with test case boundaries
 - Preserves the original test runner's console format
-
-## Development
-
-```bash
-# Build
-npm run build
-
-# Test
-npm test
-
-# Development mode
-npm run dev
-```
 
 ## License
 
