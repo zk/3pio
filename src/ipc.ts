@@ -87,7 +87,7 @@ export class IPCManager {
               callback(event);
             } catch (parseError) {
               this.logger.error('Failed to parse IPC event', parseError as Error, { line });
-              console.error('Failed to parse IPC event:', parseError);
+              // Silently continue - error is logged but not written to stderr
             }
           }
         }
