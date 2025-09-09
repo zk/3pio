@@ -373,7 +373,17 @@ class CLIOrchestrator {
       }
       suiteSummary += `, ${suiteTotal} total`;
       
-      console.log(`Test Files: ${suiteSummary}`);
+      // Add random exclamation if there are test failures
+      if (suiteFailed > 0) {
+        const exclamations = [
+          'This is madness!',
+          'We\'re doomed!',
+          'Are you sure this thing is safe?'
+        ];
+        const randomExclamation = exclamations[Math.floor(Math.random() * exclamations.length)];
+        console.log(`Test failures! ${randomExclamation}`);
+      }
+      console.log(`Results: ${suiteSummary}`);
       console.log(`Time:        ${elapsedTime}s`);
       
       if (summary.totalFiles === 0 && exitCode === 0) {

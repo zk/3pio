@@ -81,7 +81,7 @@ This document captures key architectural and design decisions made during the de
 
 **New Behavior**:
 - Log files are created immediately when test files are registered
-- Output is written incrementally with debouncing (100ms delay, 500ms max wait)
+- Output is written incrementally with debouncing for performance
 - File handles remain open during execution for efficiency
 - Partial results are available even if test run is interrupted
 
@@ -94,7 +94,7 @@ This document captures key architectural and design decisions made during the de
 **Implementation Details**:
 - File handles stored in Map<string, fs.FileHandle>
 - Per-file buffers with Map<string, string[]>
-- Per-file debounced write functions (100ms delay, 500ms max wait)
+- Per-file debounced write functions for batched I/O
 - Automatic recovery if logs directory is deleted mid-run
 - Test case boundaries marked in output for better organization
 
@@ -105,11 +105,11 @@ This document captures key architectural and design decisions made during the de
   - Lower memory usage
   - Better debugging experience
 - **Cons**:
-  - More file handles open during execution (potential OS limit issues with >100 files)
+  - More file handles open during execution
   - Slightly more complex error handling
   - Small performance overhead from I/O operations (mitigated by debouncing)
 
 **Future Considerations**:
-- May need file handle pooling for very large test suites (>100 files)
-- Could make debounce timings configurable via environment variables
-- Consider adding compression for very large log files
+- File handle pooling for very large test suites (>100 files) to avoid OS limits
+- Configurable debounce timings via environment variables
+- Compression for very large log files

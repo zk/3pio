@@ -50,7 +50,7 @@ This component manages all report-related file I/O with performance optimization
     * Unified output.log for complete test run capture
     * Per-file output Maps for individual test logs
     * Test case boundary tracking for organized output
-  * **Debounced Writes:** Uses lodash.debounce (250ms delay, 1000ms maxWait) for performance
+  * **Debounced Writes:** Uses lodash.debounce for performance optimization
   * **Finalization:** Writes individual test logs, updates final status, and ensures all data is persisted
 
 ### 3.3. IPC Manager (src/ipc.ts)
