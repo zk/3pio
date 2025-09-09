@@ -100,17 +100,23 @@ export class JestDefinition implements TestRunnerDefinition {
           '--reporters', adapterPath     // Our reporter at the END
         ];
       } else {
-        // No existing --, add it
+        // No existing --, need to add it
+        // For npm run test, the structure is: ['npm', 'run', 'test', ...testFiles]
+        // We need: npm run test -- ...testFiles --reporters /path/to/adapter
+        
         const scriptIndex = args.findIndex(arg => arg === 'test' || arg.startsWith('test:'));
         if (scriptIndex !== -1) {
+          const beforeScript = args.slice(0, scriptIndex + 1);  // ['npm', 'run', 'test']
+          const afterScript = args.slice(scriptIndex + 1);      // ['./test/system/mcp-tools']
+          
           return [
-            ...args.slice(0, scriptIndex + 1),
-            '--',  // Add separator
-            '--reporters', adapterPath,
-            ...args.slice(scriptIndex + 1)
+            ...beforeScript,               // npm run test
+            '--',                          // separator
+            ...afterScript,                // test files FIRST
+            '--reporters', adapterPath     // reporters LAST
           ];
         }
-        // Fallback for other npm scripts
+        // Fallback for other npm scripts - also put reporters at the end
         return [...args, '--', '--reporters', adapterPath];
       }
     } else {
