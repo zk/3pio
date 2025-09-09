@@ -1,72 +1,182 @@
 # Component Design: Test Runner Adapters
 
-## 1. General Responsibilities
+## 1. Core Purpose
 
-The Test Runner Adapters are modules that run *inside* the test runner's process. Their sole purpose is to capture test lifecycle events and raw output, and transmit this data as structured events back to the CLI Orchestrator via the IPC channel.
+Test Runner Adapters are silent reporters that run inside Jest and Vitest processes. They capture test execution events, individual test case results, and console output, transmitting this data to the CLI via IPC events without interfering with normal test output.
 
-All adapters must adhere to the following principles:
+## 2. General Principles
 
-* **Silent Operation:** Adapters **must not** write to stdout or stderr for normal operations. They are designed to be "silent" reporters that do not interfere with the user's default console output. (Debug logging to /tmp/vitest-debug.log is acceptable for development/troubleshooting.)
-* **Event Transmission:** Adapters must use `IPCManager.sendEvent()` static method to send events adhering to the official IPC Event Schema.
-* **Configuration:** Adapters discover the IPC file path by reading the THREEPIO_IPC_PATH environment variable set by the CLI Orchestrator.
-* **Error Resilience:** All IPC operations must be wrapped in try/catch or .catch() to prevent adapter failures from crashing the test runner.
+### Silent Operation
+- No stdout/stderr output during normal operation
+- All communication via IPC channel only
+- Debug logging to `.3pio/debug.log` when THREEPIO_DEBUG=1
+- Coexist with default test runner reporters
 
-## 2. Stream Tapping Strategy
+### Configuration
+- Read THREEPIO_IPC_PATH environment variable for IPC file location
+- Validate IPC connection during initialization
+- Log startup preamble for debugging
 
-To enable real-time streaming of log output, adapters will patch the global process.stdout.write and process.stderr.write functions within the test runner's process. This approach is necessary because Jest's `testResult.console` property is not populated (see [Jest Console Handling](./jest-console-handling.md) for details).
+### Error Resilience
+- All IPC operations wrapped in error handlers
+- Failures don't crash test runners
+- Graceful degradation when IPC unavailable
 
-* **Lifecycle:**
-  1. Adapters store references to original stdout/stderr write functions in constructor.
-  2. startCapture() replaces the native .write functions with wrappers that:
-     - Capture output chunks and send stdoutChunk/stderrChunk events via IPCManager.sendEvent()
-     - Pass through the original output to maintain normal console behavior
-  3. stopCapture() restores the original write functions.
-  4. Jest adapter: Capture lifecycle tied to onTestStart/onTestResult hooks.
-  5. Vitest adapter: Capture started in onInit() and maintained throughout run, with currentTestFile context switching.
+## 3. Event Reporting
 
-* **Error Handling:** All IPC send operations use .catch(() => {}) for silent failure to avoid disrupting test execution.
+### Test Case Events
+Adapters report individual test case results including:
+- Test name and suite organization
+- Status (PASS, FAIL, SKIP)
+- Execution duration
+- Error messages and stack traces for failures
 
-## 3. Specific Adapter Implementations
+### File Level Events
+- **testFileStart**: Signals beginning of test file execution
+- **testFileResult**: Reports final status for entire file
+- Aggregate statistics for the file
 
-### 3.1. Jest Adapter (ThreePioJestReporter)
+### Console Output Capture
+- Patch process.stdout.write and process.stderr.write
+- Capture output chunks during test execution
+- Associate output with current test file
+- Send as stdoutChunk/stderrChunk events
 
-* **Implementation:** `class ThreePioJestReporter implements Reporter` (from @jest/reporters). This ensures it can coexist with Jest's default reporter.
-* **Key Hooks:**
-  * onRunStart(): Initializes connection and validates THREEPIO_IPC_PATH environment variable.
-  * onTestStart(test): Sets currentTestFile and begins stream tapping for test.path.
-  * onTestResult(test, testResult, aggregatedResult): Ends stream tapping and sends testFileResult event with status derived from testResult.numFailingTests and testResult.skipped. Note: `testResult.console` is not used as it's always undefined (see [Jest Console Handling](./jest-console-handling.md)).
-  * onRunComplete(testContexts, results): Ensures capture is stopped and performs cleanup.
-  * getLastError(): Required by Reporter interface (no-op implementation).
+## 4. Implementation Strategies
 
-### 3.2. Vitest Adapter (ThreePioVitestReporter)
+### Jest Adapter (ThreePioJestReporter)
 
-* **Implementation:** `class ThreePioVitestReporter implements Reporter` (from vitest).
-* **Key Hooks:**
-  * onInit(ctx): Initializes connection, validates THREEPIO_IPC_PATH, and starts capturing immediately.
-  * onPathsCollected(paths): Called when test files are discovered.
-  * onCollected(files): Called when test files are collected.
-  * onTestFileStart(file): Sets currentTestFile and ensures capture is started for file.filepath.
-  * onTestFileResult(file): Ends stream tapping and sends testFileResult event with status derived from file.result.state or file.mode.
-  * onFinished(files, errors): Ensures capture is stopped, includes fallback logic to send results for files that may not have triggered onTestFileResult.
+#### Lifecycle Hooks
+- **onRunStart**: Initialize IPC connection
+- **onTestStart**: Begin capturing for specific test file
+- **onTestCaseResult**: Report individual test case results
+- **onTestResult**: Send file completion status
+- **onRunComplete**: Cleanup and final processing
 
-**Note:** The Vitest adapter includes extensive debug logging to `/tmp/vitest-debug.log` for troubleshooting integration issues.
+#### Console Capture Strategy
+- Start/stop capture per test file
+- Track current test file context
+- Handle Jest's worker process architecture
+- Work around Jest's empty testResult.console issue
 
-## 4. Failure Modes
+#### Test Case Extraction
+- Process test results from onTestCaseResult hook
+- Extract suite hierarchy from ancestorTitles
+- Include duration and error details
+- Handle nested describe blocks
 
-* **Missing Environment Variable:** The THREEPIO\_IPC\_PATH environment variable is not set, so the adapter does not know where to send events.
-* **Test Runner API Changes:** Breaking changes in Jest/Vitest reporter APIs between versions causing adapter to crash or fail to capture events.
-* **Adapter Crash:** An unhandled exception within the adapter's code causes it to crash, which may or may not crash the entire test runner process.
-* **Stream Patching Conflicts:** Another reporter in the user's configuration also tries to patch process.stdout.write, leading to unpredictable behavior or lost output.
-* **Context Switching Issues:** In Vitest, output may occur without clear test file context, handled by using 'global' as fallback filepath.
+### Vitest Adapter (ThreePioVitestReporter)
 
-## 5. Testing Strategy
+#### Lifecycle Hooks
+- **onInit**: Initialize and start global capture
+- **onPathsCollected**: Track discovered test paths
+- **onTestFileStart**: Switch context to new file
+- **onTestFileResult**: Process file results and test cases
+- **onFinished**: Fallback processing and cleanup
 
-* **Unit Tests:**
-  * Test the logic that reads the environment variable and initializes the IPC writer.
-  * Test the stream tapping logic by using mock objects for process.stdout and asserting that the IPC writer is called with the correct chunk data.
-* **Integration Tests:**
-  * This is the most critical testing layer for the adapters.
-  * Create small, self-contained Jest and Vitest projects.
-  * Write tests that programmatically invoke the test runners with the 3pio adapter configured.
-  * These tests will monitor the contents of the IPC file and assert that the correct sequence and content of events are written for various scenarios (passing tests, failing tests, tests with console logs).
-  * This validates that the adapter correctly hooks into the real test runner's lifecycle and captures the data as expected.
+#### Console Capture Strategy
+- Global capture started in onInit
+- Context switching based on current test file
+- Handle output without clear file context
+- Use 'global' as fallback for unattributed output
+
+#### Test Case Processing
+- Extract test cases from file.tasks recursively
+- Handle suite nesting and organization
+- Process both synchronous and asynchronous tests
+- Fallback processing in onFinished for edge cases
+
+## 5. Stream Tapping Architecture
+
+### Capture Lifecycle
+1. Store original write functions
+2. Replace with instrumented wrappers
+3. Capture and forward output chunks
+4. Send IPC events with file association
+5. Restore original functions when done
+
+### Pass-Through Behavior
+- Maintain normal console output
+- Preserve output formatting
+- No visible changes to test runner behavior
+- Support for color codes and special characters
+
+## 6. Failure Modes
+
+### Environment Issues
+- Missing THREEPIO_IPC_PATH variable
+- IPC file permissions problems
+- File system errors
+
+### API Compatibility
+- Test runner version changes
+- Breaking changes in reporter interfaces
+- Hook behavior modifications
+
+### Runtime Errors
+- Stream patching conflicts with other tools
+- Memory issues with large output
+- Race conditions in cleanup
+
+### Context Loss
+- Output without clear test file association
+- Worker process isolation in Jest
+- Async test execution ordering
+
+## 7. Performance Considerations
+
+### Minimal Overhead
+- Lightweight event transmission
+- No buffering or batching
+- Direct pass-through for console output
+- Efficient IPC writes
+
+### Memory Management
+- No accumulation of output in memory
+- Immediate event transmission
+- Cleanup after each test file
+
+## 8. Debugging Support
+
+### Startup Preamble
+Each adapter logs initialization info:
+- Adapter version
+- IPC path configuration
+- Process ID
+- Timestamp
+
+### Debug Logging
+When THREEPIO_DEBUG=1:
+- Detailed lifecycle events
+- IPC transmission logs
+- Error details with context
+- Performance metrics
+
+## 9. Testing Strategy
+
+### Unit Tests
+- IPC initialization and validation
+- Stream tapping logic
+- Event formatting
+- Error handling
+
+### Integration Tests
+- Real Jest/Vitest project execution
+- IPC file monitoring
+- Event sequence validation
+- Console output capture verification
+
+### Compatibility Tests
+- Multiple test runner versions
+- Various project configurations
+- Edge cases and error scenarios
+- Performance under load
+
+## 10. Future Enhancements
+
+- Support for additional test runners (Mocha, Jasmine)
+- Test coverage integration
+- Performance metrics collection
+- Parallel test execution tracking
+- Watch mode support
+- Custom event types for extensions

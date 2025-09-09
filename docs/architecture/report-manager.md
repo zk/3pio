@@ -2,94 +2,184 @@
 
 ## 1. Core Purpose
 
-The Report Manager encapsulates all file system logic related to the creation and real-time updating of the persistent test reports. It acts as the single source of truth for report-related I/O, ensuring that file access is safe, performant, and free of race conditions. It is controlled exclusively by the CLI Orchestrator.
+The Report Manager encapsulates all file system logic for creating and updating persistent test reports. It manages test state at both file and individual test case levels, supporting dynamic test discovery and providing context-efficient output for AI agents.
 
-## 2. Internal State
+## 2. Key Features
 
-The manager holds the entire state of the test-run.md file in memory to facilitate fast updates.
+### Test Case Tracking
+- Individual test case results with suite organization
+- Status tracking: PASS, FAIL, SKIP, PENDING, RUNNING
+- Duration and error message capture
+- Hierarchical organization by suite
 
-* **TestRunState Interface:**
-  ```typescript
-  interface TestRunState {
-    timestamp: string;
-    status: 'RUNNING' | 'COMPLETE' | 'ERROR';
-    updatedAt: string;
-    arguments: string;
-    totalFiles: number;
-    filesCompleted: number;
-    filesPassed: number;
-    filesFailed: number;
-    filesSkipped: number;
-    testFiles: Array<{
-      status: 'PENDING' | 'RUNNING' | 'PASS' | 'FAIL' | 'SKIP';
-      file: string;
-      logFile?: string;
-    }>;
-  }
-  ```
+### Dynamic Test Discovery
+- Optional test file list during initialization
+- Runtime registration of discovered test files
+- Seamless handling of both static and dynamic modes
 
-* **Dual Output Strategy:** 
-  - The manager maintains a single `output.log` file handle that captures ALL stdout/stderr output (including non-test output)
-  - Test-specific output is also collected in a Map keyed by test file path during execution
-  - Individual test log files are created from the Map during `finalize()`, containing only test-specific output
-  - Non-test output (startup messages, warnings, summary) only appears in output.log
+### Performance Optimization
+- Debounced writes to reduce I/O overhead
+- In-memory state management
+- Parallel output collection strategies
 
-## 3. Public API
+### Output Management
+- Unified output.log for complete test run
+- Per-file output Maps for individual test logs
+- Test case boundary tracking
 
-The manager exposes a simple API for the CLI Orchestrator to use.
+## 3. Internal State
 
-* **constructor(runId: string, testCommand: string)**
-  * Initializes the manager with run ID and test command.
-  * Sets up directory paths and initial state structure.
-  * Creates debounced write function using lodash.debounce (250ms delay, 1000ms maxWait).
-* **async initialize(testFiles: string[]): Promise<void>**
-  * Creates the run directory (.3pio/runs/[runId]/) and opens output.log for writing.
-  * Populates the initial in-memory TestRunState with all testFiles set to PENDING status.
-  * Performs an immediate, initial write of test-run.md to disk.
-* **async handleEvent(event: IPCEvent): Promise<void>**
-  * The central method for processing events from the IPC channel.
-  * If eventType is stdoutChunk or stderrChunk, it appends the chunk to output.log AND collects it in the per-file Map.
-  * If eventType is testFileResult, it updates the status of the corresponding test file in the in-memory state, re-calculates counters, and schedules a debounced write of test-run.md.
-  * Dynamically adds test files that weren't discovered during dry run (common with Vitest).
-* **async appendToOutputLog(chunk: string): Promise<void>**
-  * Direct method for appending non-test output to output.log without creating individual log files.
-  * Used by CLI for capturing output that occurs outside of test execution.
-* **async finalize(exitCode: number): Promise<void>**
-  * Closes the output.log file handle.
-  * Writes individual test file logs from the collected per-file Map (no parsing needed).
-  * Cancels any pending debounced writes and performs one final write of test-run.md.
-  * Updates final status to 'COMPLETE'.
+### TestRunState
+Maintains the complete state of the test run in memory:
+- Timestamp and status tracking (RUNNING, COMPLETE, ERROR)
+- Test command arguments
+- File-level counters (total, completed, passed, failed, skipped)
+- Individual test file states with their test cases
+- Links to generated log files
 
-## 4. Debounced Write Mechanism
+### TestCase Tracking
+Each test case maintains:
+- Test name and optional suite grouping
+- Status (PASS, FAIL, SKIP, PENDING, RUNNING)
+- Execution duration when available
+- Error messages and stack traces for failures
 
-To ensure high performance, the manager does not write to test-run.md on every single status update.
+### Output Collection Strategy
+Three-tier Map structure for organizing output:
+- File-level output collection for general console logs
+- Test-case-level output for specific test boundaries
+- Active test tracking to associate output with running tests
 
-1. **Library:** Uses lodash.debounce with 250ms delay and 1000ms maxWait.
-2. **Flow:**
-   * A `writeTestRunReport()` method renders the in-memory TestRunState into a Markdown string and writes it to test-run.md.
-   * This method is wrapped in a debounce function during constructor initialization.
-   * The `handleEvent` method calls this debounced function every time the state changes.
-   * This effectively batches numerous state changes into a single file write, drastically reducing I/O load.
-3. **Output Log Processing:**
-   * Real-time output goes to a unified `output.log` file AND is collected in a per-file Map.
-   * During `finalize()`, individual test file logs are written directly from the Map.
-   * No parsing needed - file associations come from IPC events.
+## 4. Public API
 
-## 5. Failure Modes
+### Constructor
+Initializes the Report Manager with:
+- Unique run ID for directory naming
+- Test command for documentation
+- OutputParser instance for runner-specific parsing
+- Debounced write configuration for performance
 
-* **File System Permissions:** The process does not have permission to create the .3pio directory or write files within it.
-* **Disk Full:** The disk runs out of space while writing a log file or the summary report.
-* **Invalid Event Data:** It receives an event with a filePath that was not part of the initial list of test files (handled gracefully by dynamic addition to state).
-* **Process Crash:** The main 3pio process crashes after some logs have been written but before the final debounced write of test-run.md can complete, leaving the summary report in an incomplete state.
+### Initialization
+Creates the report infrastructure:
+- Establishes run directory structure
+- Opens output.log for streaming writes
+- Supports both static mode (with predefined test files) and dynamic mode (files discovered during execution)
+- Generates initial test-run.md report
 
-## 6. Testing Strategy
+### Event Handling
+Central method for processing IPC events from adapters:
+- **testCase events**: Track individual test results with suite, status, duration, and errors
+- **testFileStart events**: Mark files as currently running
+- **testFileResult events**: Update file completion status and aggregate counters
+- **stdout/stderr chunks**: Collect and organize output by file and test case
 
-* **Unit Tests:**
-  * Test the initialize method to ensure it correctly creates the directory structure and the initial test-run.md file with all tests PENDING.
-  * Test the handleEvent method by passing mock IPC events and asserting that the in-memory state is updated correctly.
-  * Test the Markdown rendering logic to ensure the in-memory state is correctly converted to a string.
-  * Use mock timers (jest.useFakeTimers()) to test the debounced write mechanism, ensuring that writeReportToDisk is called only after the specified delay.
-* **Integration Tests:**
-  * Test the component against a real file system (in a temporary directory).
-  * Simulate a stream of IPC events and verify that both the individual .log files and the final test-run.md are written correctly and contain the expected content.
-  * Test the finalize method to ensure it correctly performs the final write.
+### Dynamic Registration
+Handles test files discovered during execution:
+- Automatically adds new files to tracking state
+- Maintains accurate file counts
+- Preserves all test case information
+
+### Finalization
+Completes the report generation:
+- Closes all file handles
+- Writes individual test log files from collected output
+- Performs final state write with completion status
+- Ensures all data is persisted to disk
+
+### Helper Methods
+Utility functions for:
+- Direct output log appending
+- Report path retrieval
+- Summary statistics generation
+
+## 5. Report Generation
+
+### Test Run Report (test-run.md)
+Primary report in Markdown format containing:
+- Header section with timestamp (including memorable Star Wars name), status, and executed command
+- Summary statistics for the entire test run
+- Per-file sections showing individual test cases organized by suite
+- Status indicators (✓ for pass, ✕ for fail, ○ for skip)
+- Test execution durations when available
+- Error messages and stack traces for failures
+- Links to individual test log files
+
+### Individual Test Logs
+Separate log files for each test file:
+- Generated from output collected during test execution
+- Contains only output specific to that test file
+- Organized by test case boundaries when possible
+- Stored in the logs/ subdirectory with sanitized filenames
+
+## 6. Performance Considerations
+
+### Debounced Writes
+- Batches multiple state updates into single writes
+- Reduces I/O overhead during rapid test execution
+- Configurable delay and max wait times
+
+### Memory Management
+- Bounded Maps for output collection
+- Periodic cleanup of completed test data
+- Efficient string concatenation for large outputs
+
+### File Handle Management
+- Single output.log handle kept open during execution
+- Atomic writes for test-run.md updates
+- Proper cleanup in finalization
+
+## 7. Error Handling
+
+### File System Errors
+- Permission issues: Log error and attempt alternate location
+- Disk full: Gracefully degrade to essential reports only
+- Path conflicts: Use unique identifiers to avoid collisions
+
+### Event Processing Errors
+- Invalid event data: Log warning and continue
+- Missing file paths: Use dynamic registration
+- Malformed test cases: Skip with warning
+
+### Crash Recovery
+- Periodic state persistence via debounced writes
+- Graceful degradation if finalization fails
+- Partial reports better than no reports
+
+## 8. Integration with OutputParser
+
+The ReportManager uses OutputParser for runner-specific logic:
+- Parse test boundaries from console output
+- Associate output chunks with test files
+- Extract error messages and stack traces
+- Handle runner-specific output formats
+
+## 9. Testing Strategy
+
+### Unit Tests
+- State management with various event sequences
+- Dynamic test file registration
+- Debounced write mechanism with mock timers
+- Test case hierarchical organization
+- Error handling scenarios
+
+### Integration Tests
+- Real file system operations in temp directories
+- Stream of IPC events with expected outputs
+- Concurrent event processing
+- Large output handling
+- Crash recovery scenarios
+
+### Performance Tests
+- Large test suite handling (1000+ files)
+- Memory usage under load
+- I/O throughput optimization
+- Debounce effectiveness
+
+## 10. Future Enhancements
+
+- Streaming report updates for real-time viewing
+- Compressed output storage for large test runs
+- Incremental report updates for watch mode
+- Custom report formats (JSON, XML, HTML)
+- Test result caching and comparison
+- Failure pattern analysis

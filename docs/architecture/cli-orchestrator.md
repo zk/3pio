@@ -2,68 +2,157 @@
 
 ## 1. Core Purpose
 
-The CLI Orchestrator is the main entry point and central controller for the 3pio application. It is responsible for parsing user input, managing the entire lifecycle of a test run, coordinating the other components, and handling all top-level process management.
+The CLI Orchestrator is the main entry point and central controller for the 3pio application. It manages the entire test run lifecycle, from command parsing to report finalization, while coordinating between test runners, adapters, and report generation.
 
-## 2. Sequence of Operations
+## 2. Key Responsibilities
 
-The orchestrator executes the following sequence for a typical 3pio run command:
+### Command Processing
+- Parse user commands using commander.js
+- Detect test runner using TestRunnerManager
+- Support both explicit runners (jest, vitest) and abstract commands (npm test)
 
-1. **Parse Arguments:** Use commander.js to parse the user's command (e.g., vitest --ui).
-2. **Detect Test Runner:** If the command is an abstraction like npm test, inspect package.json to determine the underlying runner (Jest or Vitest).
-3. **Perform Dry Run:** Execute the appropriate dry run command (jest --listTests or vitest list) to get the list of test files to be run.
-4. **Initialize Run:**
-   * Create the unique run directory (e.g., /.3pio/runs/20250907T131600Z/).
-   * Create the unique IPC event file (e.g., /.3pio/ipc/20250907T131600Z.jsonl).
-5. **Initialize Report:** Instantiate the ReportManager and call `await reportManager.initialize(testFiles)` to create the initial test-run.md with all tests marked PENDING.
-6. **Print Preamble:** Generate and print the formatted preamble to the console.
-7. **Start IPC Listening:** Use the IPCManager to start watching the IPC event file for new events. Process events sequentially through a queue to avoid concurrent file writes. Delegate received events to `await reportManager.handleEvent(event)`.
-8. **Execute Main Command:**
-   * Programmatically modify the user's command to inject the correct adapter flags with absolute paths.
-   * Use zx with explicit environment: `$({ env })`sh -c ${modifiedCommand}``
-   * Pipe the child process's stdout and stderr directly to the user's console.
-   * Handle zx exceptions to extract exit codes from failed processes.
-9. **Await Completion:** Wait for the zx process to exit.
-10. **Finalize and Clean Up:**
-    * Call `await reportManager.finalize(exitCode)` to ensure the final report is written to disk and individual logs are parsed.
-    * Call `await ipcManager.cleanup()` to stop watching and clean up resources.
-    * Exit the 3pio process with the same exit code as the child process.
+### Test Discovery
+- Static discovery via TestRunnerDefinition.getTestFiles()
+- Dynamic discovery for commands that don't provide file lists upfront
+- Gracefully handle cases where no files are discovered initially
 
-## 3. Key Dependencies
+### Run Management
+- Generate unique run IDs with ISO8601 timestamps and human-memorable names
+- Create run directories and IPC communication channels
+- Initialize Report and IPC managers
+- Execute test commands with adapter injection
 
-* **commander.js:** For robust command-line argument parsing.
-* **zx:** For executing the user's command, providing reliable handling of shell syntax like pipes and redirects.
-* **ReportManager:** To delegate all report file I/O.
-* **IPCManager:** To listen for events from the test runner adapter.
+### Output Handling
+- Minimal console output for context efficiency
+- Capture all stdout/stderr to output.log
+- Process IPC events from adapters
+- Mirror test runner exit codes
 
-## 4. Configuration and Environment
+## 3. Sequence of Operations
 
-The orchestrator is responsible for passing the path to the unique IPC event file to the adapter running in the child process. 
+1. **Parse Arguments:** Extract run command and arguments from user input
+2. **Detect Test Runner:** Use TestRunnerManager.detect() to identify Jest or Vitest
+3. **Test Discovery:** Call TestRunnerDefinition.getTestFiles() (may return empty for dynamic mode)
+4. **Generate Run ID:** Create timestamp + human memorable name
+5. **Initialize Infrastructure:**
+   - Create run directory at `.3pio/runs/[runId]/`
+   - Create IPC file at `.3pio/ipc/[runId].jsonl`
+   - Set THREEPIO_IPC_PATH environment variable
+6. **Initialize Managers:**
+   - Create IPCManager with IPC file path
+   - Create ReportManager with run ID, command, and OutputParser
+   - Initialize report with discovered test files (or empty for dynamic)
+7. **Print Minimal Preamble:**
+   - Show report path
+   - Display "Beginning test execution now..."
+8. **Start IPC Monitoring:** Begin watching for adapter events
+9. **Execute Test Command:**
+   - Use TestRunnerDefinition.buildMainCommand() to inject adapter
+   - Spawn process with zx, capturing output to output.log
+   - Let stdout/stderr flow to console naturally
+10. **Process Events:** Handle IPC events as they arrive, updating report state
+11. **Finalize:**
+    - Wait 1 second for final adapter events
+    - Call reportManager.finalize() to write final reports
+    - Clean up IPC resources
+    - Exit with test runner's exit code
 
-* **Environment Variable:** THREEPIO_IPC_PATH
-* **Implementation:** 
-  1. Sets `process.env.THREEPIO_IPC_PATH = this.ipcPath` in the main process.
-  2. Explicitly passes environment to child process: `$({ env: { ...process.env, THREEPIO_IPC_PATH: this.ipcPath } })`
-  3. Uses absolute adapter paths: `path.join(__dirname, 'jest.js')` or `path.join(__dirname, 'vitest.js')`
-* **Command Modification:** Appends reporter flags like `--reporters default --reporters ${adapterPath}` for Jest or `--reporter default --reporter ${adapterPath}` for Vitest.
+## 4. Component Integration
 
-## 5. Failure Modes
+### TestRunnerManager
+- Provides test runner detection via `detect(args, packageJson)`
+- Returns TestRunnerDefinition for command building
+- Returns OutputParser for report generation
 
-* **Invalid User Command:** The user provides an unknown command or invalid flags.
-* **Test Runner Detection Fails:** The orchestrator cannot determine the test runner from package.json for an npm script.
-* **Dry Run Fails:** The dry run command (e.g., jest --listTests) exits with an error.
-* **Child Process Fails to Spawn:** The test runner command (e.g., vitest) does not exist or cannot be executed.
-* **IPC Channel Fails:** The IPC event file cannot be created or watched.
-* **3pio Process is Force-Killed:** The user sends a SIGKILL to the main 3pio process, preventing graceful cleanup.
+### TestRunnerDefinition
+- Interface for runner-specific behavior
+- Methods: matches(), getTestFiles(), buildMainCommand(), getAdapterFileName()
+- Implementations: JestDefinition, VitestDefinition
 
-## 6. Testing Strategy
+### ReportManager
+- Handles all report file I/O
+- Processes IPC events to update test state
+- Supports dynamic test file registration
+- Manages test case level reporting
 
-* **Unit Tests:**
-  * Test the argument parsing logic to ensure flags and commands are correctly identified.
-  * Test the test runner detection logic with mock package.json files.
-  * Test the command modification logic to ensure adapter flags are injected correctly for various user inputs.
-* **Integration Tests:**
-  * Write tests that execute the full sequence against mock ReportManager and IPCManager components to verify the coordination logic.
-  * Test the failure modes by simulating errors (e.g., a dry run command that throws an error) and asserting that the orchestrator exits gracefully with the correct error code and message, and that no report files are created.
-* **End-to-End Tests:**
-  * Run the compiled 3pio binary against a small, sample Jest project and a sample Vitest project.
-  * Assert that the correct preamble is printed, the test runner's output is piped, the final report files (test-run.md and .log files) are generated correctly, and the final exit code is mirrored.
+### IPCManager
+- File-based communication with adapters
+- Event watching and processing
+- Cleanup and resource management
+
+## 5. Configuration
+
+### Environment Variables
+- `THREEPIO_IPC_PATH`: Path to IPC communication file
+- `THREEPIO_DEBUG`: Enable debug logging when set to "1"
+
+### Adapter Injection
+- Jest: `--reporters [absolutePath]` (no default reporter - clean single output)
+- Vitest: `--reporter default --reporter [absolutePath]` (includes default for user visibility)
+- Paths resolved to absolute using `path.join(__dirname, adapter)`
+- Design choice: Jest omits default to avoid duplicate output, Vitest includes it for better user experience
+
+### Run ID Generation
+Combines two components for unique, memorable identifiers:
+- ISO8601 timestamp with special characters removed
+- Memorable name using adjectives and Star Wars character names
+- Format: `[timestamp]-[adjective]-[character]`
+- Example: `2025-09-09T111224921Z-revolutionary-chewbacca`
+
+## 6. Error Handling
+
+### Detection Failures
+- Unknown test runner: Show supported runners and exit
+- Package.json not found: Continue if possible, error if needed
+
+### Execution Failures
+- Test runner not found: Exit with error message
+- IPC creation failure: Log error and exit
+- Adapter communication failure: Continue but log warnings
+
+### Graceful Shutdown
+- Always finalize reports if possible
+- Clean up IPC resources
+- Mirror test runner exit codes
+
+## 7. Logging System
+
+### Logger Integration
+- Structured logging with timestamp, level, component, and data
+- Debug logs at `.3pio/debug.log`
+- Lifecycle events for major operations
+- Decision logging for test runner detection
+
+### Log Levels
+- `DEBUG`: Detailed debugging information (only with THREEPIO_DEBUG=1)
+- `INFO`: General operational information
+- `WARN`: Warning conditions that don't prevent operation
+- `ERROR`: Error conditions requiring attention
+
+## 8. Testing Strategy
+
+### Unit Tests
+- Argument parsing with various command formats
+- Test runner detection logic with mock package.json
+- Run ID generation format and uniqueness
+- Command modification for adapter injection
+
+### Integration Tests
+- Full flow with mock TestRunnerManager and ReportManager
+- IPC event processing pipeline
+- Error handling and cleanup scenarios
+- Dynamic vs static test discovery modes
+
+### End-to-End Tests
+- Complete runs against sample Jest/Vitest projects
+- Verify console output format
+- Check report generation accuracy
+- Validate exit code mirroring
+
+## 9. Future Considerations
+
+- Support for additional test runners (Mocha, Jasmine)
+- Parallel test execution tracking
+- Real-time progress indicators
+- Custom reporter configurations
+- Watch mode support

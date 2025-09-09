@@ -1,347 +1,216 @@
-# Test Runner Abstraction Strategy
+# Test Runner Abstraction Architecture
 
-This document outlines the architectural changes needed to support multiple test runners in a maintainable way by abstracting test runner-specific logic into pluggable components.
+## 1. Overview
 
-## Current Problem
+The test runner abstraction layer provides a pluggable architecture for supporting multiple test frameworks (Jest, Vitest, and future runners) without modifying core components. This design follows the strategy pattern with explicit, compile-time known test runners.
 
-The codebase has hardcoded logic for Jest and Vitest scattered throughout multiple files, making it difficult to add new test runners without modifying core components. Each new test runner requires changes in 6+ different places.
+## 2. Core Components
 
-## Systems Requiring Abstraction
+### TestRunnerDefinition Interface
+Defines the contract for test runner implementations:
+- **matches**: Determines if a command uses this test runner
+- **getTestFiles**: Discovers test files (static or dynamic mode)
+- **buildMainCommand**: Injects adapter into command arguments
+- **getAdapterFileName**: Returns the adapter file name
+- **interpretExitCode**: Maps exit codes to semantic meanings
 
-### 1. CLI Orchestrator - Test Runner Detection & Command Building
+### OutputParser Abstract Class
+Handles runner-specific console output parsing:
+- **parseTestOutput**: Extracts test boundaries from output
+- **extractTestFileFromLine**: Identifies file associations
+- **isEndOfTestOutput**: Detects test completion markers
+- **formatTestHeading**: Processes test section headers
 
-**Current Issues:**
-- Hardcoded string matching in `detectTestRunner()` 
-- Different dry run strategies in `performDryRun()`
-- Different flag injection patterns in `executeMainCommand()`
+### TestRunnerManager
+Central registry and detection logic:
+- Static TEST_RUNNERS object with all implementations
+- Detection method that checks each runner
+- Accessor methods for definitions and parsers
+- Type-safe runner name handling
 
-**Needs Abstraction:**
-```typescript
-interface TestRunnerDefinition {
-  name: string;
-  matches: (args: string[], packageJsonContent?: string) => boolean;
-  getTestFiles: (args: string[]) => Promise<string[]>;
-  buildMainCommand: (args: string[], adapterPath: string) => string;
-  getAdapterFileName: () => string;
-  interpretExitCode: (exitCode: number) => 'success' | 'test-failure' | 'system-error';
-}
+## 3. Implementation Structure
+
+### Directory Organization
+```
+src/runners/
+├── base/
+│   ├── TestRunnerDefinition.ts    # Interface definition
+│   └── OutputParser.ts             # Abstract parser class
+├── jest/
+│   ├── JestDefinition.ts          # Jest-specific implementation
+│   └── JestOutputParser.ts        # Jest output parsing
+└── vitest/
+    ├── VitestDefinition.ts        # Vitest-specific implementation
+    └── VitestOutputParser.ts      # Vitest output parsing
 ```
 
-### 2. Report Manager - Output Parsing System
+### Registration Pattern
+Test runners are explicitly registered in TestRunnerManager:
+- Compile-time known set of runners
+- Type-safe runner names
+- No runtime discovery or plugin loading
+- Clear, predictable behavior
 
-**Current Issues:**
-- Hardcoded Vitest pattern matching in `parseOutputIntoTestLogs()`:
-  ```typescript
-  const vitestMatch = line.match(/^(stdout|stderr) \| ([^>]+\.(?:test|spec)\.[jt]sx?) > /);
-  ```
-- Jest would have completely different output patterns
-- No abstraction for different test runner output formats
+## 4. Detection Strategy
 
-**Needs Abstraction:**
-```typescript
-interface OutputParser {
-  parseOutputIntoTestLogs(outputContent: string): Map<string, string[]>;
-  extractTestFileFromLine(line: string): string | null;
-  isEndOfTestOutput(line: string): boolean;
-  formatTestHeading(line: string): string | null;
-}
-```
+### Command Detection
+Each runner implements pattern matching for:
+- Direct invocation (jest, vitest)
+- Package manager invocation (npx, yarn, pnpm)
+- npm scripts (npm test, npm run test)
 
-### 3. Test Runner Adapters - Interface Standardization
+### Package.json Analysis
+For abstract commands (npm test):
+- Parse scripts section for runner references
+- Check dependencies for installed runners
+- Fallback to command-line patterns
 
-**Current Issues:**
-- Different base interfaces (Jest's `Reporter` vs Vitest's `Reporter`)
-- Different hook methods (`onTestStart` vs `onInit`, `onTestResult` vs `onFinished`)
-- Different status determination logic
-- Different lifecycle patterns
+### Priority Order
+Runners checked in specific order:
+1. Jest (most common)
+2. Vitest (growing adoption)
+3. Future runners as added
 
-**Needs Abstraction:**
-```typescript
-interface TestRunnerAdapter {
-  initialize(): void;
-  startCapture(): void;
-  stopCapture(): void;
-  handleTestFileStart(filePath: string): void;
-  handleTestFileResult(filePath: string, status: 'PASS' | 'FAIL' | 'SKIP'): void;
-  cleanup(): void;
-}
+## 5. Test File Discovery
 
-// Bridge pattern to adapt specific test runner interfaces
-abstract class AdapterBridge<T> implements TestRunnerAdapter {
-  constructor(protected nativeAdapter: T) {}
-  abstract mapNativeHooks(): void;
-  abstract extractTestStatus(result: any): 'PASS' | 'FAIL' | 'SKIP';
-}
-```
+### Static Discovery
+When test files can be determined upfront:
+- Jest: Uses --listTests dry run
+- Explicit file arguments in command
+- Returns complete file list before execution
 
-## Proposed Architecture Solution
+### Dynamic Discovery
+When files discovered during execution:
+- Vitest: list command unreliable
+- npm run commands without file lists
+- Returns empty array, files tracked as they run
 
-### Static Strategy Pattern
-```typescript
-// Explicit, compile-time known test runners
-const TEST_RUNNERS = {
-  jest: {
-    definition: new JestDefinition(),
-    parser: new JestOutputParser()
-  },
-  vitest: {
-    definition: new VitestDefinition(),
-    parser: new VitestOutputParser()
-  }
-} as const;
+## 6. Command Building
 
-class TestRunnerManager {
-  static detect(args: string[], packageJsonContent?: string): keyof typeof TEST_RUNNERS | null;
-  static getDefinition(runner: keyof typeof TEST_RUNNERS): TestRunnerDefinition;
-  static getParser(runner: keyof typeof TEST_RUNNERS): OutputParser;
-}
-```
+### Adapter Injection
+Each runner defines how to add its adapter:
+- Jest: --reporters flag (adapter only, no default)
+- Vitest: --reporter flag with both default and adapter
+- Preserves existing reporter configurations if already specified
+- Uses absolute paths for adapters
 
-## Example Implementations
+### Argument Preservation
+Original command structure maintained:
+- User flags preserved
+- File arguments kept in position
+- Environment variables passed through
+- Shell features supported via zx
 
-### Jest Definition
-```typescript
-class JestDefinition implements TestRunnerDefinition {
-  name = 'jest';
-  
-  matches(args: string[], packageJsonContent?: string): boolean {
-    const command = args[0];
-    
-    // Direct detection from command
-    if (command === 'jest') return true;
-    if ((command === 'npx' || command === 'yarn' || command === 'pnpm') && args[1] === 'jest') {
-      return true;
-    }
-    
-    // npm script detection
-    if ((command === 'npm' && (args[1] === 'test' || args[1] === 'run')) && packageJsonContent) {
-      try {
-        const packageJson = JSON.parse(packageJsonContent);
-        
-        // Check test script
-        const testScript = packageJson.scripts?.test;
-        if (testScript?.includes('jest')) return true;
-        
-        // Check dependencies
-        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-        return !!deps.jest;
-      } catch {
-        return false;
-      }
-    }
-    
-    return false;
-  }
-  
-  async getTestFiles(args: string[]): Promise<string[]> {
-    // Check if specific test files provided
-    const testFileExtensions = ['.test.js', '.test.ts', '.spec.js', '.spec.ts'];
-    const providedFiles = args.filter(arg => 
-      !arg.startsWith('-') && testFileExtensions.some(ext => arg.includes(ext))
-    );
-    
-    if (providedFiles.length > 0) {
-      return providedFiles;
-    }
-    
-    try {
-      // Jest dry run
-      const dryRunCommand = args.join(' ') + ' --listTests';
-      const result = await $`sh -c ${dryRunCommand}`;
-      return JSON.parse(result.stdout);
-    } catch {
-      return [];
-    }
-  }
-  
-  buildMainCommand(args: string[], adapterPath: string): string {
-    const hasReporters = args.some(arg => arg.includes('--reporters'));
-    if (hasReporters) {
-      return `${args.join(' ')} ${adapterPath}`;
-    } else {
-      return `${args.join(' ')} --reporters default --reporters ${adapterPath}`;
-    }
-  }
-  
-  getAdapterFileName(): string {
-    return 'jest.js';
-  }
-  
-  interpretExitCode(exitCode: number): 'success' | 'test-failure' | 'system-error' {
-    switch (exitCode) {
-      case 0: return 'success';
-      case 1: return 'test-failure';
-      default: return 'system-error';
-    }
-  }
-}
-```
+## 7. Output Parsing
 
-### Vitest Definition
-```typescript
-class VitestDefinition implements TestRunnerDefinition {
-  name = 'vitest';
-  
-  matches(args: string[], packageJsonContent?: string): boolean {
-    const command = args[0];
-    
-    // Direct detection
-    if (command === 'vitest') return true;
-    if ((command === 'npx' || command === 'yarn' || command === 'pnpm') && args[1] === 'vitest') {
-      return true;
-    }
-    
-    // npm script detection
-    if ((command === 'npm' && (args[1] === 'test' || args[1] === 'run')) && packageJsonContent) {
-      try {
-        const packageJson = JSON.parse(packageJsonContent);
-        
-        const testScript = packageJson.scripts?.test;
-        if (testScript?.includes('vitest')) return true;
-        
-        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-        return !!deps.vitest;
-      } catch {
-        return false;
-      }
-    }
-    
-    return false;
-  }
-  
-  async getTestFiles(args: string[]): Promise<string[]> {
-    // Vitest list doesn't work reliably, so extract from args or return empty
-    const testFileExtensions = ['.test.js', '.test.ts', '.test.mjs', '.spec.js', '.spec.ts'];
-    const providedFiles = args.filter(arg =>
-      !arg.startsWith('-') && testFileExtensions.some(ext => arg.includes(ext))
-    );
-    
-    return providedFiles;
-  }
-  
-  buildMainCommand(args: string[], adapterPath: string): string {
-    const hasReporter = args.some(arg => arg.includes('--reporter'));
-    if (hasReporter) {
-      return `${args.join(' ')} --reporter ${adapterPath}`;
-    } else {
-      return `${args.join(' ')} --reporter default --reporter ${adapterPath}`;
-    }
-  }
-  
-  getAdapterFileName(): string {
-    return 'vitest.js';
-  }
-  
-  interpretExitCode(exitCode: number): 'success' | 'test-failure' | 'system-error' {
-    switch (exitCode) {
-      case 0: return 'success';
-      case 1: return 'test-failure';
-      default: return 'system-error';
-    }
-  }
-}
-```
+### Runner-Specific Patterns
+Each parser handles its runner's format:
+- Jest: Worker process output format
+- Vitest: stdout/stderr prefixed lines
+- Test boundaries and file associations
+- Error message extraction
 
-## Implementation Plan
+### Common Base Functionality
+Abstract OutputParser provides:
+- Line-by-line processing
+- Buffer management
+- Test file path normalization
+- Output accumulation strategies
 
-### Files Requiring Major Changes
+## 8. Integration Points
 
-1. **`src/cli.ts`** - Replace hardcoded detection/command building with TestRunnerManager
-2. **`src/ReportManager.ts`** - Replace hardcoded parsing with pluggable parsers
-3. **`src/adapters/`** - Create base classes and bridge patterns
-4. **`src/runners/`** - **New directory** for test runner definitions
-5. **`build.js`** - Update build process for new structure
+### CLI Orchestrator
+Uses TestRunnerManager for:
+- Runner detection from commands
+- Test file discovery
+- Command modification
+- Exit code interpretation
 
-### New Directory Structure
-```
-src/
-├── runners/
-│   ├── jest/
-│   │   ├── JestDefinition.ts
-│   │   └── JestOutputParser.ts
-│   ├── vitest/
-│   │   ├── VitestDefinition.ts
-│   │   └── VitestOutputParser.ts
-│   └── base/
-│       ├── TestRunnerDefinition.ts
-│       └── OutputParser.ts
-├── adapters/
-│   ├── base/
-│   │   ├── TestRunnerAdapter.ts
-│   │   └── AdapterBridge.ts
-│   ├── JestAdapterBridge.ts
-│   └── VitestAdapterBridge.ts
-└── TestRunnerManager.ts
-```
+### Report Manager
+Uses OutputParser for:
+- Parsing console output into test logs
+- Associating output with test files
+- Extracting test boundaries
+- Formatting test results
 
-## Usage in CLI Orchestrator
+### Adapters
+Remain independent but follow conventions:
+- Read adapter path from environment
+- Use IPC for communication
+- Silent operation (no console output)
+- Error resilience
 
-```typescript
-class CLIOrchestrator {
-  private async detectTestRunner(args: string[]): Promise<TestRunnerDefinition> {
-    let packageJsonContent: string | undefined;
-    
-    // Only read package.json if we might need it (npm commands)
-    if (args[0] === 'npm' && (args[1] === 'test' || args[1] === 'run')) {
-      try {
-        packageJsonContent = await fs.readFile('package.json', 'utf8');
-      } catch {
-        // package.json not found - continue without it
-      }
-    }
-    
-    // Try each test runner
-    for (const runner of Object.values(TEST_RUNNERS)) {
-      if (runner.definition.matches(args, packageJsonContent)) {
-        return runner.definition;
-      }
-    }
-    
-    throw new Error('Could not detect test runner');
-  }
+## 9. Adding New Test Runners
 
-  private async run(commandArgs: string[]): Promise<void> {
-    const runner = await this.detectTestRunner(commandArgs);
-    
-    // Clean single method call
-    const testFiles = await runner.getTestFiles(commandArgs);
-    
-    await this.initialize(testCommand, testFiles);
-    
-    // Clean command building
-    const adapterPath = path.join(__dirname, runner.getAdapterFileName());
-    const modifiedCommand = runner.buildMainCommand(commandArgs, adapterPath);
-    
-    const exitCode = await this.executeCommand(modifiedCommand);
-    const exitType = runner.interpretExitCode(exitCode);
-    // Handle exit type as needed
-  }
-}
-```
+### Implementation Steps
+1. Create runner directory under src/runners/
+2. Implement TestRunnerDefinition interface
+3. Implement OutputParser subclass
+4. Register in TEST_RUNNERS object
+5. Create adapter in src/adapters/
+6. Add build configuration
+7. Write tests for new components
 
-## Benefits
+### Required Components
+- Definition class with detection logic
+- Parser for output handling
+- Adapter for test runner integration
+- Unit and integration tests
+- Documentation updates
+
+## 10. Benefits
 
 ### Maintainability
-- **Single Responsibility**: Each component handles one specific aspect of test runner integration
-- **Open/Closed Principle**: Adding new test runners doesn't require modifying existing code
-- **Clear Interfaces**: Well-defined contracts between components
+- Single responsibility per component
+- Clear interfaces and contracts
+- Isolated test runner logic
+- Reduced coupling
 
 ### Extensibility
-- **Explicit Architecture**: New test runners are explicitly added to the TEST_RUNNERS constant
-- **Minimal Integration**: Adding new test runners requires only implementing interfaces and adding to the constant
-- **Clean Separation**: Test runner logic is isolated from core 3pio logic
+- New runners don't modify existing code
+- Explicit registration pattern
+- Well-defined extension points
+- Type safety throughout
 
-### Testing
-- **Isolated Testing**: Each parser/adapter can be unit tested independently  
-- **Mock-Friendly**: Interfaces enable easy mocking for testing
-- **Regression Prevention**: Changes to one test runner won't affect others
+### Testability
+- Each component independently testable
+- Mock-friendly interfaces
+- Isolated business logic
+- Clear test boundaries
 
-## Migration Strategy
+## 11. Design Decisions
 
-1. **Phase 1**: Extract interfaces and create base classes
-2. **Phase 2**: Implement Jest/Vitest using new architecture 
-3. **Phase 3**: Replace hardcoded logic with static TEST_RUNNERS pattern
-4. **Phase 4**: Clean up old hardcoded implementations
-5. **Phase 5**: Add comprehensive tests for new architecture
+### Static vs Dynamic Registration
+Chose static registration for:
+- Compile-time type safety
+- Predictable behavior
+- Easier debugging
+- No runtime surprises
 
-This approach ensures a smooth transition while maintaining backward compatibility during the migration process.
+### Interface Segregation
+Separate interfaces for:
+- Test runner operations (Definition)
+- Output parsing (Parser)
+- Adapter behavior (separate concern)
+- Clear separation of concerns
+
+### Explicit Over Implicit
+- No auto-discovery of runners
+- Clear registration required
+- Predictable detection order
+- Explicit error messages
+
+## 12. Future Considerations
+
+### Potential Enhancements
+- Plugin architecture for external runners
+- Configuration file for runner settings
+- Custom detection strategies
+- Output parser composition
+
+### Scalability
+Current design supports:
+- 10+ test runners without refactoring
+- Custom runners via interface implementation
+- Extension through composition
+- Performance optimization points identified

@@ -23,7 +23,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - The system seamlessly handles both modes without user configuration
 
 ### Console Output Capture Strategy
-- **Important**: 3pio does NOT use Jest's default reporter to avoid duplicate output
+- **Jest**: 3pio does NOT use Jest's default reporter to avoid duplicate output
+- **Vitest**: 3pio DOES include Vitest's default reporter for better user experience
 - All console output from tests is captured at the CLI process level by monitoring stdout/stderr streams
 - Jest runs tests in worker processes, so the reporter cannot directly capture console output
 - The captured output is stored in `.3pio/runs/*/output.log` as a complete record
@@ -133,7 +134,7 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 ### Vitest-Specific Behaviors
 - **Important**: `vitest list` doesn't just list files - it runs tests in watch mode
 - When specific test files are provided as arguments, they are extracted directly rather than using dry run
-- Duplicate output may appear (from both default reporter and 3pio adapter) - this is expected behavior
+- Vitest runs WITH the default reporter included for better user visibility
 
 ### Environment Variables
 - `THREEPIO_IPC_PATH` must be explicitly passed to child processes

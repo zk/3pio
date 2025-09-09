@@ -7,9 +7,7 @@
 - **Persistent Test Sessions**: Results saved to filesystem, surviving across development sessions
 - **Context-Efficient Output**: Structured Markdown reports with individual test case tracking
 - **Zero-Config Experience**: Wraps existing test runners without requiring test file changes
-- **AI-Optimized**: Machine-readable logs searchable with standard shell tools (grep, cat, sed)
-- **Dynamic Test Discovery**: Automatically handles test files discovered during execution
-- **Memorable Run Names**: Test runs get unique Star Wars-themed identifiers for easy reference
+- **Agent-Optimized**: Machine-readable logs searchable with standard shell tools (grep, cat, sed)
 
 ## Quick Start
 
@@ -28,8 +26,6 @@ cat .3pio/runs/*/test-run.md
 
 ## Architecture
 
-3pio uses a four-component architecture with file-based IPC communication:
-
 1. **CLI Orchestrator** - Main entry point managing test lifecycle
 2. **Report Manager** - Handles all report file I/O with debounced writes
 3. **IPC Manager** - File-based communication between adapters and CLI
@@ -41,7 +37,6 @@ Data flows from test runners → adapters → IPC files → CLI → reports.
 
 ### Planning & Design
 
-- **[Project Plan](./project-plan.md)** - Project goals, technology stack, and future roadmap
 - **[Design Decisions](./design-decisions.md)** - Key architectural choices and their rationale
 
 ### Architecture Documentation (`architecture/`)
