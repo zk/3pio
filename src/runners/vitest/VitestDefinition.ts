@@ -43,6 +43,29 @@ export class VitestDefinition implements TestRunnerDefinition {
   
   buildMainCommand(args: string[], adapterPath: string): string[] {
     const hasReporter = args.some(arg => arg.includes('--reporter'));
+    
+    // Handle npm run commands - need to use -- separator
+    if (args[0] === 'npm' && args[1] === 'run') {
+      // Check if -- separator already exists
+      const separatorIndex = args.indexOf('--');
+      if (separatorIndex === -1) {
+        // No separator, add it before reporter args
+        if (hasReporter) {
+          return [...args, '--', '--reporter', adapterPath];
+        } else {
+          return [...args, '--', '--reporter', 'default', '--reporter', adapterPath];
+        }
+      } else {
+        // Separator exists, add reporter args after it
+        if (hasReporter) {
+          return [...args, '--reporter', adapterPath];
+        } else {
+          return [...args, '--reporter', 'default', '--reporter', adapterPath];
+        }
+      }
+    }
+    
+    // Direct vitest or npx vitest commands
     if (hasReporter) {
       return [...args, '--reporter', adapterPath];
     } else {

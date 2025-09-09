@@ -58,17 +58,25 @@ export class ReportManager {
   }
 
   /**
-   * Initialize the report with list of test files
+   * Initialize the report with optional list of test files
+   * If no test files provided, they will be discovered dynamically
    */
-  async initialize(testFiles: string[]): Promise<void> {
-    this.logger.lifecycle('Initializing report structure', { testFiles: testFiles.length });
+  async initialize(testFiles: string[] = []): Promise<void> {
+    this.logger.lifecycle('Initializing report structure', { 
+      testFiles: testFiles.length,
+      mode: testFiles.length > 0 ? 'static' : 'dynamic'
+    });
     
     // Create directories
     this.logger.debug('Creating report directories');
     await fs.mkdir(this.runDirectory, { recursive: true });
 
-    // Initialize state with pending test files
-    this.logger.info(`Initializing state with ${testFiles.length} test files`);
+    // Initialize state with pending test files (if any provided)
+    if (testFiles.length > 0) {
+      this.logger.info(`Initializing state with ${testFiles.length} known test files`);
+    } else {
+      this.logger.info('No test files provided, will discover dynamically');
+    }
     this.state.totalFiles = testFiles.length;
     this.state.testFiles = testFiles.map(filePath => {
       // Normalize the file path by removing leading ./ and resolving to absolute
@@ -107,6 +115,43 @@ export class ReportManager {
   }
 
   /**
+   * Ensure a test file is registered in the state
+   * Called when we receive the first event for a file during dynamic discovery
+   */
+  private ensureTestFileRegistered(filePath: string): void {
+    // Normalize the file path
+    const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
+    
+    // Check if already registered
+    const exists = this.state.testFiles.some(tf => {
+      const normalizedStoredPath = path.resolve(tf.file.replace(/^\.\//, ''));
+      return normalizedStoredPath === normalizedPath;
+    });
+    
+    if (!exists) {
+      this.logger.info('Dynamically registering test file', { file: filePath });
+      
+      // Convert absolute path to relative for display
+      const relativePath = path.relative(process.cwd(), normalizedPath);
+      
+      // Add to state
+      this.state.testFiles.push({
+        status: 'RUNNING',  // Start as RUNNING since we're getting events
+        file: normalizedPath,
+        logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`,
+        testCases: []
+      });
+      
+      // Update total count
+      this.state.totalFiles = this.state.testFiles.length;
+      
+      // Trigger report update
+      this.state.updatedAt = new Date().toISOString();
+      this.debouncedWrite();
+    }
+  }
+
+  /**
    * Handle incoming IPC events
    */
   async handleEvent(event: IPCEvent): Promise<void> {
@@ -115,6 +160,10 @@ export class ReportManager {
     switch (event.eventType) {
       case 'stdoutChunk':
       case 'stderrChunk':
+        // Ensure file is registered (for dynamic discovery)
+        if (event.payload.filePath) {
+          this.ensureTestFileRegistered(event.payload.filePath);
+        }
         await this.appendToLogFile(
           event.payload.filePath,
           event.payload.chunk,
@@ -124,6 +173,9 @@ export class ReportManager {
 
       case 'testFileStart':
         this.logger.testFlow('Test file starting', event.payload.filePath);
+        // Ensure file is registered (for dynamic discovery)
+        this.ensureTestFileRegistered(event.payload.filePath);
+        
         // Update test file status to RUNNING
         const normalizedPath = path.resolve(event.payload.filePath.replace(/^\.\//, ''));
         let testFile = this.state.testFiles.find(tf => {
@@ -139,11 +191,17 @@ export class ReportManager {
         break;
       case 'testCase':
         this.logger.testFlow('Test case event', event.payload.testName, { status: event.payload.status });
+        // Ensure file is registered (for dynamic discovery)
+        if (event.payload.filePath) {
+          this.ensureTestFileRegistered(event.payload.filePath);
+        }
         await this.handleTestCaseEvent(event.payload);
         break;
 
       case 'testFileResult':
         this.logger.testFlow('Test file completed', event.payload.filePath, { status: event.payload.status });
+        // Ensure file is registered (for dynamic discovery)
+        this.ensureTestFileRegistered(event.payload.filePath);
         await this.updateTestFileStatus(
           event.payload.filePath,
           event.payload.status

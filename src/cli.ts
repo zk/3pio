@@ -100,10 +100,7 @@ class CLIOrchestrator {
       this.logger.info(`Discovered ${testFiles.length} test files`, { files: testFiles });
       
       if (testFiles.length === 0) {
-        this.logger.warn('No test files discovered during dry run', { command: commandArgs });
-        console.log('No test files found to run.');
-        console.log();
-        process.exit(0);
+        this.logger.info('No test files discovered during dry run, will use dynamic discovery', { command: commandArgs });
       }
 
       // Initialize IPC and Report
@@ -195,6 +192,14 @@ class CLIOrchestrator {
     this.logger.info('Report will be generated at', { path: reportPath });
     console.log(`Full report: ${reportPath}`);
     console.log();
+
+    // Handle dynamic discovery case
+    if (testFiles.length === 0) {
+      console.log('Beginning test execution now...');
+      console.log();
+      this.startTime = Date.now();
+      return;
+    }
 
     if (testFiles.length <= 10) {
       // Short list - show all files

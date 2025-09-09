@@ -2,6 +2,23 @@
 
 This document describes known issues, limitations, and workarounds for 3pio.
 
+## Dynamic Test Discovery
+
+3pio supports two modes of test discovery:
+
+### Static Discovery
+- Used when test files can be determined upfront (e.g., explicit file arguments, Jest's `--listTests`)
+- Shows list of files before running tests
+- Pre-creates all log files
+
+### Dynamic Discovery
+- Used when test files cannot be determined upfront (e.g., `npm run test` with Vitest)
+- Files are discovered and registered as they send their first event
+- Shows "Test files will be discovered and reported as they run"
+- Log files created on demand
+
+The system automatically chooses the appropriate mode based on the test runner and command.
+
 ## Test Runner Detection
 
 - Commands invoked via `npx`, `yarn`, or `pnpm` require special handling to detect the actual test runner
@@ -9,8 +26,17 @@ This document describes known issues, limitations, and workarounds for 3pio.
 
 ## Vitest-Specific Behaviors
 
-- **Important**: `vitest list` doesn't just list files - it runs tests in watch mode
-- When specific test files are provided as arguments, they are extracted directly rather than using dry run
+### Test Discovery Limitations
+
+- **`vitest list` is unreliable**: The `vitest list` command doesn't just list files - it runs tests in watch mode, making it unsuitable for dry runs
+- **Dynamic discovery mode**: When running `npm run test` with Vitest, 3pio uses dynamic discovery mode since test files cannot be determined upfront
+- **Explicit files work**: When specific test files are provided as arguments, they are extracted directly and tracked from the start
+
+### npm run Command Handling
+
+When using `npm run test` with Vitest, the reporter arguments must be properly separated with `--`:
+- 3pio automatically adds the `--` separator before reporter arguments
+- This ensures Vitest receives the reporter configuration correctly
 
 ## Jest-Specific Behaviors
 

@@ -15,7 +15,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **Test Runner Adapters** (`src/adapters/`) - Silent reporters running inside test processes
 
 ### Data Flow
-- CLI performs dry run → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs → final report at `.3pio/runs/[timestamp]/test-run.md`
+- CLI attempts dry run (optional) → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs → final report at `.3pio/runs/[timestamp]-[memorable-name]/test-run.md`
+
+### Test Discovery Modes
+- **Static Discovery**: When test files can be determined upfront (e.g., explicit file arguments, Jest --listTests)
+- **Dynamic Discovery**: Files are registered as they send their first event (e.g., npm run test with Vitest)
+- The system seamlessly handles both modes without user configuration
 
 ### Console Output Capture Strategy
 - **Important**: 3pio does NOT use Jest's default reporter to avoid duplicate output
@@ -68,7 +73,9 @@ npm link
 Events written to `.3pio/ipc/[timestamp].jsonl`:
 - `stdoutChunk`: `{ eventType: "stdoutChunk", payload: { filePath, chunk } }`
 - `stderrChunk`: `{ eventType: "stderrChunk", payload: { filePath, chunk } }`
-- `testFileResult`: `{ eventType: "testFileResult", payload: { filePath, status: "PASS"|"FAIL" } }`
+- `testCase`: `{ eventType: "testCase", payload: { filePath, testName, suiteName?, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
+- `testFileResult`: `{ eventType: "testFileResult", payload: { filePath, status: "PASS"|"FAIL"|"SKIP" } }`
+- `testFileStart`: `{ eventType: "testFileStart", payload: { filePath } }`
 
 ### Adapter Development
 - Adapters must be **silent** - no stdout/stderr output
@@ -82,9 +89,10 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 - All startup failures should exit with non-zero code and clear error to stderr
 
 ### File Structure Conventions
-- Reports: `.3pio/runs/[ISO8601_timestamp]/`
+- Reports: `.3pio/runs/[ISO8601_timestamp]-[memorable-name]/`
 - IPC files: `.3pio/ipc/[timestamp].jsonl`
-- Output log: `.3pio/runs/[timestamp]/output.log` (contains all stdout/stderr from test run)
+- Output log: `.3pio/runs/[timestamp]-[name]/output.log` (contains all stdout/stderr from test run)
+- Test logs: `.3pio/runs/[timestamp]-[name]/logs/[sanitized-test-file].log` (per-file output with test case boundaries)
 
 ## Testing Requirements
 
