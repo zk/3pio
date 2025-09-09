@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { $ } from 'zx';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { uniqueNamesGenerator, Config, adjectives, starWars } from 'unique-names-generator';
 import { IPCManager } from './ipc';
 import { ReportManager } from './ReportManager';
 import { IPCEvent } from './types/events';
@@ -29,7 +30,23 @@ class CLIOrchestrator {
   private startTime: number = 0;
 
   constructor() {
-    this.runId = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T');
+    // Generate ISO8601 timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T');
+    
+    // Generate unique memorable name
+    const nameConfig: Config = {
+      dictionaries: [adjectives, starWars],
+      separator: '-',
+      length: 2,
+      style: 'lowerCase'
+    };
+    // Replace spaces and remove any non-ASCII characters
+    const memorableName = uniqueNamesGenerator(nameConfig)
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/gi, '');
+    
+    // Combine timestamp and memorable name
+    this.runId = `${timestamp}-${memorableName}`;
     this.ipcPath = '';
     this.logger = Logger.create('cli-orchestrator');
   }

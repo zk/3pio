@@ -59,7 +59,7 @@ describe('Console Output System Test', () => {
     
     // Replace dynamic timestamp and time values with placeholders for comparison
     const normalizedOutput = output
-      .replace(/\d{4}-\d{2}-\d{2}T\d{6,9}Z/g, 'TIMESTAMP')
+      .replace(/\d{4}-\d{2}-\d{2}T\d{6,9}Z(-[a-z0-9-]+)?/gi, 'TIMESTAMP')
       .replace(/Time:\s+\d+\.\d+s/g, 'Time:        X.XXXs');
     
     const expectedOutput = `
@@ -133,7 +133,7 @@ Time:        X.XXXs
     
     // Verify test-run.md has content
     const testRunContent = fs.readFileSync(testRunFile, 'utf-8');
-    expect(testRunContent).toContain('# 3pio Test Run Summary');
+    expect(testRunContent).toContain('# 3pio Test Run');
     expect(testRunContent).toContain('math.test.js');
     expect(testRunContent).toContain('string.test.js');
     

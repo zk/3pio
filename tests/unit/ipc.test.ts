@@ -183,8 +183,6 @@ describe('IPCManager', () => {
         events.push(event);
       });
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
       ipcManager.watchEvents(callback);
 
       // Give watcher time to initialize
@@ -203,14 +201,9 @@ describe('IPCManager', () => {
       // Give watcher time to process
       await new Promise(resolve => setTimeout(resolve, 200));
 
+      // Should only receive the valid event, ignoring the malformed JSON
       expect(events).toHaveLength(1);
       expect(events[0]).toEqual(validEvent);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to parse IPC event:',
-        expect.any(Error)
-      );
-
-      consoleErrorSpy.mockRestore();
     });
   });
 

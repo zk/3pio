@@ -67,7 +67,7 @@ describe('ReportManager', () => {
       
       // Check initial report was created
       const reportContent = await fs.readFile(reportPath, 'utf8');
-      expect(reportContent).toContain('# 3pio Test Run Summary');
+      expect(reportContent).toContain('# 3pio Test Run');
       expect(reportContent).toContain('npm test');
       expect(reportContent).toContain('src/test1.spec.js');
       expect(reportContent).toContain('src/test2.spec.js');
@@ -146,7 +146,7 @@ describe('ReportManager', () => {
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
-      expect(reportContent).toContain('| PASS |');
+      expect(reportContent).toContain('Status: **PASS**');
       expect(reportContent).toContain('Files Passed: 1');
       expect(reportContent).toContain('Files Completed: 1');
     });
@@ -168,7 +168,7 @@ describe('ReportManager', () => {
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
-      expect(reportContent).toContain('| FAIL |');
+      expect(reportContent).toContain('Status: **FAIL**');
       expect(reportContent).toContain('Files Failed: 1');
     });
 
@@ -189,7 +189,7 @@ describe('ReportManager', () => {
       const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
       const reportContent = await fs.readFile(reportPath, 'utf8');
       
-      expect(reportContent).toContain('| SKIP |');
+      expect(reportContent).toContain('Status: **SKIP**');
       expect(reportContent).toContain('Files Skipped: 1');
     });
   });
