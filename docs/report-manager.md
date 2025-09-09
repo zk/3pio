@@ -28,7 +28,11 @@ The manager holds the entire state of the test-run.md file in memory to facilita
   }
   ```
 
-* **Unified Output Log:** The manager maintains a single `output.log` file handle that captures all stdout/stderr output in real-time. Individual test log files are created during post-processing in `finalize()`.
+* **Dual Output Strategy:** 
+  - The manager maintains a single `output.log` file handle that captures ALL stdout/stderr output (including non-test output)
+  - Test-specific output is also collected in a Map keyed by test file path during execution
+  - Individual test log files are created from the Map during `finalize()`, containing only test-specific output
+  - Non-test output (startup messages, warnings, summary) only appears in output.log
 
 ## 3. Public API
 
@@ -44,12 +48,15 @@ The manager exposes a simple API for the CLI Orchestrator to use.
   * Performs an immediate, initial write of test-run.md to disk.
 * **async handleEvent(event: IPCEvent): Promise<void>**
   * The central method for processing events from the IPC channel.
-  * If eventType is stdoutChunk or stderrChunk, it appends the chunk to the unified output.log file.
+  * If eventType is stdoutChunk or stderrChunk, it appends the chunk to output.log AND collects it in the per-file Map.
   * If eventType is testFileResult, it updates the status of the corresponding test file in the in-memory state, re-calculates counters, and schedules a debounced write of test-run.md.
   * Dynamically adds test files that weren't discovered during dry run (common with Vitest).
+* **async appendToOutputLog(chunk: string): Promise<void>**
+  * Direct method for appending non-test output to output.log without creating individual log files.
+  * Used by CLI for capturing output that occurs outside of test execution.
 * **async finalize(exitCode: number): Promise<void>**
   * Closes the output.log file handle.
-  * Parses the unified output.log into individual test file logs using `parseOutputIntoTestLogs()`.
+  * Writes individual test file logs from the collected per-file Map (no parsing needed).
   * Cancels any pending debounced writes and performs one final write of test-run.md.
   * Updates final status to 'COMPLETE'.
 
@@ -64,9 +71,9 @@ To ensure high performance, the manager does not write to test-run.md on every s
    * The `handleEvent` method calls this debounced function every time the state changes.
    * This effectively batches numerous state changes into a single file write, drastically reducing I/O load.
 3. **Output Log Processing:**
-   * Real-time output goes to a unified `output.log` file.
-   * During `finalize()`, `parseOutputIntoTestLogs()` parses this file to create individual test file logs.
-   * Uses pattern matching to identify Vitest output format: `stdout | filename.test.js > content`.
+   * Real-time output goes to a unified `output.log` file AND is collected in a per-file Map.
+   * During `finalize()`, individual test file logs are written directly from the Map.
+   * No parsing needed - file associations come from IPC events.
 
 ## 5. Failure Modes
 

@@ -14,15 +14,26 @@ export interface StderrChunkEvent {
   };
 }
 
+export interface TestFileStartEvent {
+  eventType: 'testFileStart';
+  payload: {
+    filePath: string;
+  };
+}
+
 export interface TestFileResultEvent {
   eventType: 'testFileResult';
   payload: {
     filePath: string;
     status: 'PASS' | 'FAIL' | 'SKIP';
+    failedTests?: Array<{
+      name: string;
+      duration?: number;
+    }>;
   };
 }
 
-export type IPCEvent = StdoutChunkEvent | StderrChunkEvent | TestFileResultEvent;
+export type IPCEvent = StdoutChunkEvent | StderrChunkEvent | TestFileStartEvent | TestFileResultEvent;
 
 export interface TestRunState {
   timestamp: string;

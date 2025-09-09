@@ -38,10 +38,15 @@ This component is the single source of truth for all report-related file I/O, en
   * **State Management:** Holds the complete TestRunState in memory including counters, timestamps, and test file statuses.
   * **Initialization:** The `async initialize(testFiles)` method creates the run directory and the initial test-run.md, opens output.log with header for real-time writing.
   * **Event Handling:** Has a central `async handleEvent(event)` method that updates the in-memory state based on IPC events.
-    * On stdoutChunk or stderrChunk, it appends the text chunk to the unified output.log file.
+    * On stdoutChunk or stderrChunk, it appends the text chunk to the unified output.log file AND collects it in a per-file Map for individual log generation.
+    * On testFileStart, it updates the test file status to RUNNING.
     * On testFileResult, it updates the test file status and counters, then schedules a debounced write.
     * Dynamically adds test files not discovered during dry run (common with Vitest).
-  * **Unified Logging:** Maintains single output.log file during execution, then parses it into individual test logs during finalize().
+  * **Dual Logging Strategy:**
+    * Maintains single output.log file during execution for complete output record (including non-test output)
+    * Simultaneously collects per-file output in memory Map using file paths from IPC events
+    * During finalize(), writes individual test logs directly from the collected Map
+    * Non-test output (startup messages, warnings, summary) only appears in output.log, not in individual files
   * **Debounced Writes:** Uses lodash.debounce (250ms delay, 1000ms maxWait) to batch test-run.md updates for performance.
 
 ### 3.3. IPC Manager (src/ipc.ts)
@@ -62,14 +67,34 @@ These modules are the data collectors that run *inside* the Jest or Vitest proce
 * **Responsibilities:**
   * **Initialization:** Adapters read THREEPIO_IPC_PATH environment variable and validate connection.
   * **Stream Tapping:** Patch process.stdout.write and process.stderr.write with pass-through wrappers that capture output and send IPC events.
-  * **Event Transmission:** Use static `IPCManager.sendEvent()` method to send stdoutChunk, stderrChunk, and testFileResult events.
+  * **Event Transmission:** Use static `IPCManager.sendEvent()` method to send testFileStart, stdoutChunk, stderrChunk, and testFileResult events.
   * **Lifecycle Management:**
     * Jest: Capture tied to onTestStart/onTestResult hooks
     * Vitest: Capture started in onInit() and maintained throughout run
   * **Error Resilience:** All IPC operations wrapped in .catch(() => {}) to prevent test runner crashes.
   * **Debug Support:** Vitest adapter includes extensive debug logging for troubleshooting.
 
-## 4. Data Flow (Sequence of Events)
+## 4. Console Output Capture Strategy
+
+### Design Decision: No Default Reporter
+
+3pio intentionally does NOT include Jest's or Vitest's default reporter when running tests. This is a deliberate design choice to maintain clean test output that is context concious.
+
+### Implications and Solutions
+
+**Challenge:** Without the default reporter, test runners don't format console output with file associations and stack traces.
+
+**Solution:** 3pio uses a dual-capture approach:
+1. **IPC Events with File Associations:** Test adapters send stdout/stderr chunks via IPC with the associated test file path
+2. **In-Memory Collection:** ReportManager maintains a Map of file paths to output arrays, populated from IPC events
+3. **Direct Writing:** Individual log files are written directly from the collected Map, not parsed from output.log
+
+This approach ensures:
+- Console output is correctly attributed to test files
+- No dependency on specific output formatting
+- Works even when test runners use worker processes (like Jest)
+
+## 5. Data Flow (Sequence of Events)
 
 A typical run of 3pio run vitest would proceed as follows:
 
@@ -86,12 +111,12 @@ A typical run of 3pio run vitest would proceed as follows:
 11. As a test file runs and logs to the console, the **Adapter** captures the chunk and uses the **IPC Manager** to append a stdoutChunk event to the IPC file.
 12. The **Orchestrator**, listening via the **IPC Manager**, receives the event.
 13. The **Orchestrator** passes the event to the **Report Manager**.
-14. The **Report Manager** appends the chunk to the unified output.log file.
+14. The **Report Manager** appends the chunk to the unified output.log file AND stores it in the per-file output Map.
 15. When the test file finishes, the **Adapter** sends the testFileResult event.
 16. The **Report Manager** receives this event, updates its in-memory state for test-run.md (e.g., changing the status from PENDING to PASS), and schedules a debounced write.
 17. This process repeats for all test files.
 18. When the vitest process exits, the **Orchestrator** calls `await reportManager.finalize(exitCode)` to:
     * Close the output.log file handle
-    * Parse output.log into individual test file logs
+    * Write individual test file logs from the collected per-file output Map (no parsing needed)
     * Perform one last, guaranteed write of test-run.md
 19. The **Orchestrator** cleans up the IPC file and exits with the same exit code as vitest.

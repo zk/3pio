@@ -15,7 +15,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **Test Runner Adapters** (`src/adapters/`) - Silent reporters running inside test processes
 
 ### Data Flow
-- CLI performs dry run → creates run directory → spawns test runner with adapter → adapter captures output via IPC → Report Manager writes structured logs → final report at `.3pio/runs/[timestamp]/test-run.md`
+- CLI performs dry run → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs → final report at `.3pio/runs/[timestamp]/test-run.md`
+
+### Console Output Capture Strategy
+- **Important**: 3pio does NOT use Jest's default reporter to avoid duplicate output
+- All console output from tests is captured at the CLI process level by monitoring stdout/stderr streams
+- Jest runs tests in worker processes, so the reporter cannot directly capture console output
+- The captured output is stored in `.3pio/runs/*/output.log` as a complete record
+- Individual test log files may be empty if the output parser cannot attribute console logs to specific test files
 
 ## Development Commands
 
@@ -133,3 +140,4 @@ For detailed information about these issues and their solutions, see `docs/known
 ## Misc
 
 - There are sample projects for jest and vitest at `sample-projects/`
+- Generated test files and scripts should not be put in the root directory. Any temporary files should go in the `./scratch` directory.

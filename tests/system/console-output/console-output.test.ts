@@ -13,6 +13,12 @@ describe('Console Output System Test', () => {
       execSync('npm run build', { cwd: path.resolve(__dirname, '../../..') });
     }
     
+    // Clean up any existing .3pio directory from previous test runs
+    const threepioDir = path.join(testProjectDir, '.3pio');
+    if (fs.existsSync(threepioDir)) {
+      fs.rmSync(threepioDir, { recursive: true, force: true });
+    }
+    
     // Copy sample jest project files to test directory
     const sourceDir = path.resolve(__dirname, '../../../sample-projects/jest-project');
     
@@ -37,7 +43,7 @@ describe('Console Output System Test', () => {
     execSync('npm install', { cwd: testProjectDir, stdio: 'ignore' });
   });
   
-  it('should produce expected console output format', () => {
+  it('should produce expected console output format', async () => {
     // Run the CLI in the test project directory (expect it to fail since tests fail)
     let output: string;
     try {
@@ -51,10 +57,13 @@ describe('Console Output System Test', () => {
       output = error.stdout;
     }
     
-    // Replace dynamic timestamp with placeholder for comparison
-    const normalizedOutput = output.replace(/\d{4}-\d{2}-\d{2}T\d{6,9}Z/g, 'TIMESTAMP');
+    // Replace dynamic timestamp and time values with placeholders for comparison
+    const normalizedOutput = output
+      .replace(/\d{4}-\d{2}-\d{2}T\d{6,9}Z/g, 'TIMESTAMP')
+      .replace(/Time:\s+\d+\.\d+s/g, 'Time:        X.XXXs');
     
-    const expectedOutput = `Greetings! I will now execute the test command:
+    const expectedOutput = `
+Greetings! I will now execute the test command:
 \`npm test\`
 
 Full report: .3pio/runs/TIMESTAMP/test-run.md
@@ -76,11 +85,60 @@ FAIL     ./string.test.js
 RUNNING  ./math.test.js
 PASS     ./math.test.js
 
-Test Suites: 1 failed,  1 passed, 2 total
-Tests: 1 failed,  1 skipped,  5 passed, 7 total
-Snapshots:   0 total
-Time:        0.098s`;
+Test Files: 1 failed,  1 passed, 2 total
+Time:        X.XXXs
+
+`;
     
     expect(normalizedOutput).toBe(expectedOutput);
+    
+    // Check that .3pio directory structure was created
+    const threepioDir = path.join(testProjectDir, '.3pio');
+    expect(fs.existsSync(threepioDir)).toBe(true);
+    
+    // Find the run directory (there should be exactly one)
+    const runsDir = path.join(threepioDir, 'runs');
+    expect(fs.existsSync(runsDir)).toBe(true);
+    
+    const runDirs = fs.readdirSync(runsDir);
+    expect(runDirs.length).toBe(1);
+    
+    const runDir = path.join(runsDir, runDirs[0]);
+    
+    // Check for test-run.md
+    const testRunFile = path.join(runDir, 'test-run.md');
+    expect(fs.existsSync(testRunFile)).toBe(true);
+    
+    // Check for output.log
+    const outputLogFile = path.join(runDir, 'output.log');
+    expect(fs.existsSync(outputLogFile)).toBe(true);
+    
+    // Check for logs directory
+    const logsDir = path.join(runDir, 'logs');
+    expect(fs.existsSync(logsDir)).toBe(true);
+    
+    // Check that log files were created for each test file
+    const mathLogFile = path.join(logsDir, 'math.test.js.log');
+    const stringLogFile = path.join(logsDir, 'string.test.js.log');
+    
+    // Wait a bit for log files to be created during finalization
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    expect(fs.existsSync(mathLogFile)).toBe(true);
+    expect(fs.existsSync(stringLogFile)).toBe(true);
+    
+    // Note: For Jest, individual log files may be empty because Jest runs tests in worker processes
+    // and the reporter cannot capture console output. All output is captured in output.log instead.
+    // We just verify the files exist, not their content.
+    
+    // Verify test-run.md has content
+    const testRunContent = fs.readFileSync(testRunFile, 'utf-8');
+    expect(testRunContent).toContain('# 3pio Test Run Summary');
+    expect(testRunContent).toContain('math.test.js');
+    expect(testRunContent).toContain('string.test.js');
+    
+    // Verify output.log has content
+    const outputLogContent = fs.readFileSync(outputLogFile, 'utf-8');
+    expect(outputLogContent).toContain('# 3pio Test Output Log');
   });
 });

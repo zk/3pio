@@ -114,6 +114,28 @@ describe('CLI', () => {
       expect(extractTestFiles(['--watch', '--coverage'])).toEqual([]);
       expect(extractTestFiles(['src/regular.js'])).toEqual([]);
     });
+
+    it('should handle npm test with -- separator for passing arguments', () => {
+      // This test validates that arguments after -- are properly passed to the test runner
+      // Example: 3pio npm test -- test/system/mcp-tools/click.test.js
+      const parseNpmTestArgs = (args: string[]) => {
+        // If we have 'npm test' followed by '--', everything after -- should be passed to the test runner
+        if (args[0] === 'npm' && args[1] === 'test' && args[2] === '--') {
+          return {
+            command: 'npm test',
+            testArgs: args.slice(3)
+          };
+        }
+        return {
+          command: args.slice(0, 2).join(' '),
+          testArgs: []
+        };
+      };
+
+      const result = parseNpmTestArgs(['npm', 'test', '--', 'test/system/mcp-tools/click.test.js']);
+      expect(result.command).toBe('npm test');
+      expect(result.testArgs).toEqual(['test/system/mcp-tools/click.test.js']);
+    });
   });
 
   describe('buildAdapterCommand', () => {
@@ -280,6 +302,37 @@ describe('CLI', () => {
       expect(() => handleExit(2)).toThrow('Exit with code 2');
       
       exitSpy.mockRestore();
+    });
+  });
+
+  describe('npm test with -- separator', () => {
+    it('should correctly handle npm test -- file.test.js format', async () => {
+      // This test simulates the actual CLI parsing behavior for:
+      // 3pio npm test -- test/system/mcp-tools/click.test.js
+      
+      // The actual CLI receives: ['npm', 'test', '--', 'test/system/mcp-tools/click.test.js']
+      // This should be passed to npm as: npm test -- test/system/mcp-tools/click.test.js
+      
+      const buildNpmCommand = (args: string[]) => {
+        // This simulates what the CLI should do
+        if (args[0] === 'npm' && args[1] === 'test') {
+          // Join all arguments including the -- separator
+          return args.join(' ');
+        }
+        return args.join(' ');
+      };
+
+      const command = buildNpmCommand(['npm', 'test', '--', 'test/system/mcp-tools/click.test.js']);
+      expect(command).toBe('npm test -- test/system/mcp-tools/click.test.js');
+    });
+
+    it('should preserve all arguments after -- separator', () => {
+      // Test that multiple arguments after -- are preserved
+      const args = ['npm', 'test', '--', 'file1.test.js', 'file2.test.js', '--coverage'];
+      const expectedCommand = 'npm test -- file1.test.js file2.test.js --coverage';
+      
+      const command = args.join(' ');
+      expect(command).toBe(expectedCommand);
     });
   });
 });

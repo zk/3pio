@@ -28,7 +28,8 @@ export default defineConfig({
     exclude: [
       'node_modules/**',
       'dist/**',
-      'test-project/**'
+      'test-project/**',
+      'tests/system/console-output/jest-project/**'
     ]
   },
   resolve: {

@@ -147,8 +147,10 @@ export default class ThreePioVitestReporter implements Reporter {
     process.stdout.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
       if (chunk) {
         const chunkStr = chunk.toString();
-        // Use currentTestFile if available, otherwise use 'global' for suite-level output
-        const filePath = this.currentTestFile || 'global';
+        // Only send if we have a current test file
+        // Non-test output is captured at CLI level for output.log
+        const filePath = this.currentTestFile;
+        if (!filePath) return true;
         IPCManager.sendEvent({
           eventType: 'stdoutChunk',
           payload: {
@@ -165,8 +167,10 @@ export default class ThreePioVitestReporter implements Reporter {
     process.stderr.write = (chunk: string | Uint8Array, ...args: any[]): boolean => {
       if (chunk) {
         const chunkStr = chunk.toString();
-        // Use currentTestFile if available, otherwise use 'global' for suite-level output
-        const filePath = this.currentTestFile || 'global';
+        // Only send if we have a current test file
+        // Non-test output is captured at CLI level for output.log
+        const filePath = this.currentTestFile;
+        if (!filePath) return true;
         IPCManager.sendEvent({
           eventType: 'stderrChunk',
           payload: {

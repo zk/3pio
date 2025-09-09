@@ -82,22 +82,40 @@ export class JestDefinition implements TestRunnerDefinition {
       // User has already specified reporters, just add ours
       return [...args, adapterPath];
     } else if (isNpmScript) {
-      // For npm scripts, we need to use -- to pass arguments to jest
-      // Use ONLY our adapter to prevent duplicate output
-      // e.g., npm test -> npm test -- --reporters /path/to/adapter
-      const scriptIndex = args.findIndex(arg => arg === 'test' || arg.startsWith('test:'));
-      if (scriptIndex !== -1) {
+      // IMPORTANT: Jest has a quirk where the --reporters flag must come AFTER any test file paths.
+      // If --reporters comes before test files, Jest interprets the test files as reporter modules.
+      // This causes errors like "Could not resolve a module for a custom reporter."
+      // 
+      // Correct: npm test -- file.test.js --reporters /path/to/adapter
+      // Wrong:   npm test -- --reporters /path/to/adapter file.test.js
+      
+      // Check if user already has -- separator
+      const separatorIndex = args.indexOf('--');
+      
+      if (separatorIndex !== -1) {
+        // User already has --, append our reporter at the END
+        // e.g., npm test -- file.test.js -> npm test -- file.test.js --reporters /path/to/adapter
         return [
-          ...args.slice(0, scriptIndex + 1),
-          '--',  // This is crucial for npm to pass arguments to the underlying command
-          '--reporters', adapterPath,
-          ...args.slice(scriptIndex + 1)
+          ...args,                      // All original arguments including test files
+          '--reporters', adapterPath     // Our reporter at the END
         ];
+      } else {
+        // No existing --, add it
+        const scriptIndex = args.findIndex(arg => arg === 'test' || arg.startsWith('test:'));
+        if (scriptIndex !== -1) {
+          return [
+            ...args.slice(0, scriptIndex + 1),
+            '--',  // Add separator
+            '--reporters', adapterPath,
+            ...args.slice(scriptIndex + 1)
+          ];
+        }
+        // Fallback for other npm scripts
+        return [...args, '--', '--reporters', adapterPath];
       }
-      // Fallback for other npm scripts
-      return [...args, '--', '--reporters', adapterPath];
     } else {
       // For direct jest/npx jest commands
+      // Also put reporters at the end for consistency
       return [...args, '--reporters', adapterPath];
     }
   }

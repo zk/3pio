@@ -15,6 +15,7 @@ export class ReportManager {
   private debouncedWrite: () => void;
   private outputParser: OutputParser;
   private logger: Logger;
+  private testFileOutputs: Map<string, string[]> = new Map();
 
   constructor(runId: string, testCommand: string, outputParser: OutputParser) {
     this.logger = Logger.create('report-manager');
@@ -117,6 +118,14 @@ export class ReportManager {
         );
         break;
 
+      case 'testFileStart':
+        this.logger.testFlow('Test file starting', event.payload.filePath);
+        // Update test file status to RUNNING
+        await this.updateTestFileStatus(
+          event.payload.filePath,
+          'RUNNING'
+        );
+        break;
       case 'testFileResult':
         this.logger.testFlow('Test file completed', event.payload.filePath, { status: event.payload.status });
         await this.updateTestFileStatus(
@@ -131,7 +140,19 @@ export class ReportManager {
   }
 
   /**
-   * Append output chunk to the unified output log
+   * Append output directly to output.log without creating individual log files
+   * Used for non-test-specific output like startup messages, warnings, etc.
+   */
+  async appendToOutputLog(chunk: string): Promise<void> {
+    if (this.outputLogHandle) {
+      await this.outputLogHandle.appendFile(chunk);
+    } else {
+      this.logger.warn('Output log handle not available, dropping chunk');
+    }
+  }
+
+  /**
+   * Append output chunk to the unified output log and collect per-file output
    */
   private async appendToLogFile(
     filePath: string,
@@ -150,6 +171,16 @@ export class ReportManager {
     } else {
       this.logger.warn('Output log handle not available, dropping chunk', { file: filePath });
     }
+    
+    // Also collect per-file output for individual log files
+    const fileName = path.basename(filePath);
+    if (!this.testFileOutputs.has(fileName)) {
+      this.testFileOutputs.set(fileName, []);
+    }
+    
+    // Add chunk to the file's output buffer
+    const prefix = isStderr ? '[stderr] ' : '';
+    this.testFileOutputs.get(fileName)!.push(prefix + chunk.trimEnd());
   }
 
   /**
@@ -256,10 +287,19 @@ export class ReportManager {
   /**
    * Get the current summary statistics
    */
-  getSummary(): { totalFiles: number; filesCompleted: number } {
+  getSummary(): { 
+    totalFiles: number; 
+    filesCompleted: number;
+    filesPassed: number;
+    filesFailed: number;
+    filesSkipped: number;
+  } {
     const summary = {
       totalFiles: this.state.totalFiles,
-      filesCompleted: this.state.filesCompleted
+      filesCompleted: this.state.filesCompleted,
+      filesPassed: this.state.filesPassed,
+      filesFailed: this.state.filesFailed,
+      filesSkipped: this.state.filesSkipped
     };
     this.logger.debug('Summary requested', summary);
     return summary;
@@ -316,17 +356,15 @@ export class ReportManager {
       // Create logs directory
       await fs.mkdir(this.logsDirectory, { recursive: true });
 
-      // Read the output.log file
-      this.logger.debug('Reading output.log for parsing');
-      const outputContent = await fs.readFile(this.outputLogPath, 'utf8');
+      // Use collected output from IPC events instead of parsing
+      this.logger.debug('Writing individual log files from collected output');
+      this.logger.info(`Collected output for ${this.testFileOutputs.size} test files`);
 
-      // Use the pluggable parser to parse the output
-      this.logger.debug('Parsing output with output parser');
-      const fileOutputs = this.outputParser.parseOutputIntoTestLogs(outputContent);
-      this.logger.info(`Parsed output into ${fileOutputs.size} test file logs`);
+      // Create a set of files that have been written
+      const writtenFiles = new Set<string>();
 
-      // Write individual log files
-      for (const [fileName, outputLines] of fileOutputs) {
+      // Write individual log files from collected output
+      for (const [fileName, outputLines] of this.testFileOutputs) {
         const sanitizedName = this.sanitizeFilePath(fileName);
         const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
         this.logger.debug('Writing test log file', { fileName, logPath, lines: outputLines.length });
@@ -342,6 +380,31 @@ export class ReportManager {
 
         const content = header + outputLines.join('\n') + '\n';
         await fs.writeFile(logPath, content);
+        writtenFiles.add(fileName);
+      }
+
+      // Ensure log files exist for all test files, even if no output was captured
+      // This is important for Jest which runs tests in worker processes where
+      // output isn't captured by the reporter
+      for (const testFile of this.state.testFiles) {
+        const fileName = path.basename(testFile.file);
+        if (!writtenFiles.has(fileName)) {
+          const sanitizedName = this.sanitizeFilePath(fileName);
+          const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
+          this.logger.debug('Creating empty log file for test without captured output', { fileName, logPath });
+
+          const header = [
+            `# File: ${fileName}`,
+            `# Timestamp: ${new Date().toISOString()}`,
+            `# This file contains all stdout/stderr output from the test file execution.`,
+            '# ---',
+            '',
+            '# No output captured for this test file.',
+            ''
+          ].join('\n');
+
+          await fs.writeFile(logPath, header);
+        }
       }
       this.logger.debug('All test log files written successfully');
     } catch (error) {

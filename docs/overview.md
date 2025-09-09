@@ -41,4 +41,7 @@ npm install -g @heyzk/3pio
 3pio npm test
 ```
 
-Reports are generated at `.3pio/runs/[timestamp]/test-run.md` with individual test logs in the `logs/` subdirectory.
+Reports are generated at `.3pio/runs/[timestamp]/` with:
+- `test-run.md`: Summary report with test status and links
+- `output.log`: Complete stdout/stderr from the entire test run
+- `logs/`: Individual test file logs containing only test-specific output

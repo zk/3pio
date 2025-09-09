@@ -48,6 +48,18 @@ export default class ThreePioJestReporter implements Reporter {
   onTestStart(test: Test): void {
     this.logger.testFlow('Starting test file', test.path);
     this.currentTestFile = test.path;
+    
+    // Send testFileStart event
+    this.logger.ipc('send', 'testFileStart', { filePath: test.path });
+    IPCManager.sendEvent({
+      eventType: 'testFileStart',
+      payload: {
+        filePath: test.path
+      }
+    }).catch(error => {
+      this.logger.error('Failed to send testFileStart', error);
+    });
+    
     this.startCapture();
   }
 
@@ -58,21 +70,41 @@ export default class ThreePioJestReporter implements Reporter {
   ): void {
     this.stopCapture();
 
+    // Check if console output is available (it should be, but it's always undefined)
+    if (testResult.console && testResult.console.length > 0) {
+      this.logger.info('Console output found in testResult!', { 
+        consoleLength: testResult.console.length 
+      });
+      // Send console output via IPC
+      for (const log of testResult.console) {
+        const chunk = `${log.message}\n`;
+        IPCManager.sendEvent({
+          eventType: log.type === 'error' ? 'stderrChunk' : 'stdoutChunk',
+          payload: {
+            filePath: test.path,
+            chunk
+          }
+        }).catch(() => {});
+      }
+    }
+
     // Send test file result
     const status = testResult.numFailingTests > 0 ? 'FAIL' : 
                    testResult.skipped ? 'SKIP' : 'PASS';
     
-    // Output to console like default reporter would
-    const testPath = test.path.replace(process.cwd() + '/', '');
-    console.log(`${status} ./${testPath}`);
-    
-    // Output test results
-    if (testResult.testResults) {
+    // Collect failed test details
+    const failedTests: Array<{ name: string; duration?: number }> = [];
+    if (testResult.testResults && status === 'FAIL') {
       for (const suite of testResult.testResults) {
-        if (suite.ancestorTitles.length > 0) {
-          console.log(`  ${suite.ancestorTitles.join(' › ')}`);
+        if (suite.status !== 'passed') {
+          const fullName = suite.ancestorTitles.length > 0 
+            ? `${suite.ancestorTitles.join(' › ')} › ${suite.title}`
+            : suite.title;
+          failedTests.push({
+            name: fullName,
+            duration: suite.duration
+          });
         }
-        console.log(`    ${suite.status === 'passed' ? '✓' : '✕'} ${suite.title} (${suite.duration || 0} ms)`);
       }
     }
     
@@ -88,7 +120,8 @@ export default class ThreePioJestReporter implements Reporter {
       eventType: 'testFileResult',
       payload: {
         filePath: test.path,
-        status
+        status,
+        failedTests: failedTests.length > 0 ? failedTests : undefined
       }
     }).catch(error => {
       this.logger.error('Failed to send testFileResult', error);
@@ -110,18 +143,7 @@ export default class ThreePioJestReporter implements Reporter {
       failedTests: results.numFailedTests
     });
     
-    // Output summary like default reporter
-    console.log('\nTest Suites:', 
-      results.numFailedTestSuites > 0 ? `${results.numFailedTestSuites} failed, ` : '',
-      `${results.numPassedTestSuites} passed, ${results.numTotalTestSuites} total`);
-    console.log('Tests:',
-      results.numFailedTests > 0 ? `${results.numFailedTests} failed, ` : '',
-      results.numPendingTests > 0 ? `${results.numPendingTests} skipped, ` : '',
-      `${results.numPassedTests} passed, ${results.numTotalTests} total`);
-    console.log('Snapshots:  ', results.snapshot ? 
-      `${results.snapshot.total} total` : '0 total');
-    console.log('Time:       ', 
-      `${((results.testResults[0]?.perfStats?.end || 0) - (results.testResults[0]?.perfStats?.start || 0)) / 1000}s`);
+    // Don't output summary here - the CLI will handle it
     
     // Ensure capture is stopped
     this.stopCapture();
