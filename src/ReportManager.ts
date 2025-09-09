@@ -69,14 +69,15 @@ export class ReportManager {
     this.logger.info(`Initializing state with ${testFiles.length} test files`);
     this.state.totalFiles = testFiles.length;
     this.state.testFiles = testFiles.map(filePath => {
+      // Normalize the file path by removing leading ./ and resolving to absolute
+      const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
+      
       // Convert absolute path to relative for display
-      const relativePath = filePath.startsWith(process.cwd())
-        ? path.relative(process.cwd(), filePath)
-        : filePath;
+      const relativePath = path.relative(process.cwd(), normalizedPath);
 
       return {
         status: 'PENDING' as const,
-        file: filePath,
+        file: normalizedPath,  // Store the normalized path for consistent comparison
         logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`
       };
     });
@@ -190,7 +191,15 @@ export class ReportManager {
     filePath: string,
     status: 'PASS' | 'FAIL' | 'SKIP'
   ): Promise<void> {
-    let testFile = this.state.testFiles.find(tf => tf.file === filePath);
+    // Normalize the file path for comparison
+    // Remove leading ./ and resolve to absolute path for consistent comparison
+    const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
+    
+    let testFile = this.state.testFiles.find(tf => {
+      // Normalize the stored path the same way for comparison
+      const normalizedStoredPath = path.resolve(tf.file.replace(/^\.\//, ''));
+      return normalizedStoredPath === normalizedPath;
+    });
 
     // If file wasn't in the initial list (e.g., Vitest couldn't do dry run),
     // add it dynamically
@@ -218,11 +227,28 @@ export class ReportManager {
       newStatus: status 
     });
 
-    // Update counters
-    this.state.filesCompleted++;
-    if (status === 'PASS') this.state.filesPassed++;
-    else if (status === 'FAIL') this.state.filesFailed++;
-    else if (status === 'SKIP') this.state.filesSkipped++;
+    // Only update counters if this is a new completion (not already in a terminal state)
+    const wasCompleted = previousStatus === 'PASS' || previousStatus === 'FAIL' || previousStatus === 'SKIP';
+    const isNowCompleted = status === 'PASS' || status === 'FAIL' || status === 'SKIP';
+    
+    if (!wasCompleted && isNowCompleted) {
+      // This is a new completion
+      this.state.filesCompleted++;
+      
+      if (status === 'PASS') this.state.filesPassed++;
+      else if (status === 'FAIL') this.state.filesFailed++;
+      else if (status === 'SKIP') this.state.filesSkipped++;
+    } else if (wasCompleted && isNowCompleted && previousStatus !== status) {
+      // Status changed from one terminal state to another (e.g., FAIL -> PASS)
+      // Adjust the counters
+      if (previousStatus === 'PASS') this.state.filesPassed--;
+      else if (previousStatus === 'FAIL') this.state.filesFailed--;
+      else if (previousStatus === 'SKIP') this.state.filesSkipped--;
+      
+      if (status === 'PASS') this.state.filesPassed++;
+      else if (status === 'FAIL') this.state.filesFailed++;
+      else if (status === 'SKIP') this.state.filesSkipped++;
+    }
     
     this.logger.debug('Test run progress', {
       completed: this.state.filesCompleted,
