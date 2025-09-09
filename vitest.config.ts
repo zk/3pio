@@ -29,6 +29,7 @@ export default defineConfig({
       'node_modules/**',
       'dist/**',
       'test-project/**',
+      'tests/fixtures/**',
       'tests/system/console-output/jest-project/**'
     ]
   },

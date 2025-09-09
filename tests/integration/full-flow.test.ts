@@ -121,26 +121,62 @@ describe('Full Integration Flow', () => {
       await reportManager.finalize(1); // Exit code 1 due to failure
       await ipcManager.cleanup();
       
-      // Verify final report
-      const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
-      const reportContent = await fs.readFile(reportPath, 'utf8');
+      // Verify all required files exist
+      const runDir = path.join(tempDir, '.3pio', 'runs', runId);
+      const reportPath = path.join(runDir, 'test-run.md');
+      const outputLogPath = path.join(runDir, 'output.log');
+      const logsDir = path.join(runDir, 'logs');
       
-      expect(reportContent).toContain('Status: COMPLETE'); // Even with test failures
+      expect(await fs.stat(reportPath)).toBeDefined();
+      expect(await fs.stat(outputLogPath)).toBeDefined();
+      expect(await fs.stat(logsDir)).toBeDefined();
+      
+      // Verify test-run.md content
+      const reportContent = await fs.readFile(reportPath, 'utf8');
+      expect(reportContent).toContain('# 3pio Test Run');
+      expect(reportContent).toContain('- Timestamp:');
+      expect(reportContent).toContain('- Status: COMPLETE'); // Even with test failures
+      expect(reportContent).toContain('## Summary');
       expect(reportContent).toContain('Files Completed: 3');
       expect(reportContent).toContain('Files Passed: 1');
       expect(reportContent).toContain('Files Failed: 1');
       expect(reportContent).toContain('Files Skipped: 1');
+      expect(reportContent).toContain('[Log](./logs/test1.js.log)');
+      expect(reportContent).toContain('[Log](./logs/test2.js.log)');
+      expect(reportContent).toContain('[Log](./logs/test3.js.log)');
+      expect(reportContent).toContain('[output.log](./output.log)');
       
-      // Verify log files
-      const log1Path = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test1.js.log');
+      // Verify output.log content
+      const outputLogContent = await fs.readFile(outputLogPath, 'utf8');
+      expect(outputLogContent).toContain('# 3pio Test Output Log');
+      expect(outputLogContent).toContain('# Timestamp:');
+      expect(outputLogContent).toContain('# Command: test command');
+      expect(outputLogContent).toContain('# This file contains all stdout/stderr output from the test run.');
+      expect(outputLogContent).toContain('# ---');
+      
+      // Verify individual log files
+      const log1Path = path.join(logsDir, 'test1.js.log');
       const log1Content = await fs.readFile(log1Path, 'utf8');
+      expect(log1Content).toContain('# File: test1.js');
+      expect(log1Content).toContain('# Timestamp:');
+      expect(log1Content).toContain('# This file contains all stdout/stderr output from the test file execution.');
+      expect(log1Content).toContain('# ---');
       expect(log1Content).toContain('Running test 1');
       expect(log1Content).toContain('Test 1 passed!');
       
-      const log2Path = path.join(tempDir, '.3pio', 'runs', runId, 'logs', 'test2.js.log');
+      const log2Path = path.join(logsDir, 'test2.js.log');
       const log2Content = await fs.readFile(log2Path, 'utf8');
+      expect(log2Content).toContain('# File: test2.js');
+      expect(log2Content).toContain('# Timestamp:');
+      expect(log2Content).toContain('# ---');
       expect(log2Content).toContain('Running test 2');
       expect(log2Content).toContain('Error: Test 2 failed');
+      
+      const log3Path = path.join(logsDir, 'test3.js.log');
+      const log3Content = await fs.readFile(log3Path, 'utf8');
+      expect(log3Content).toContain('# File: test3.js');
+      expect(log3Content).toContain('# Timestamp:');
+      expect(log3Content).toContain('# ---');
     });
   });
 
@@ -222,16 +258,38 @@ describe('Full Integration Flow', () => {
       await reportManager.finalize(0);
       await ipcManager.cleanup();
       
-      // Verify all events were processed
-      const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
-      const reportContent = await fs.readFile(reportPath, 'utf8');
+      // Verify all required files exist
+      const runDir = path.join(tempDir, '.3pio', 'runs', runId);
+      const reportPath = path.join(runDir, 'test-run.md');
+      const outputLogPath = path.join(runDir, 'output.log');
+      const logsDir = path.join(runDir, 'logs');
       
+      expect(await fs.stat(reportPath)).toBeDefined();
+      expect(await fs.stat(outputLogPath)).toBeDefined();
+      expect(await fs.stat(logsDir)).toBeDefined();
+      
+      // Verify test-run.md content
+      const reportContent = await fs.readFile(reportPath, 'utf8');
+      expect(reportContent).toContain('# 3pio Test Run');
+      expect(reportContent).toContain('- Timestamp:');
+      expect(reportContent).toContain('## Summary');
       expect(reportContent).toContain('Files Completed: 10');
       
-      // Check log files exist and have content
+      // Verify output.log exists and has header
+      const outputLogContent = await fs.readFile(outputLogPath, 'utf8');
+      expect(outputLogContent).toContain('# 3pio Test Output Log');
+      expect(outputLogContent).toContain('# Timestamp:');
+      expect(outputLogContent).toContain('# Command: concurrent test');
+      expect(outputLogContent).toContain('# ---');
+      
+      // Check individual log files exist and have proper headers
       for (let i = 0; i < 10; i++) {
-        const logPath = path.join(tempDir, '.3pio', 'runs', runId, 'logs', `test${i}.js.log`);
+        const logPath = path.join(logsDir, `test${i}.js.log`);
         const logContent = await fs.readFile(logPath, 'utf8');
+        expect(logContent).toContain(`# File: test${i}.js`);
+        expect(logContent).toContain('# Timestamp:');
+        expect(logContent).toContain('# This file contains all stdout/stderr output from the test file execution.');
+        expect(logContent).toContain('# ---');
         expect(logContent).toContain('Output line');
       }
     });
@@ -286,9 +344,32 @@ describe('Full Integration Flow', () => {
       await reportManager.finalize(0);
       await ipcManager.cleanup();
       
-      const reportPath = path.join(tempDir, '.3pio', 'runs', runId, 'test-run.md');
+      // Verify all required files exist despite errors
+      const runDir = path.join(tempDir, '.3pio', 'runs', runId);
+      const reportPath = path.join(runDir, 'test-run.md');
+      const outputLogPath = path.join(runDir, 'output.log');
+      const logsDir = path.join(runDir, 'logs');
+      
+      expect(await fs.stat(reportPath)).toBeDefined();
+      expect(await fs.stat(outputLogPath)).toBeDefined();
+      expect(await fs.stat(logsDir)).toBeDefined();
+      
+      // Verify test-run.md content
       const reportContent = await fs.readFile(reportPath, 'utf8');
+      expect(reportContent).toContain('# 3pio Test Run');
+      expect(reportContent).toContain('## Summary');
       expect(reportContent).toContain('Files Passed: 1');
+      
+      // Verify output.log has proper header
+      const outputLogContent = await fs.readFile(outputLogPath, 'utf8');
+      expect(outputLogContent).toContain('# 3pio Test Output Log');
+      expect(outputLogContent).toContain('# ---');
+      
+      // Verify log file exists
+      const logPath = path.join(logsDir, 'test.js.log');
+      const logContent = await fs.readFile(logPath, 'utf8');
+      expect(logContent).toContain('# File: test.js');
+      expect(logContent).toContain('# ---');
     });
   });
 });

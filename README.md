@@ -1,6 +1,8 @@
 # 3pio
 
-An AI-first test runner adapter that acts as a "protocol droid" for test frameworks. 3pio translates traditional test runner output (Jest, Vitest) into a format optimized for AI agents - providing persistent, structured, file-based records that are context-efficient and searchable.
+Your agent's context-concious test reporter for Jest and Vitest.
+
+3pio is an AI-first test runner that translates traditional test output into a format optimized for AI agents - providing persistent, structured, file-based records that are context-efficient and searchable.
 
 ## Installation
 
@@ -34,6 +36,7 @@ npm install @heyzk/3pio
 3pio generates structured reports in `.3pio/runs/[timestamp]/`:
 - `test-run.md` - Main report with test summary and results
 - `output.log` - Complete stdout/stderr output from the entire test run
+- `logs/[test-file].log - stdout/stderr output for specific test file run by test case
 
 ## Development
 
