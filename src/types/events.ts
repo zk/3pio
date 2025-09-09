@@ -21,6 +21,18 @@ export interface TestFileStartEvent {
   };
 }
 
+export interface TestCaseEvent {
+  eventType: 'testCase';
+  payload: {
+    filePath: string;
+    testName: string;
+    suiteName?: string;
+    status: 'PASS' | 'FAIL' | 'SKIP' | 'PENDING' | 'RUNNING';
+    duration?: number;
+    error?: string;
+  };
+}
+
 export interface TestFileResultEvent {
   eventType: 'testFileResult';
   payload: {
@@ -33,7 +45,15 @@ export interface TestFileResultEvent {
   };
 }
 
-export type IPCEvent = StdoutChunkEvent | StderrChunkEvent | TestFileStartEvent | TestFileResultEvent;
+export type IPCEvent = StdoutChunkEvent | StderrChunkEvent | TestFileStartEvent | TestFileResultEvent | TestCaseEvent;
+
+export interface TestCase {
+  name: string;
+  suite?: string;
+  status: 'PASS' | 'FAIL' | 'SKIP' | 'PENDING' | 'RUNNING';
+  duration?: number;
+  error?: string;
+}
 
 export interface TestRunState {
   timestamp: string;
@@ -49,5 +69,6 @@ export interface TestRunState {
     status: 'PENDING' | 'RUNNING' | 'PASS' | 'FAIL' | 'SKIP';
     file: string;
     logFile?: string;
+    testCases?: TestCase[];
   }>;
 }

@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import debounce from 'lodash.debounce';
-import { IPCEvent, TestRunState } from './types/events';
+import { IPCEvent, TestRunState, TestCase } from './types/events';
 import { OutputParser } from './runners/base/OutputParser';
 import { Logger } from './utils/logger';
 
@@ -12,10 +12,12 @@ export class ReportManager {
   private testRunPath: string;
   private state: TestRunState;
   private outputLogHandle: fs.FileHandle | null = null;
-  private debouncedWrite: () => void;
+  private debouncedWrite: (() => void) & { cancel: () => void };
   private outputParser: OutputParser;
   private logger: Logger;
   private testFileOutputs: Map<string, string[]> = new Map();
+  private testCaseOutputs: Map<string, Map<string, string[]>> = new Map();
+  private currentTestCase: Map<string, string> = new Map();
 
   constructor(runId: string, testCommand: string, outputParser: OutputParser) {
     this.logger = Logger.create('report-manager');
@@ -52,7 +54,7 @@ export class ReportManager {
         this.logger.error('Failed to write test run report', error);
         console.error(error);
       });
-    }, 250, { maxWait: 1000 });
+    }, 250, { maxWait: 1000 }) as (() => void) & { cancel: () => void };
   }
 
   /**
@@ -78,7 +80,8 @@ export class ReportManager {
       return {
         status: 'PENDING' as const,
         file: normalizedPath,  // Store the normalized path for consistent comparison
-        logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`
+        logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`,
+        testCases: []
       };
     });
 
@@ -122,11 +125,23 @@ export class ReportManager {
       case 'testFileStart':
         this.logger.testFlow('Test file starting', event.payload.filePath);
         // Update test file status to RUNNING
-        await this.updateTestFileStatus(
-          event.payload.filePath,
-          'RUNNING'
-        );
+        const normalizedPath = path.resolve(event.payload.filePath.replace(/^\.\//, ''));
+        let testFile = this.state.testFiles.find(tf => {
+          const normalizedStoredPath = path.resolve(tf.file.replace(/^\.\//, ''));
+          return normalizedStoredPath === normalizedPath;
+        });
+        
+        if (testFile) {
+          testFile.status = 'RUNNING';
+          this.state.updatedAt = new Date().toISOString();
+          this.debouncedWrite();
+        }
         break;
+      case 'testCase':
+        this.logger.testFlow('Test case event', event.payload.testName, { status: event.payload.status });
+        await this.handleTestCaseEvent(event.payload);
+        break;
+
       case 'testFileResult':
         this.logger.testFlow('Test file completed', event.payload.filePath, { status: event.payload.status });
         await this.updateTestFileStatus(
@@ -136,7 +151,7 @@ export class ReportManager {
         break;
         
       default:
-        this.logger.debug('Ignoring unknown event type', { type: event.eventType });
+        this.logger.debug('Ignoring unknown event type', { type: (event as any).eventType });
     }
   }
 
@@ -150,6 +165,76 @@ export class ReportManager {
     } else {
       this.logger.warn('Output log handle not available, dropping chunk');
     }
+  }
+
+  /**
+   * Handle test case events
+   */
+  private async handleTestCaseEvent(payload: {
+    filePath: string;
+    testName: string;
+    suiteName?: string;
+    status: 'PASS' | 'FAIL' | 'SKIP' | 'PENDING' | 'RUNNING';
+    duration?: number;
+    error?: string;
+  }): Promise<void> {
+    const normalizedPath = path.resolve(payload.filePath.replace(/^\.\//, ''));
+    
+    let testFile = this.state.testFiles.find(tf => {
+      const normalizedStoredPath = path.resolve(tf.file.replace(/^\.\//, ''));
+      return normalizedStoredPath === normalizedPath;
+    });
+
+    if (!testFile) {
+      // Add file dynamically if not found
+      const relativePath = path.relative(process.cwd(), normalizedPath);
+      testFile = {
+        file: normalizedPath,
+        logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`,
+        status: 'PENDING',
+        testCases: []
+      };
+      this.state.testFiles.push(testFile);
+      this.state.totalFiles++;
+    }
+
+    if (!testFile.testCases) {
+      testFile.testCases = [];
+    }
+
+    // Find or create test case
+    const testFullName = payload.suiteName 
+      ? `${payload.suiteName} › ${payload.testName}`
+      : payload.testName;
+    
+    let testCase = testFile.testCases.find(tc => tc.name === testFullName);
+    
+    if (!testCase) {
+      testCase = {
+        name: testFullName,
+        suite: payload.suiteName,
+        status: payload.status,
+        duration: payload.duration,
+        error: payload.error
+      };
+      testFile.testCases.push(testCase);
+    } else {
+      // Update existing test case
+      testCase.status = payload.status;
+      if (payload.duration !== undefined) testCase.duration = payload.duration;
+      if (payload.error !== undefined) testCase.error = payload.error;
+    }
+
+    // Track current test case for output demarcation
+    if (payload.status === 'RUNNING') {
+      this.currentTestCase.set(payload.filePath, testFullName);
+    } else if (payload.status !== 'PENDING') {
+      this.currentTestCase.delete(payload.filePath);
+    }
+
+    // Update timestamp and trigger debounced write
+    this.state.updatedAt = new Date().toISOString();
+    this.debouncedWrite();
   }
 
   /**
@@ -173,10 +258,24 @@ export class ReportManager {
       this.logger.warn('Output log handle not available, dropping chunk', { file: filePath });
     }
     
-    // Also collect per-file output for individual log files
+    // Collect per-file output for individual log files
     const fileName = path.basename(filePath);
     if (!this.testFileOutputs.has(fileName)) {
       this.testFileOutputs.set(fileName, []);
+    }
+    
+    // If we have a current test case, also track output per test case
+    const currentTest = this.currentTestCase.get(filePath);
+    if (currentTest) {
+      if (!this.testCaseOutputs.has(fileName)) {
+        this.testCaseOutputs.set(fileName, new Map());
+      }
+      const testOutputs = this.testCaseOutputs.get(fileName)!;
+      if (!testOutputs.has(currentTest)) {
+        testOutputs.set(currentTest, []);
+      }
+      const prefix = isStderr ? '[stderr] ' : '';
+      testOutputs.get(currentTest)!.push(prefix + chunk.trimEnd());
     }
     
     // Add chunk to the file's output buffer
@@ -212,7 +311,8 @@ export class ReportManager {
       testFile = {
         file: filePath,
         logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`,
-        status: 'PENDING'
+        status: 'PENDING',
+        testCases: []
       };
       this.state.testFiles.push(testFile);
       this.state.totalFiles++;
@@ -270,7 +370,6 @@ export class ReportManager {
    */
   private async writeTestRunReport(): Promise<void> {
     this.logger.debug('Writing test run report to', { path: this.testRunPath });
-    // Removed emoji function - no longer using emojis in output
 
     // Convert absolute paths to relative paths for display
     const getRelativePath = (filePath: string): string => {
@@ -281,27 +380,96 @@ export class ReportManager {
       return filePath;
     };
 
+    const formatStatus = (status: string): string => {
+      const statusMap: Record<string, string> = {
+        'PASS': '✓',
+        'FAIL': '✕',
+        'SKIP': '○',
+        'PENDING': '⋯',
+        'RUNNING': '▶'
+      };
+      return statusMap[status] || status;
+    };
+
+    const formatDuration = (ms?: number): string => {
+      if (!ms) return '';
+      if (ms < 1000) return `(${ms} ms)`;
+      return `(${(ms / 1000).toFixed(2)} s)`;
+    };
+
+    // Build test results sections
+    const testFileSections: string[] = [];
+    
+    for (const tf of this.state.testFiles) {
+      const relativePath = getRelativePath(tf.file);
+      const lines: string[] = [];
+      
+      lines.push(`## ${relativePath}`);
+      lines.push(`Status: **${tf.status}** | [Log](${tf.logFile})`);
+      lines.push('');
+      
+      if (tf.testCases && tf.testCases.length > 0) {
+        // Group test cases by suite
+        const suites = new Map<string | undefined, TestCase[]>();
+        for (const tc of tf.testCases) {
+          const suite = tc.suite || '';
+          if (!suites.has(suite)) {
+            suites.set(suite, []);
+          }
+          suites.get(suite)!.push(tc);
+        }
+        
+        // Render test cases
+        for (const [suite, tests] of suites) {
+          if (suite) {
+            lines.push(`### ${suite}`);
+          }
+          
+          for (const test of tests) {
+            const status = formatStatus(test.status);
+            const duration = formatDuration(test.duration);
+            const testName = suite ? test.name.replace(`${suite} › `, '') : test.name;
+            lines.push(`  ${status} ${testName} ${duration}`);
+            
+            if (test.error) {
+              // Indent error message
+              const errorLines = test.error.split('\n');
+              for (const errorLine of errorLines) {
+                lines.push(`      ${errorLine}`);
+              }
+            }
+          }
+          lines.push('');
+        }
+      } else if (tf.status === 'RUNNING') {
+        lines.push('  ▶ Running...');
+        lines.push('');
+      } else if (tf.status === 'PENDING') {
+        lines.push('  ⋯ Pending');
+        lines.push('');
+      }
+      
+      testFileSections.push(lines.join('\n'));
+    }
+
     const markdown = [
-      '# 3pio Test Run Summary',
+      '# 3pio Test Run',
       '',
       `- Timestamp: ${this.state.timestamp}`,
       `- Status: ${this.state.status} (updated ${this.state.updatedAt})`,
       `- Arguments: \`${this.state.arguments}\``,
       '',
-      `## Summary (updated ${this.state.updatedAt})`,
+      `## Summary`,
       `- Total Files: ${this.state.totalFiles}`,
       `- Files Completed: ${this.state.filesCompleted}`,
       `- Files Passed: ${this.state.filesPassed}`,
       `- Files Failed: ${this.state.filesFailed}`,
       `- Files Skipped: ${this.state.filesSkipped}`,
       '',
-      '## Test Files',
-      '| Status | File | Log File |',
-      '| --- | --- | --- |',
-      ...this.state.testFiles.map(tf =>
-        `| ${tf.status} | \`${getRelativePath(tf.file)}\` | [details](${tf.logFile}) |`
-      ),
+      '---',
       '',
+      ...testFileSections,
+      '---',
       '',
       `Full test output: [output.log](./output.log)`
     ].join('\n');
@@ -389,22 +557,64 @@ export class ReportManager {
       // Create a set of files that have been written
       const writtenFiles = new Set<string>();
 
-      // Write individual log files from collected output
+      // Write individual log files with test case demarcation
       for (const [fileName, outputLines] of this.testFileOutputs) {
         const sanitizedName = this.sanitizeFilePath(fileName);
         const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
         this.logger.debug('Writing test log file', { fileName, logPath, lines: outputLines.length });
 
-        const header = [
-          `# File: ${fileName}`,
-          `# Timestamp: ${new Date().toISOString()}`,
-          `# This file contains all stdout/stderr output from the test file execution.`,
-          '# ---',
-          '',
-          ''
-        ].join('\n');
+        const lines: string[] = [];
+        lines.push(`# File: ${fileName}`);
+        lines.push(`# Timestamp: ${new Date().toISOString()}`);
+        lines.push(`# This file contains all stdout/stderr output from the test file execution.`);
+        lines.push('# ---');
+        lines.push('');
 
-        const content = header + outputLines.join('\n') + '\n';
+        // If we have test case outputs, organize by test case
+        const testCaseOutputs = this.testCaseOutputs.get(fileName);
+        if (testCaseOutputs && testCaseOutputs.size > 0) {
+          lines.push('## Test Case Output');
+          lines.push('');
+          
+          for (const [testName, testOutput] of testCaseOutputs) {
+            lines.push(`### ${testName}`);
+            lines.push('');
+            if (testOutput.length > 0) {
+              lines.push(...testOutput);
+            } else {
+              lines.push('(no output)');
+            }
+            lines.push('');
+            lines.push('---');
+            lines.push('');
+          }
+          
+          // Add any remaining output not attributed to specific tests
+          const remainingOutput = outputLines.filter(line => {
+            // Check if this line was already included in test-specific output
+            for (const testOutput of testCaseOutputs.values()) {
+              if (testOutput.includes(line)) return false;
+            }
+            return true;
+          });
+          
+          if (remainingOutput.length > 0) {
+            lines.push('## Other Output');
+            lines.push('');
+            lines.push(...remainingOutput);
+            lines.push('');
+          }
+        } else {
+          // No test case demarcation, write all output
+          if (outputLines.length > 0) {
+            lines.push(...outputLines);
+          } else {
+            lines.push('# No output captured for this test file.');
+          }
+          lines.push('');
+        }
+
+        const content = lines.join('\n');
         await fs.writeFile(logPath, content);
         writtenFiles.add(fileName);
       }

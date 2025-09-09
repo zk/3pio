@@ -1,6 +1,6 @@
 import { IPCManager } from '../ipc';
 import { Logger } from '../utils/logger';
-import type { File, Reporter, Vitest } from 'vitest';
+import type { File, Reporter, Task, Test, Suite, Vitest } from 'vitest';
 
 const packageJson = require('../../package.json');
 
@@ -46,14 +46,14 @@ export default class ThreePioVitestReporter implements Reporter {
     this.startCapture();
   }
 
-  onPathsCollected(paths: string[]): void {
+  onPathsCollected(paths?: string[]): void {
     // Called when test files are discovered
-    this.logger.info('Test paths collected', { count: paths.length });
+    this.logger.info('Test paths collected', { count: paths?.length || 0 });
   }
 
-  onCollected(files: File[]): void {
+  onCollected(files?: File[]): void {
     // Called when test files are collected
-    this.logger.info('Test files collected', { count: files.length });
+    this.logger.info('Test files collected', { count: files?.length || 0 });
   }
 
   onTestFileStart(file: File): void {
@@ -65,6 +65,11 @@ export default class ThreePioVitestReporter implements Reporter {
   onTestFileResult(file: File): void {
     this.stopCapture();
 
+    // Send individual test case results
+    if (file.tasks) {
+      this.sendTestCaseEvents(file.filepath, file.tasks);
+    }
+
     // Determine status from file result
     let status: 'PASS' | 'FAIL' | 'SKIP' = 'PASS';
     
@@ -75,7 +80,7 @@ export default class ThreePioVitestReporter implements Reporter {
     }
     
     const testStats = file.result ? {
-      tests: file.result.tests?.length || 0,
+      tests: (file.result as any).tests?.length || 0,
       duration: file.result.duration || 0,
       state: file.result.state
     } : {};
@@ -96,6 +101,53 @@ export default class ThreePioVitestReporter implements Reporter {
     this.currentTestFile = null;
   }
 
+  private sendTestCaseEvents(filePath: string, tasks: Task[]): void {
+    for (const task of tasks) {
+      if (task.type === 'test') {
+        // This is a test case
+        const test = task as Test;
+        const suiteName = test.suite?.name;
+        let status: 'PASS' | 'FAIL' | 'SKIP' = 'PASS';
+        
+        if (test.result?.state === 'fail') {
+          status = 'FAIL';
+        } else if (test.result?.state === 'skip' || test.mode === 'skip') {
+          status = 'SKIP';
+        }
+        
+        const error = test.result?.errors?.map(e => 
+          typeof e === 'string' ? e : (e as any).message || String(e)
+        ).join('\n\n');
+        
+        this.logger.testFlow('Sending test case event', test.name, { 
+          suite: suiteName,
+          status,
+          duration: test.result?.duration
+        });
+        
+        IPCManager.sendEvent({
+          eventType: 'testCase',
+          payload: {
+            filePath,
+            testName: test.name,
+            suiteName,
+            status,
+            duration: test.result?.duration,
+            error
+          }
+        }).catch(error => {
+          this.logger.error('Failed to send testCase event', error);
+        });
+      } else if (task.type === 'suite') {
+        // This is a test suite, recurse into its tasks
+        const suite = task as Suite;
+        if (suite.tasks) {
+          this.sendTestCaseEvents(filePath, suite.tasks);
+        }
+      }
+    }
+  }
+
   async onFinished(files?: File[], errors?: unknown[]): Promise<void> {
     this.logger.lifecycle('Test run finishing', { 
       files: files?.length || 0,
@@ -110,6 +162,11 @@ export default class ThreePioVitestReporter implements Reporter {
       this.logger.info('Processing files in onFinished (fallback mode)', { count: files.length });
       
       for (const file of files) {
+        // Send test case events first
+        if (file.tasks) {
+          this.sendTestCaseEvents(file.filepath, file.tasks);
+        }
+        
         let status: 'PASS' | 'FAIL' | 'SKIP' = 'PASS';
         
         if (file.result?.state === 'fail') {

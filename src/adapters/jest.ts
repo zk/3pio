@@ -45,6 +45,65 @@ export default class ThreePioJestReporter implements Reporter {
     this.logger.initComplete({ ipcPath });
   }
 
+  onTestCaseStart(test: Test, testCaseStartInfo: any): void {
+    // Send test case start event
+    if (testCaseStartInfo?.ancestorTitles && testCaseStartInfo?.title) {
+      const suiteName = testCaseStartInfo.ancestorTitles.join(' › ');
+      const testName = testCaseStartInfo.title;
+      
+      this.logger.testFlow('Test case starting', testName, { suite: suiteName });
+      
+      IPCManager.sendEvent({
+        eventType: 'testCase',
+        payload: {
+          filePath: test.path,
+          testName,
+          suiteName: suiteName || undefined,
+          status: 'RUNNING'
+        }
+      }).catch(error => {
+        this.logger.error('Failed to send testCase start', error);
+      });
+    }
+  }
+
+  onTestCaseResult(test: Test, testCaseResult: any): void {
+    // Send test case result event
+    if (testCaseResult) {
+      const suiteName = testCaseResult.ancestorTitles?.join(' › ');
+      const testName = testCaseResult.title;
+      let status: 'PASS' | 'FAIL' | 'SKIP' = 'PASS';
+      
+      if (testCaseResult.status === 'failed') {
+        status = 'FAIL';
+      } else if (testCaseResult.status === 'skipped' || testCaseResult.status === 'pending') {
+        status = 'SKIP';
+      }
+      
+      const error = testCaseResult.failureMessages?.join('\n\n');
+      
+      this.logger.testFlow('Test case completed', testName, { 
+        suite: suiteName,
+        status,
+        duration: testCaseResult.duration
+      });
+      
+      IPCManager.sendEvent({
+        eventType: 'testCase',
+        payload: {
+          filePath: test.path,
+          testName,
+          suiteName: suiteName || undefined,
+          status,
+          duration: testCaseResult.duration,
+          error
+        }
+      }).catch(error => {
+        this.logger.error('Failed to send testCase result', error);
+      });
+    }
+  }
+
   onTestStart(test: Test): void {
     this.logger.testFlow('Starting test file', test.path);
     this.currentTestFile = test.path;
@@ -92,7 +151,37 @@ export default class ThreePioJestReporter implements Reporter {
     const status = testResult.numFailingTests > 0 ? 'FAIL' : 
                    testResult.skipped ? 'SKIP' : 'PASS';
     
-    // Collect failed test details
+    // Send individual test case results if not already sent
+    if (testResult.testResults) {
+      for (const testCase of testResult.testResults) {
+        const suiteName = testCase.ancestorTitles?.join(' › ');
+        const testName = testCase.title;
+        let testStatus: 'PASS' | 'FAIL' | 'SKIP' = 'PASS';
+        
+        if (testCase.status === 'failed') {
+          testStatus = 'FAIL';
+        } else if (testCase.status === 'skipped' || testCase.status === 'pending') {
+          testStatus = 'SKIP';
+        }
+        
+        const error = testCase.failureMessages?.join('\n\n');
+        
+        // Send test case event
+        IPCManager.sendEvent({
+          eventType: 'testCase',
+          payload: {
+            filePath: test.path,
+            testName,
+            suiteName: suiteName || undefined,
+            status: testStatus,
+            duration: testCase.duration,
+            error
+          }
+        }).catch(() => {});
+      }
+    }
+    
+    // Collect failed test details for backward compatibility
     const failedTests: Array<{ name: string; duration?: number }> = [];
     if (testResult.testResults && status === 'FAIL') {
       for (const suite of testResult.testResults) {
