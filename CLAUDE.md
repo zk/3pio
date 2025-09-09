@@ -10,12 +10,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Components
 1. **CLI Orchestrator** (`src/cli.ts`) - Main entry point, manages test lifecycle
-2. **Report Manager** (`src/ReportManager.ts`) - Handles all report file I/O with debounced writes
+2. **Report Manager** (`src/ReportManager.ts`) - Handles all report file I/O with incremental writing and debouncing
 3. **IPC Manager** (`src/ipc.ts`) - File-based communication between adapters and CLI
 4. **Test Runner Adapters** (`src/adapters/`) - Silent reporters running inside test processes
 
 ### Data Flow
-- CLI attempts dry run (optional) → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs → final report at `.3pio/runs/[timestamp]-[memorable-name]/test-run.md`
+- CLI attempts dry run (optional) → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs incrementally → final report at `.3pio/runs/[timestamp]-[memorable-name]/test-run.md`
+
+### Incremental Log Writing
+- Individual test log files are created immediately when a test file is registered
+- Output is written incrementally to log files with debouncing (100ms delay, 500ms max wait)
+- File handles are kept open during test execution for efficiency
+- Partial results are available even if the test run is interrupted (e.g., Ctrl+C)
+- All file handles are properly closed and buffers flushed during finalization
 
 ### Test Discovery Modes
 - **Static Discovery**: When test files can be determined upfront (e.g., explicit file arguments, Jest --listTests)

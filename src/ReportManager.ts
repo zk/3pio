@@ -15,9 +15,12 @@ export class ReportManager {
   private debouncedWrite: (() => void) & { cancel: () => void };
   private outputParser: OutputParser;
   private logger: Logger;
-  private testFileOutputs: Map<string, string[]> = new Map();
-  private testCaseOutputs: Map<string, Map<string, string[]>> = new Map();
   private currentTestCase: Map<string, string> = new Map();
+  
+  // File handle management for incremental writing
+  private testFileHandles: Map<string, fs.FileHandle> = new Map();
+  private testFileBuffers: Map<string, string[]> = new Map();
+  private debouncedFileWrites: Map<string, (() => void) & { cancel: () => void }> = new Map();
 
   constructor(runId: string, testCommand: string, outputParser: OutputParser) {
     this.logger = Logger.create('report-manager');
@@ -70,6 +73,10 @@ export class ReportManager {
     // Create directories
     this.logger.debug('Creating report directories');
     await fs.mkdir(this.runDirectory, { recursive: true });
+    
+    // Create logs directory immediately for incremental writing
+    this.logger.debug('Creating logs directory', { path: this.logsDirectory });
+    await fs.mkdir(this.logsDirectory, { recursive: true });
 
     // Initialize state with pending test files (if any provided)
     if (testFiles.length > 0) {
@@ -78,20 +85,59 @@ export class ReportManager {
       this.logger.info('No test files provided, will discover dynamically');
     }
     this.state.totalFiles = testFiles.length;
-    this.state.testFiles = testFiles.map(filePath => {
+    this.state.testFiles = [];
+    
+    // Process each test file and open file handles immediately
+    for (const filePath of testFiles) {
       // Normalize the file path by removing leading ./ and resolving to absolute
       const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
       
       // Convert absolute path to relative for display
       const relativePath = path.relative(process.cwd(), normalizedPath);
 
-      return {
+      this.state.testFiles.push({
         status: 'PENDING' as const,
         file: normalizedPath,  // Store the normalized path for consistent comparison
         logFile: `./logs/${this.sanitizeFilePath(relativePath)}.log`,
         testCases: []
-      };
-    });
+      });
+      
+      // Open file handle for incremental writing
+      const logFileName = `${this.sanitizeFilePath(relativePath)}.log`;
+      const logPath = path.join(this.logsDirectory, logFileName);
+      
+      try {
+        this.logger.debug('Opening file handle for test log', { file: filePath, logPath });
+        const handle = await fs.open(logPath, 'w');
+        this.testFileHandles.set(relativePath, handle);
+        
+        // Write header immediately
+        const header = [
+          `# File: ${relativePath}`,
+          `# Timestamp: ${new Date().toISOString()}`,
+          `# This file contains all stdout/stderr output from the test file execution.`,
+          '# ---',
+          '',
+        ].join('\n');
+        
+        await handle.writeFile(header);
+        
+        // Initialize buffer for this file
+        this.testFileBuffers.set(relativePath, []);
+        
+        // Create per-file debounced write function (100ms delay, 500ms max wait)
+        const flushBuffer = async () => {
+          await this.flushFileBuffer(relativePath);
+        };
+        
+        this.debouncedFileWrites.set(
+          relativePath,
+          debounce(flushBuffer, 100, { maxWait: 500 }) as (() => void) & { cancel: () => void }
+        );
+      } catch (error) {
+        this.logger.error('Failed to open file handle for test log', { file: filePath, error });
+      }
+    }
 
     // Create output.log with header
     const header = [
@@ -118,7 +164,7 @@ export class ReportManager {
    * Ensure a test file is registered in the state
    * Called when we receive the first event for a file during dynamic discovery
    */
-  private ensureTestFileRegistered(filePath: string): void {
+  private async ensureTestFileRegistered(filePath: string): Promise<void> {
     // Normalize the file path
     const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
     
@@ -145,6 +191,42 @@ export class ReportManager {
       // Update total count
       this.state.totalFiles = this.state.testFiles.length;
       
+      // Open file handle for incremental writing
+      const logFileName = `${this.sanitizeFilePath(relativePath)}.log`;
+      const logPath = path.join(this.logsDirectory, logFileName);
+      
+      try {
+        this.logger.debug('Opening file handle for test log', { file: filePath, logPath });
+        const handle = await fs.open(logPath, 'w');
+        this.testFileHandles.set(relativePath, handle);
+        
+        // Write header immediately
+        const header = [
+          `# File: ${relativePath}`,
+          `# Timestamp: ${new Date().toISOString()}`,
+          `# This file contains all stdout/stderr output from the test file execution.`,
+          '# ---',
+          '',
+        ].join('\n');
+        
+        await handle.writeFile(header);
+        
+        // Initialize buffer for this file
+        this.testFileBuffers.set(relativePath, []);
+        
+        // Create per-file debounced write function (100ms delay, 500ms max wait)
+        const flushBuffer = async () => {
+          await this.flushFileBuffer(relativePath);
+        };
+        
+        this.debouncedFileWrites.set(
+          relativePath,
+          debounce(flushBuffer, 100, { maxWait: 500 }) as (() => void) & { cancel: () => void }
+        );
+      } catch (error) {
+        this.logger.error('Failed to open file handle for test log', { file: filePath, error });
+      }
+      
       // Trigger report update
       this.state.updatedAt = new Date().toISOString();
       this.debouncedWrite();
@@ -162,7 +244,7 @@ export class ReportManager {
       case 'stderrChunk':
         // Ensure file is registered (for dynamic discovery)
         if (event.payload.filePath) {
-          this.ensureTestFileRegistered(event.payload.filePath);
+          await this.ensureTestFileRegistered(event.payload.filePath);
         }
         await this.appendToLogFile(
           event.payload.filePath,
@@ -174,7 +256,7 @@ export class ReportManager {
       case 'testFileStart':
         this.logger.testFlow('Test file starting', event.payload.filePath);
         // Ensure file is registered (for dynamic discovery)
-        this.ensureTestFileRegistered(event.payload.filePath);
+        await this.ensureTestFileRegistered(event.payload.filePath);
         
         // Update test file status to RUNNING
         const normalizedPath = path.resolve(event.payload.filePath.replace(/^\.\//, ''));
@@ -193,7 +275,7 @@ export class ReportManager {
         this.logger.testFlow('Test case event', event.payload.testName, { status: event.payload.status });
         // Ensure file is registered (for dynamic discovery)
         if (event.payload.filePath) {
-          this.ensureTestFileRegistered(event.payload.filePath);
+          await this.ensureTestFileRegistered(event.payload.filePath);
         }
         await this.handleTestCaseEvent(event.payload);
         break;
@@ -201,7 +283,7 @@ export class ReportManager {
       case 'testFileResult':
         this.logger.testFlow('Test file completed', event.payload.filePath, { status: event.payload.status });
         // Ensure file is registered (for dynamic discovery)
-        this.ensureTestFileRegistered(event.payload.filePath);
+        await this.ensureTestFileRegistered(event.payload.filePath);
         await this.updateTestFileStatus(
           event.payload.filePath,
           event.payload.status
@@ -287,6 +369,39 @@ export class ReportManager {
     if (payload.status === 'RUNNING') {
       this.currentTestCase.set(payload.filePath, testFullName);
     } else if (payload.status !== 'PENDING') {
+      // Test case completed - add completion marker to buffer
+      const normalizedPath = path.resolve(payload.filePath.replace(/^\.\//, ''));
+      const relativePath = path.relative(process.cwd(), normalizedPath);
+      const buffer = this.testFileBuffers.get(relativePath);
+      
+      if (buffer && this.currentTestCase.get(payload.filePath) === testFullName) {
+        // Add test result marker
+        const statusSymbol = payload.status === 'PASS' ? '✓' : 
+                           payload.status === 'FAIL' ? '✕' :
+                           payload.status === 'SKIP' ? '○' : '';
+        if (statusSymbol) {
+          buffer.push('');
+          buffer.push(`Test ${statusSymbol} ${testFullName}`);
+          if (payload.duration) {
+            buffer.push(`Duration: ${payload.duration}ms`);
+          }
+          if (payload.error) {
+            buffer.push('Error:');
+            const errorLines = payload.error.split('\n');
+            for (const line of errorLines) {
+              buffer.push(`  ${line}`);
+            }
+          }
+          buffer.push('---');
+          
+          // Trigger debounced write
+          const debouncedWrite = this.debouncedFileWrites.get(relativePath);
+          if (debouncedWrite) {
+            debouncedWrite();
+          }
+        }
+      }
+      
       this.currentTestCase.delete(payload.filePath);
     }
 
@@ -296,7 +411,7 @@ export class ReportManager {
   }
 
   /**
-   * Append output chunk to the unified output log and collect per-file output
+   * Append output chunk to the unified output log and write incrementally to test file logs
    */
   private async appendToLogFile(
     filePath: string,
@@ -316,29 +431,36 @@ export class ReportManager {
       this.logger.warn('Output log handle not available, dropping chunk', { file: filePath });
     }
     
-    // Collect per-file output for individual log files
-    const fileName = path.basename(filePath);
-    if (!this.testFileOutputs.has(fileName)) {
-      this.testFileOutputs.set(fileName, []);
-    }
+    // Get the relative path for the file
+    const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
+    const relativePath = path.relative(process.cwd(), normalizedPath);
     
-    // If we have a current test case, also track output per test case
-    const currentTest = this.currentTestCase.get(filePath);
-    if (currentTest) {
-      if (!this.testCaseOutputs.has(fileName)) {
-        this.testCaseOutputs.set(fileName, new Map());
+    // Add to buffer for incremental writing to individual log files
+    const buffer = this.testFileBuffers.get(relativePath);
+    if (buffer) {
+      // Add test case boundary markers if we have a current test case
+      const currentTest = this.currentTestCase.get(filePath);
+      if (currentTest && !buffer.some(line => line.includes(`### ${currentTest}`))) {
+        buffer.push('');
+        buffer.push(`### ${currentTest}`);
+        buffer.push('');
       }
-      const testOutputs = this.testCaseOutputs.get(fileName)!;
-      if (!testOutputs.has(currentTest)) {
-        testOutputs.set(currentTest, []);
-      }
+      
+      // Add the output chunk with optional stderr prefix
       const prefix = isStderr ? '[stderr] ' : '';
-      testOutputs.get(currentTest)!.push(prefix + chunk.trimEnd());
+      const lines = chunk.trimEnd().split('\n');
+      for (const line of lines) {
+        buffer.push(prefix + line);
+      }
+      
+      // Trigger debounced write for this file
+      const debouncedWrite = this.debouncedFileWrites.get(relativePath);
+      if (debouncedWrite) {
+        debouncedWrite();
+      }
+    } else {
+      this.logger.debug('No buffer found for file, output will not be incrementally written', { file: relativePath });
     }
-    
-    // Add chunk to the file's output buffer
-    const prefix = isStderr ? '[stderr] ' : '';
-    this.testFileOutputs.get(fileName)!.push(prefix + chunk.trimEnd());
   }
 
   /**
@@ -563,6 +685,34 @@ export class ReportManager {
   async finalize(exitCode: number): Promise<void> {
     this.logger.lifecycle('Finalizing report', { exitCode });
     
+    // Cancel all pending debounced writes for individual files
+    this.logger.debug('Canceling all pending debounced file writes');
+    for (const [file, debouncedWrite] of this.debouncedFileWrites) {
+      debouncedWrite.cancel();
+    }
+    
+    // Flush all remaining buffers
+    this.logger.debug('Flushing all remaining buffers');
+    for (const [relativePath] of this.testFileBuffers) {
+      await this.flushFileBuffer(relativePath);
+    }
+    
+    // Close all test file handles
+    this.logger.debug('Closing all test file handles');
+    for (const [file, handle] of this.testFileHandles) {
+      try {
+        await handle.close();
+        this.logger.debug('Closed file handle', { file });
+      } catch (error) {
+        this.logger.error('Failed to close file handle', { file, error });
+      }
+    }
+    
+    // Clear all maps
+    this.testFileHandles.clear();
+    this.testFileBuffers.clear();
+    this.debouncedFileWrites.clear();
+    
     // Close the output log handle
     if (this.outputLogHandle) {
       this.logger.debug('Closing output log file handle');
@@ -570,9 +720,7 @@ export class ReportManager {
       this.outputLogHandle = null;
     }
 
-    // Parse output.log into individual test file logs
-    this.logger.info('Parsing output into individual test logs');
-    await this.parseOutputIntoTestLogs();
+    // Individual log files have been written incrementally, no need to parse output.log
 
     // Update state
     // Only set ERROR if the test runner itself had an error (exit codes like 127, etc.)
@@ -599,112 +747,82 @@ export class ReportManager {
     this.logger.lifecycle('Report finalization complete');
   }
 
+
   /**
-   * Parse output.log into individual test file logs using the pluggable parser
+   * Flush buffered content to a specific test file
    */
-  private async parseOutputIntoTestLogs(): Promise<void> {
+  private async flushFileBuffer(relativePath: string): Promise<void> {
+    const buffer = this.testFileBuffers.get(relativePath);
+    const handle = this.testFileHandles.get(relativePath);
+    
+    if (!buffer || !handle || buffer.length === 0) {
+      return;
+    }
+    
     try {
-      this.logger.debug('Creating logs directory', { path: this.logsDirectory });
-      // Create logs directory
-      await fs.mkdir(this.logsDirectory, { recursive: true });
-
-      // Use collected output from IPC events instead of parsing
-      this.logger.debug('Writing individual log files from collected output');
-      this.logger.info(`Collected output for ${this.testFileOutputs.size} test files`);
-
-      // Create a set of files that have been written
-      const writtenFiles = new Set<string>();
-
-      // Write individual log files with test case demarcation
-      for (const [fileName, outputLines] of this.testFileOutputs) {
-        const sanitizedName = this.sanitizeFilePath(fileName);
-        const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
-        this.logger.debug('Writing test log file', { fileName, logPath, lines: outputLines.length });
-
-        const lines: string[] = [];
-        lines.push(`# File: ${fileName}`);
-        lines.push(`# Timestamp: ${new Date().toISOString()}`);
-        lines.push(`# This file contains all stdout/stderr output from the test file execution.`);
-        lines.push('# ---');
-        lines.push('');
-
-        // If we have test case outputs, organize by test case
-        const testCaseOutputs = this.testCaseOutputs.get(fileName);
-        if (testCaseOutputs && testCaseOutputs.size > 0) {
-          lines.push('## Test Case Output');
-          lines.push('');
+      this.logger.debug('Flushing buffer to test log', { 
+        file: relativePath, 
+        lines: buffer.length 
+      });
+      
+      // Join buffer with newlines and append to file
+      const content = buffer.join('\n') + '\n';
+      await handle.appendFile(content);
+      
+      // Clear the buffer
+      buffer.length = 0;
+    } catch (error: any) {
+      this.logger.error('Failed to flush buffer to test log', { 
+        file: relativePath, 
+        error 
+      });
+      
+      // If the directory was deleted (ENOENT), try to recreate it
+      if (error.code === 'ENOENT') {
+        try {
+          this.logger.info('Attempting to recreate logs directory and file handle');
+          await fs.mkdir(this.logsDirectory, { recursive: true });
           
-          for (const [testName, testOutput] of testCaseOutputs) {
-            lines.push(`### ${testName}`);
-            lines.push('');
-            if (testOutput.length > 0) {
-              lines.push(...testOutput);
-            } else {
-              lines.push('(no output)');
-            }
-            lines.push('');
-            lines.push('---');
-            lines.push('');
+          // Try to reopen the file handle
+          const logFileName = `${this.sanitizeFilePath(relativePath)}.log`;
+          const logPath = path.join(this.logsDirectory, logFileName);
+          const newHandle = await fs.open(logPath, 'w');
+          
+          // Close old handle and replace with new one
+          try {
+            await handle.close();
+          } catch (closeError) {
+            // Ignore close errors on invalid handle
           }
           
-          // Add any remaining output not attributed to specific tests
-          const remainingOutput = outputLines.filter(line => {
-            // Check if this line was already included in test-specific output
-            for (const testOutput of testCaseOutputs.values()) {
-              if (testOutput.includes(line)) return false;
-            }
-            return true;
-          });
+          this.testFileHandles.set(relativePath, newHandle);
           
-          if (remainingOutput.length > 0) {
-            lines.push('## Other Output');
-            lines.push('');
-            lines.push(...remainingOutput);
-            lines.push('');
-          }
-        } else {
-          // No test case demarcation, write all output
-          if (outputLines.length > 0) {
-            lines.push(...outputLines);
-          } else {
-            lines.push('# No output captured for this test file.');
-          }
-          lines.push('');
-        }
-
-        const content = lines.join('\n');
-        await fs.writeFile(logPath, content);
-        writtenFiles.add(fileName);
-      }
-
-      // Ensure log files exist for all test files, even if no output was captured
-      // This is important for Jest which runs tests in worker processes where
-      // output isn't captured by the reporter
-      for (const testFile of this.state.testFiles) {
-        const fileName = path.basename(testFile.file);
-        if (!writtenFiles.has(fileName)) {
-          const sanitizedName = this.sanitizeFilePath(fileName);
-          const logPath = path.join(this.logsDirectory, `${sanitizedName}.log`);
-          this.logger.debug('Creating empty log file for test without captured output', { fileName, logPath });
-
+          // Write header and buffered content
           const header = [
-            `# File: ${fileName}`,
+            `# File: ${relativePath}`,
             `# Timestamp: ${new Date().toISOString()}`,
             `# This file contains all stdout/stderr output from the test file execution.`,
             '# ---',
             '',
-            '# No output captured for this test file.',
-            ''
           ].join('\n');
-
-          await fs.writeFile(logPath, header);
+          
+          await newHandle.writeFile(header);
+          
+          // Try to write the buffer again if it has content
+          if (buffer.length > 0) {
+            const content = buffer.join('\n') + '\n';
+            await newHandle.appendFile(content);
+            buffer.length = 0;
+          }
+        } catch (recoveryError) {
+          this.logger.error('Failed to recover from ENOENT error', { 
+            file: relativePath, 
+            error: recoveryError 
+          });
+          // Keep data in buffer on error so we can retry
         }
       }
-      this.logger.debug('All test log files written successfully');
-    } catch (error) {
-      // If parsing fails, it's not critical - we still have output.log
-      this.logger.error('Failed to parse output into individual logs', error as Error);
-      console.error('Warning: Failed to parse output into individual logs:', error);
+      // For other errors, keep data in buffer so we can retry
     }
   }
 

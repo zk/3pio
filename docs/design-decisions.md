@@ -67,3 +67,49 @@ This document captures key architectural and design decisions made during the de
 2. **Unique Identification**: Combines timestamp precision with memorable suffix
 3. **Debugging Aid**: Developers can quickly identify and discuss specific test runs
 4. **Cultural Relevance**: Star Wars references resonate with developer community
+
+## Incremental Log File Writing
+
+**Decision**: Write individual test log files incrementally as output arrives, instead of writing all logs at the end of test execution.
+
+**Implementation Date**: 2025-01-09
+
+**Previous Behavior**:
+- All test output was collected in memory during execution
+- Individual log files were written only during finalization
+- If process was interrupted, no individual log files would exist
+
+**New Behavior**:
+- Log files are created immediately when test files are registered
+- Output is written incrementally with debouncing (100ms delay, 500ms max wait)
+- File handles remain open during execution for efficiency
+- Partial results are available even if test run is interrupted
+
+**Rationale**:
+1. **Resilience**: Partial results are preserved if test run is interrupted (Ctrl+C, process crash)
+2. **Real-time Monitoring**: Users can tail log files during execution to monitor progress
+3. **Memory Efficiency**: Output doesn't need to be kept entirely in memory
+4. **Better UX for Long Tests**: Immediate feedback available for long-running test suites
+
+**Implementation Details**:
+- File handles stored in Map<string, fs.FileHandle>
+- Per-file buffers with Map<string, string[]>
+- Per-file debounced write functions (100ms delay, 500ms max wait)
+- Automatic recovery if logs directory is deleted mid-run
+- Test case boundaries marked in output for better organization
+
+**Trade-offs**:
+- **Pros**:
+  - Resilient to interruptions
+  - Real-time monitoring capability
+  - Lower memory usage
+  - Better debugging experience
+- **Cons**:
+  - More file handles open during execution (potential OS limit issues with >100 files)
+  - Slightly more complex error handling
+  - Small performance overhead from I/O operations (mitigated by debouncing)
+
+**Future Considerations**:
+- May need file handle pooling for very large test suites (>100 files)
+- Could make debounce timings configurable via environment variables
+- Consider adding compression for very large log files

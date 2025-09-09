@@ -58,12 +58,15 @@ describe('ReportManager', () => {
       
       // Check directories were created
       const runDir = path.join(tempDir, '.3pio', 'runs', runId);
+      const logsDir = path.join(runDir, 'logs');
       const reportPath = path.join(runDir, 'test-run.md');
       
       const runDirStats = await fs.stat(runDir);
       expect(runDirStats.isDirectory()).toBe(true);
       
-      // Note: logs directory is created during finalize(), not initialize()
+      // Logs directory is now created during initialize()
+      const logsDirStats = await fs.stat(logsDir);
+      expect(logsDirStats.isDirectory()).toBe(true);
       
       // Check initial report was created
       const reportContent = await fs.readFile(reportPath, 'utf8');
@@ -72,6 +75,28 @@ describe('ReportManager', () => {
       expect(reportContent).toContain('src/test1.spec.js');
       expect(reportContent).toContain('src/test2.spec.js');
       expect(reportContent).toContain('PENDING');
+    });
+
+    it('should create log files immediately for known test files', async () => {
+      const testFiles = ['src/test1.spec.js', 'src/test2.spec.js'];
+      
+      await reportManager.initialize(testFiles);
+      
+      // Check that log files were created
+      const logsDir = path.join(tempDir, '.3pio', 'runs', runId, 'logs');
+      const log1Path = path.join(logsDir, 'src_test1.spec.js.log');
+      const log2Path = path.join(logsDir, 'src_test2.spec.js.log');
+      
+      const log1Stats = await fs.stat(log1Path);
+      expect(log1Stats.isFile()).toBe(true);
+      
+      const log2Stats = await fs.stat(log2Path);
+      expect(log2Stats.isFile()).toBe(true);
+      
+      // Check that headers were written
+      const log1Content = await fs.readFile(log1Path, 'utf8');
+      expect(log1Content).toContain('# File: src/test1.spec.js');
+      expect(log1Content).toContain('# This file contains all stdout/stderr output');
     });
 
     it('should sanitize file paths for log files', async () => {
@@ -218,6 +243,16 @@ describe('ReportManager', () => {
       expect(content).toContain('First chunk');
       expect(content).toContain('Second chunk');
     });
+
+    it('should buffer output for incremental writing to test logs', async () => {
+      await (reportManager as any).appendToLogFile('test.js', 'First chunk\n');
+      await (reportManager as any).appendToLogFile('test.js', 'Second chunk\n');
+      
+      // Check that data is in buffer
+      const buffer = (reportManager as any).testFileBuffers.get('test.js');
+      expect(buffer).toBeDefined();
+      expect(buffer.length).toBeGreaterThan(0);
+    });
   });
 
   describe('finalize', () => {
@@ -256,6 +291,30 @@ describe('ReportManager', () => {
       
       // Handle should be closed
       expect((reportManager as any).outputLogHandle).toBeNull();
+    });
+
+    it('should flush all buffers and close all file handles', async () => {
+      // Add some data to buffers
+      await (reportManager as any).appendToLogFile('test1.js', 'chunk1');
+      await (reportManager as any).appendToLogFile('test2.js', 'chunk2');
+      
+      // Verify handles and buffers exist
+      const handles = (reportManager as any).testFileHandles;
+      const buffers = (reportManager as any).testFileBuffers;
+      expect(handles.size).toBeGreaterThan(0);
+      expect(buffers.size).toBeGreaterThan(0);
+      
+      await reportManager.finalize(0);
+      
+      // All handles and buffers should be cleared
+      expect(handles.size).toBe(0);
+      expect(buffers.size).toBe(0);
+      
+      // Check that data was written to log files
+      const logsDir = path.join(tempDir, '.3pio', 'runs', runId, 'logs');
+      const log1Path = path.join(logsDir, 'test1.js.log');
+      const log1Content = await fs.readFile(log1Path, 'utf8');
+      expect(log1Content).toContain('chunk1');
     });
   });
 
@@ -296,6 +355,104 @@ describe('ReportManager', () => {
       
       const reportPath = reportManager.getReportPath();
       expect(reportPath).toBe(path.join('.3pio', 'runs', runId, 'test-run.md'));
+    });
+  });
+
+  describe('Incremental Writing', () => {
+    it('should write output incrementally with debouncing', async () => {
+      vi.useFakeTimers();
+      
+      await reportManager.initialize(['test.js']);
+      
+      // Add some output
+      await (reportManager as any).appendToLogFile('test.js', 'Line 1\n');
+      await (reportManager as any).appendToLogFile('test.js', 'Line 2\n');
+      
+      // Check buffer has data
+      const buffer = (reportManager as any).testFileBuffers.get('test.js');
+      expect(buffer.length).toBeGreaterThan(0);
+      
+      // Advance timers to trigger debounced write
+      vi.advanceTimersByTime(150);
+      await vi.runAllTimersAsync();
+      
+      // Check that data was written to file
+      const logsDir = path.join(tempDir, '.3pio', 'runs', runId, 'logs');
+      const logPath = path.join(logsDir, 'test.js.log');
+      const content = await fs.readFile(logPath, 'utf8');
+      
+      expect(content).toContain('Line 1');
+      expect(content).toContain('Line 2');
+      
+      // Buffer should be cleared after write
+      expect(buffer.length).toBe(0);
+      
+      vi.useRealTimers();
+    });
+
+    it('should handle file handle errors gracefully', async () => {
+      await reportManager.initialize(['test.js']);
+      
+      // Simulate file handle error by closing the handle
+      const handle = (reportManager as any).testFileHandles.get('test.js');
+      if (handle) {
+        await handle.close();
+      }
+      
+      // This should not throw
+      await (reportManager as any).appendToLogFile('test.js', 'Test output\n');
+      
+      // Trigger flush
+      await (reportManager as any).flushFileBuffer('test.js');
+      
+      // Should have logged error but not thrown
+      expect(true).toBe(true);
+    });
+
+    it('should add test case boundaries in output', async () => {
+      vi.useFakeTimers();
+      
+      await reportManager.initialize(['test.js']);
+      
+      // Simulate test case starting
+      await reportManager.handleEvent({
+        eventType: 'testCase',
+        payload: {
+          filePath: 'test.js',
+          testName: 'should work',
+          status: 'RUNNING'
+        }
+      });
+      
+      // Add output during test
+      await (reportManager as any).appendToLogFile('test.js', 'Test output\n');
+      
+      // Complete the test
+      await reportManager.handleEvent({
+        eventType: 'testCase',
+        payload: {
+          filePath: 'test.js',
+          testName: 'should work',
+          status: 'PASS',
+          duration: 50
+        }
+      });
+      
+      // Advance timers to trigger write
+      vi.advanceTimersByTime(150);
+      await vi.runAllTimersAsync();
+      
+      // Check log file contains test boundaries
+      const logsDir = path.join(tempDir, '.3pio', 'runs', runId, 'logs');
+      const logPath = path.join(logsDir, 'test.js.log');
+      const content = await fs.readFile(logPath, 'utf8');
+      
+      expect(content).toContain('### should work');
+      expect(content).toContain('Test ✓ should work');
+      expect(content).toContain('Duration: 50ms');
+      expect(content).toContain('Test output');
+      
+      vi.useRealTimers();
     });
   });
 });

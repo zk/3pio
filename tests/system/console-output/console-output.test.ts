@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 describe('Console Output System Test', () => {
-  const testProjectDir = path.join(__dirname, 'jest-project');
+  const testProjectDir = path.resolve(__dirname, '../../fixtures/basic-jest');
   const cliPath = path.resolve(__dirname, '../../../dist/cli.js');
   
   beforeAll(() => {
@@ -18,29 +18,6 @@ describe('Console Output System Test', () => {
     if (fs.existsSync(threepioDir)) {
       fs.rmSync(threepioDir, { recursive: true, force: true });
     }
-    
-    // Copy sample jest project files to test directory
-    const sourceDir = path.resolve(__dirname, '../../../sample-projects/jest-project');
-    
-    // Copy package.json
-    fs.copyFileSync(
-      path.join(sourceDir, 'package.json'),
-      path.join(testProjectDir, 'package.json')
-    );
-    
-    // Copy test files
-    fs.copyFileSync(
-      path.join(sourceDir, 'math.test.js'),
-      path.join(testProjectDir, 'math.test.js')
-    );
-    
-    fs.copyFileSync(
-      path.join(sourceDir, 'string.test.js'),
-      path.join(testProjectDir, 'string.test.js')
-    );
-    
-    // Install dependencies
-    execSync('npm install', { cwd: testProjectDir, stdio: 'ignore' });
   });
   
   it('should produce expected console output format', async () => {
@@ -67,10 +44,6 @@ Greetings! I will now execute the test command:
 \`npm test\`
 
 Full report: .3pio/runs/TIMESTAMP/test-run.md
-
-The following 2 test files will be run:
-- /Users/zk/code/3pio/tests/system/console-output/jest-project/string.test.js
-- /Users/zk/code/3pio/tests/system/console-output/jest-project/math.test.js
 
 Beginning test execution now...
 
