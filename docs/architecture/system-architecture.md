@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-This document outlines the system architecture for 3pio, an AI-first test runner adapter. The architecture prioritizes context efficiency, performance, reliability, and a seamless "zero-config" user experience.
+This document outlines the system architecture for 3pio, an AI-first test runner adapter. The architecture prioritizes context efficiency, performance, reliability, and minimal context overhead for you.
 
 ## 2. High-Level Architecture
 
