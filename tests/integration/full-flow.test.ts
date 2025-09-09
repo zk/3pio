@@ -66,6 +66,14 @@ describe('Full Integration Flow', () => {
       
       // Test 1: Output and pass
       await IPCManager.sendEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test1.js' }
+      });
+      
+      // Small delay to ensure file is created
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      await IPCManager.sendEvent({
         eventType: 'stdoutChunk',
         payload: { filePath: 'test1.js', chunk: 'Running test 1...\n' }
       });
@@ -88,6 +96,14 @@ describe('Full Integration Flow', () => {
       
       // Test 2: Error output and fail
       await IPCManager.sendEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test2.js' }
+      });
+      
+      // Small delay to ensure file is created
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      await IPCManager.sendEvent({
         eventType: 'stdoutChunk',
         payload: { filePath: 'test2.js', chunk: 'Running test 2...\n' }
       });
@@ -109,6 +125,11 @@ describe('Full Integration Flow', () => {
       });
       
       // Test 3: Skip
+      await IPCManager.sendEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test3.js' }
+      });
+      
       await IPCManager.sendEvent({
         eventType: 'testFileResult',
         payload: { filePath: 'test3.js', status: 'SKIP' }
@@ -230,6 +251,12 @@ describe('Full Integration Flow', () => {
       for (let i = 0; i < 10; i++) {
         const filePath = `test${i}.js`;
         
+        // Send testFileStart first and wait for it
+        await IPCManager.sendEvent({
+          eventType: 'testFileStart',
+          payload: { filePath }
+        });
+        
         // Send multiple chunks per file
         for (let j = 0; j < 5; j++) {
           promises.push(
@@ -332,14 +359,19 @@ describe('Full Integration Flow', () => {
       // Write valid event after malformed one
       process.env.THREEPIO_IPC_PATH = ipcPath;
       await IPCManager.sendEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test.js' }
+      });
+      
+      await IPCManager.sendEvent({
         eventType: 'testFileResult',
         payload: { filePath: 'test.js', status: 'PASS' }
       });
       
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Should have processed only the valid event
-      expect(eventCount).toBe(1);
+      // Should have processed only the valid events
+      expect(eventCount).toBe(2);
       
       await reportManager.finalize(0);
       await ipcManager.cleanup();

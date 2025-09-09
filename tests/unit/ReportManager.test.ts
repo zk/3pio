@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ReportManager } from '../../src/ReportManager';
 import { OutputParser } from '../../src/runners/base/OutputParser';
 import { promises as fs } from 'fs';
+import { existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -77,21 +78,40 @@ describe('ReportManager', () => {
       expect(reportContent).toContain('PENDING');
     });
 
-    it('should create log files immediately for known test files', async () => {
+    it('should NOT create log files immediately for known test files', async () => {
       const testFiles = ['src/test1.spec.js', 'src/test2.spec.js'];
       
       await reportManager.initialize(testFiles);
       
-      // Check that log files were created
+      // Check that log files were NOT created yet
       const logsDir = path.join(tempDir, '.3pio', 'runs', runId, 'logs');
       const log1Path = path.join(logsDir, 'src_test1.spec.js.log');
       const log2Path = path.join(logsDir, 'src_test2.spec.js.log');
       
+      // Files should not exist yet
+      expect(existsSync(log1Path)).toBe(false);
+      expect(existsSync(log2Path)).toBe(false);
+    });
+
+    it('should create log files when test file starts', async () => {
+      const testFiles = ['src/test1.spec.js'];
+      
+      await reportManager.initialize(testFiles);
+      
+      // Simulate test file starting
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: {
+          filePath: 'src/test1.spec.js'
+        }
+      });
+      
+      // Now the log file should exist
+      const logsDir = path.join(tempDir, '.3pio', 'runs', runId, 'logs');
+      const log1Path = path.join(logsDir, 'src_test1.spec.js.log');
+      
       const log1Stats = await fs.stat(log1Path);
       expect(log1Stats.isFile()).toBe(true);
-      
-      const log2Stats = await fs.stat(log2Path);
-      expect(log2Stats.isFile()).toBe(true);
       
       // Check that headers were written
       const log1Content = await fs.readFile(log1Path, 'utf8');
@@ -245,6 +265,12 @@ describe('ReportManager', () => {
     });
 
     it('should buffer output for incremental writing to test logs', async () => {
+      // First start the test file to create the log
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test.js' }
+      });
+      
       await (reportManager as any).appendToLogFile('test.js', 'First chunk\n');
       await (reportManager as any).appendToLogFile('test.js', 'Second chunk\n');
       
@@ -294,6 +320,16 @@ describe('ReportManager', () => {
     });
 
     it('should flush all buffers and close all file handles', async () => {
+      // Start the test files first
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test1.js' }
+      });
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test2.js' }
+      });
+      
       // Add some data to buffers
       await (reportManager as any).appendToLogFile('test1.js', 'chunk1');
       await (reportManager as any).appendToLogFile('test2.js', 'chunk2');
@@ -364,6 +400,12 @@ describe('ReportManager', () => {
       
       await reportManager.initialize(['test.js']);
       
+      // First need to start the test file to create the log
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test.js' }
+      });
+      
       // Add some output
       await (reportManager as any).appendToLogFile('test.js', 'Line 1\n');
       await (reportManager as any).appendToLogFile('test.js', 'Line 2\n');
@@ -393,6 +435,12 @@ describe('ReportManager', () => {
     it('should handle file handle errors gracefully', async () => {
       await reportManager.initialize(['test.js']);
       
+      // Start the test file first
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test.js' }
+      });
+      
       // Simulate file handle error by closing the handle
       const handle = (reportManager as any).testFileHandles.get('test.js');
       if (handle) {
@@ -413,6 +461,12 @@ describe('ReportManager', () => {
       vi.useFakeTimers();
       
       await reportManager.initialize(['test.js']);
+      
+      // Start the test file first
+      await reportManager.handleEvent({
+        eventType: 'testFileStart',
+        payload: { filePath: 'test.js' }
+      });
       
       // Simulate test case starting
       await reportManager.handleEvent({

@@ -87,7 +87,7 @@ export class ReportManager {
     this.state.totalFiles = testFiles.length;
     this.state.testFiles = [];
     
-    // Process each test file and open file handles immediately
+    // Process each test file (but don't create log files yet - wait until they start running)
     for (const filePath of testFiles) {
       // Normalize the file path by removing leading ./ and resolving to absolute
       const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
@@ -102,41 +102,7 @@ export class ReportManager {
         testCases: []
       });
       
-      // Open file handle for incremental writing
-      const logFileName = `${this.sanitizeFilePath(relativePath)}.log`;
-      const logPath = path.join(this.logsDirectory, logFileName);
-      
-      try {
-        this.logger.debug('Opening file handle for test log', { file: filePath, logPath });
-        const handle = await fs.open(logPath, 'w');
-        this.testFileHandles.set(relativePath, handle);
-        
-        // Write header immediately
-        const header = [
-          `# File: ${relativePath}`,
-          `# Timestamp: ${new Date().toISOString()}`,
-          `# This file contains all stdout/stderr output from the test file execution.`,
-          '# ---',
-          '',
-        ].join('\n');
-        
-        await handle.writeFile(header);
-        
-        // Initialize buffer for this file
-        this.testFileBuffers.set(relativePath, []);
-        
-        // Create per-file debounced write function (100ms delay, 500ms max wait)
-        const flushBuffer = async () => {
-          await this.flushFileBuffer(relativePath);
-        };
-        
-        this.debouncedFileWrites.set(
-          relativePath,
-          debounce(flushBuffer, 100, { maxWait: 500 }) as (() => void) & { cancel: () => void }
-        );
-      } catch (error) {
-        this.logger.error('Failed to open file handle for test log', { file: filePath, error });
-      }
+      // Don't create log files here - wait until testFileStart event
     }
 
     // Create output.log with header
@@ -191,41 +157,7 @@ export class ReportManager {
       // Update total count
       this.state.totalFiles = this.state.testFiles.length;
       
-      // Open file handle for incremental writing
-      const logFileName = `${this.sanitizeFilePath(relativePath)}.log`;
-      const logPath = path.join(this.logsDirectory, logFileName);
-      
-      try {
-        this.logger.debug('Opening file handle for test log', { file: filePath, logPath });
-        const handle = await fs.open(logPath, 'w');
-        this.testFileHandles.set(relativePath, handle);
-        
-        // Write header immediately
-        const header = [
-          `# File: ${relativePath}`,
-          `# Timestamp: ${new Date().toISOString()}`,
-          `# This file contains all stdout/stderr output from the test file execution.`,
-          '# ---',
-          '',
-        ].join('\n');
-        
-        await handle.writeFile(header);
-        
-        // Initialize buffer for this file
-        this.testFileBuffers.set(relativePath, []);
-        
-        // Create per-file debounced write function (100ms delay, 500ms max wait)
-        const flushBuffer = async () => {
-          await this.flushFileBuffer(relativePath);
-        };
-        
-        this.debouncedFileWrites.set(
-          relativePath,
-          debounce(flushBuffer, 100, { maxWait: 500 }) as (() => void) & { cancel: () => void }
-        );
-      } catch (error) {
-        this.logger.error('Failed to open file handle for test log', { file: filePath, error });
-      }
+      // Don't create log file here - wait until testFileStart event
       
       // Trigger report update
       this.state.updatedAt = new Date().toISOString();
@@ -260,6 +192,8 @@ export class ReportManager {
         
         // Update test file status to RUNNING
         const normalizedPath = path.resolve(event.payload.filePath.replace(/^\.\//, ''));
+        const relativePath = path.relative(process.cwd(), normalizedPath);
+        
         let testFile = this.state.testFiles.find(tf => {
           const normalizedStoredPath = path.resolve(tf.file.replace(/^\.\//, ''));
           return normalizedStoredPath === normalizedPath;
@@ -267,6 +201,10 @@ export class ReportManager {
         
         if (testFile) {
           testFile.status = 'RUNNING';
+          
+          // Create the log file now that the test is actually starting
+          await this.createLogFileForTest(relativePath);
+          
           this.state.updatedAt = new Date().toISOString();
           this.debouncedWrite();
         }
@@ -747,6 +685,51 @@ export class ReportManager {
     this.logger.lifecycle('Report finalization complete');
   }
 
+
+  /**
+   * Create and open a log file for a test file
+   */
+  private async createLogFileForTest(relativePath: string): Promise<void> {
+    // Check if we already have a file handle
+    if (this.testFileHandles.has(relativePath)) {
+      return;
+    }
+
+    const logFileName = `${this.sanitizeFilePath(relativePath)}.log`;
+    const logPath = path.join(this.logsDirectory, logFileName);
+    
+    try {
+      this.logger.debug('Opening file handle for test log', { file: relativePath, logPath });
+      const handle = await fs.open(logPath, 'w');
+      this.testFileHandles.set(relativePath, handle);
+      
+      // Write header immediately
+      const header = [
+        `# File: ${relativePath}`,
+        `# Timestamp: ${new Date().toISOString()}`,
+        `# This file contains all stdout/stderr output from the test file execution.`,
+        '# ---',
+        '',
+      ].join('\n');
+      
+      await handle.writeFile(header);
+      
+      // Initialize buffer for this file
+      this.testFileBuffers.set(relativePath, []);
+      
+      // Create per-file debounced write function (100ms delay, 500ms max wait)
+      const flushBuffer = async () => {
+        await this.flushFileBuffer(relativePath);
+      };
+      
+      this.debouncedFileWrites.set(
+        relativePath,
+        debounce(flushBuffer, 100, { maxWait: 500 }) as (() => void) & { cancel: () => void }
+      );
+    } catch (error) {
+      this.logger.error('Failed to open file handle for test log', { file: relativePath, error });
+    }
+  }
 
   /**
    * Flush buffered content to a specific test file
