@@ -192,57 +192,6 @@ class CLIOrchestrator {
     this.logger.info('Report will be generated at', { path: reportPath });
     console.log(`Full report: ${reportPath}`);
     console.log();
-
-    // Handle dynamic discovery case
-    if (testFiles.length === 0) {
-      console.log('Beginning test execution now...');
-      console.log();
-      this.startTime = Date.now();
-      return;
-    }
-
-    if (testFiles.length <= 10) {
-      // Short list - show all files
-      console.log(`The following ${testFiles.length} test file${testFiles.length === 1 ? '' : 's'} will be run:`);
-      testFiles.forEach(file => {
-        console.log(`- ${file}`);
-      });
-    } else if (testFiles.length <= 25) {
-      // Medium list - show first 10 and count
-      console.log(`The following ${testFiles.length} test files will be run:`);
-      testFiles.slice(0, 10).forEach(file => {
-        console.log(`- ${file}`);
-      });
-      console.log(`- ...and ${testFiles.length - 10} more.`);
-    } else {
-      // Long list - show breakdown by directory
-      console.log(`Running ${testFiles.length} total test files.`);
-      console.log();
-      console.log('Breakdown by directory:');
-      
-      const dirCounts = new Map<string, string[]>();
-      testFiles.forEach(file => {
-        const dir = path.dirname(file);
-        if (!dirCounts.has(dir)) {
-          dirCounts.set(dir, []);
-        }
-        dirCounts.get(dir)!.push(path.basename(file));
-      });
-
-      // Show first few directories
-      const dirs = Array.from(dirCounts.entries()).slice(0, 4);
-      dirs.forEach(([dir, files]) => {
-        console.log(`- ${dir}/ (${files.length} files)`);
-        if (files.length <= 3) {
-          files.forEach(file => console.log(`  - ${file}`));
-        } else {
-          files.slice(0, 3).forEach(file => console.log(`  - ${file}`));
-          console.log(`  - ...and ${files.length - 3} more.`);
-        }
-      });
-    }
-
-    console.log();
     console.log('Beginning test execution now...');
     console.log();
     this.startTime = Date.now(); // Track start time

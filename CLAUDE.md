@@ -149,3 +149,4 @@ For detailed information about these issues and their solutions, see `docs/known
 
 - There are sample projects for jest and vitest at `sample-projects/`
 - Generated test files and scripts should not be put in the root directory. Any temporary files should go in the `./scratch` directory.
+- When we make design decisions update `docs/design-decisions.md` noting the decision and rationale.
