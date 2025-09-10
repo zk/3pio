@@ -196,7 +196,9 @@ func (o *Orchestrator) Run() error {
 	eventsDone := make(chan struct{})
 	
 	// Process IPC events in background
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer close(eventsDone)
 		o.processEvents()
 	}()
@@ -251,16 +253,19 @@ func (o *Orchestrator) Run() error {
 		o.logger.Debug("Output capture timeout - proceeding")
 	}
 	
-	// Stop watching for events
+	// Stop watching for events (this closes the Events channel)
 	o.ipcManager.Cleanup()
 	
-	// Wait briefly for event processing to complete
+	// Wait for event processing to complete (channel is closed, range will exit)
 	select {
 	case <-eventsDone:
 		o.logger.Debug("Event processing completed")
 	case <-time.After(1 * time.Second):
 		o.logger.Debug("Event processing timeout - proceeding")
 	}
+	
+	// Wait for all goroutines to finish
+	wg.Wait()
 	
 	// Finalize report
 	if err := o.reportManager.Finalize(o.exitCode); err != nil {

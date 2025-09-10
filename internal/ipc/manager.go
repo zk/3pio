@@ -15,16 +15,17 @@ import (
 
 // Manager handles IPC communication via file-based JSONL
 type Manager struct {
-	IPCPath  string
-	watcher  *fsnotify.Watcher
-	Events   chan Event
-	errors   chan error
-	stopChan chan struct{}
-	stopped  chan struct{} // Signals when watchLoop has stopped
-	mu       sync.RWMutex
-	logger   Logger
-	file     *os.File
-	reader   *bufio.Reader
+	IPCPath     string
+	watcher     *fsnotify.Watcher
+	Events      chan Event
+	errors      chan error
+	stopChan    chan struct{}
+	stopped     chan struct{} // Signals when watchLoop has stopped
+	mu          sync.RWMutex
+	closeOnce   sync.Once
+	logger      Logger
+	file        *os.File
+	reader      *bufio.Reader
 }
 
 // Logger interface for debug logging
@@ -253,16 +254,15 @@ func (m *Manager) Cleanup() error {
 		m.file = nil
 	}
 
-	// Only close channels if they haven't been closed
-	if m.Events != nil {
-		close(m.Events)
-		m.Events = nil
-	}
-	
-	if m.errors != nil {
-		close(m.errors)
-		m.errors = nil
-	}
+	// Close channels only once using sync.Once
+	m.closeOnce.Do(func() {
+		if m.Events != nil {
+			close(m.Events)
+		}
+		if m.errors != nil {
+			close(m.errors)
+		}
+	})
 
 	return nil
 }
