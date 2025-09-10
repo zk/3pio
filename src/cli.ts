@@ -293,6 +293,15 @@ class CLIOrchestrator {
     try {
       // Set THREEPIO_IPC_PATH for the child process
       const env = { ...process.env, THREEPIO_IPC_PATH: this.ipcPath };
+      
+      // For pytest, add the dist directory to PYTHONPATH so the adapter can be imported
+      if (runnerName === 'pytest') {
+        const distDir = path.dirname(adapterPath);
+        const currentPythonPath = process.env.PYTHONPATH || '';
+        env.PYTHONPATH = currentPythonPath ? `${distDir}:${currentPythonPath}` : distDir;
+        this.logger.debug('Added dist directory to PYTHONPATH for pytest', { PYTHONPATH: env.PYTHONPATH });
+      }
+      
       this.logger.debug('Environment prepared for child process', { THREEPIO_IPC_PATH: this.ipcPath });
       
       // Execute the command with zx using proper array syntax

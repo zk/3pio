@@ -4,6 +4,8 @@ import { JestDefinition } from './runners/jest/JestDefinition';
 import { JestOutputParser } from './runners/jest/JestOutputParser';
 import { VitestDefinition } from './runners/vitest/VitestDefinition';
 import { VitestOutputParser } from './runners/vitest/VitestOutputParser';
+import { PyTestDefinition } from './runners/pytest/PyTestDefinition';
+import { PyTestOutputParser } from './runners/pytest/PyTestOutputParser';
 import { Logger } from './utils/logger';
 
 /**
@@ -18,6 +20,10 @@ export const TEST_RUNNERS = {
   vitest: {
     definition: new VitestDefinition(),
     parser: new VitestOutputParser()
+  },
+  pytest: {
+    definition: new PyTestDefinition(),
+    parser: new PyTestOutputParser()
   }
 } as const;
 
@@ -36,7 +42,7 @@ export class TestRunnerManager {
     this.logger.info('Detecting test runner', { command: args.join(' ') });
     
     // Try each test runner in priority order
-    const runners: TestRunnerName[] = ['jest', 'vitest'];
+    const runners: TestRunnerName[] = ['jest', 'vitest', 'pytest'];
     
     for (const runnerName of runners) {
       this.logger.debug(`Checking if command matches ${runnerName}`);

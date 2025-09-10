@@ -88,6 +88,15 @@ async function build() {
     fs.chmodSync(cliPath, '755');
   }
 
+  // Copy Python adapter to dist
+  const pythonAdapterSrc = 'src/adapters/pytest/pytest_adapter.py';
+  const pythonAdapterDest = 'dist/pytest_adapter.py';
+  if (fs.existsSync(pythonAdapterSrc)) {
+    fs.copyFileSync(pythonAdapterSrc, pythonAdapterDest);
+    fs.chmodSync(pythonAdapterDest, '755');
+    console.log('Copied Python pytest adapter');
+  }
+
   // Create package.json exports map for adapters
   const packageJsonPath = path.join(__dirname, 'package.json');
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
