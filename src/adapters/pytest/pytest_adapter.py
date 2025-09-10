@@ -135,9 +135,8 @@ class ThreepioReporter:
         self.capture_enabled = False
         self.current_test_file = None
         
-        # Restore original streams
-        sys.stdout = self.original_stdout
-        sys.stderr = self.original_stderr
+        # Don't restore original streams - we manage the entire test run
+        # This prevents any buffered output from appearing after capture stops
 
 
 def pytest_configure(config: Config) -> None:
@@ -152,6 +151,10 @@ def pytest_configure(config: Config) -> None:
         
         # Store it in config for access in other hooks
         config._threepio_reporter = _reporter
+        
+        # Start capturing immediately to prevent any output leakage
+        # We'll update the file path when tests actually run
+        _reporter.start_capture(None)
         
         # Note: Output capture is disabled via -s flag added by 3pio CLI
         # This ensures we can capture all print statements from tests
@@ -176,8 +179,8 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
             _reporter.send_event("testFileStart", {"filePath": file_path})
             _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
             
-            # Start capturing for the first file
-            _reporter.start_capture(file_path)
+            # Update the file path for capturing (capture already started in pytest_configure)
+            _reporter.current_test_file = file_path
         elif _reporter.current_test_file != file_path:
             # Switch to capturing for a different test file
             _reporter.current_test_file = file_path
@@ -284,9 +287,8 @@ def pytest_unconfigure(config: Config) -> None:
     """Clean up when pytest is done."""
     global _reporter
     
-    if _reporter:
-        # Stop capturing output
-        _reporter.stop_capture()
+    # Note: We don't restore stdout/stderr since we manage the entire test run
+    # This prevents any buffered output from appearing after the tests complete
     
     # Clear the global reporter
     _reporter = None
