@@ -12,7 +12,7 @@ import json
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any
-from io import StringIO
+from io import StringIO, TextIOBase
 
 from _pytest.config import Config
 from _pytest.reports import TestReport
@@ -30,6 +30,10 @@ class ThreepioReporter:
         self.ipc_path = ipc_path
         self.test_files = set()
         self.test_results = {}  # Track results per file
+        self.current_test_file = None
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
+        self.capture_enabled = False
         
     def send_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         """Send an event to the IPC file."""
@@ -63,6 +67,77 @@ class ThreepioReporter:
             pass
         
         return file_path
+    
+    def start_capture(self, file_path: str) -> None:
+        """Start capturing stdout/stderr for a test file."""
+        if self.capture_enabled:
+            return
+            
+        self.current_test_file = file_path
+        self.capture_enabled = True
+        
+        # Create a silent stream that only sends to IPC, doesn't write to terminal
+        class SilentIPCStream:
+            def __init__(self, reporter, original_stream, stream_type):
+                self.reporter = reporter
+                self.original = original_stream
+                self.stream_type = stream_type
+                # Copy essential attributes from original stream
+                self.encoding = getattr(original_stream, 'encoding', 'utf-8')
+                self.errors = getattr(original_stream, 'errors', 'strict')
+                self.newlines = getattr(original_stream, 'newlines', None)
+            
+            def write(self, text):
+                # Send to IPC if we have a current test file
+                if self.reporter.current_test_file and text:
+                    event_type = "stdoutChunk" if self.stream_type == "stdout" else "stderrChunk"
+                    try:
+                        self.reporter.send_event(event_type, {
+                            "filePath": self.reporter.current_test_file,
+                            "chunk": text
+                        })
+                    except:
+                        pass  # Silently ignore IPC errors
+                
+                # Return length of text to indicate success, but DON'T write to terminal
+                # This makes the adapter completely silent like Jest/Vitest
+                return len(text) if text else 0
+            
+            def flush(self):
+                # No-op since we're not writing to a real stream
+                pass
+            
+            def isatty(self):
+                return False
+            
+            def readable(self):
+                return False
+            
+            def writable(self):
+                return True
+            
+            def seekable(self):
+                return False
+            
+            def __getattr__(self, name):
+                # For any other attributes, try to get from original
+                return getattr(self.original, name)
+        
+        # Replace stdout and stderr with our silent streams
+        sys.stdout = SilentIPCStream(self, self.original_stdout, "stdout")
+        sys.stderr = SilentIPCStream(self, self.original_stderr, "stderr")
+    
+    def stop_capture(self) -> None:
+        """Stop capturing stdout/stderr."""
+        if not self.capture_enabled:
+            return
+            
+        self.capture_enabled = False
+        self.current_test_file = None
+        
+        # Restore original streams
+        sys.stdout = self.original_stdout
+        sys.stderr = self.original_stderr
 
 
 def pytest_configure(config: Config) -> None:
@@ -100,6 +175,12 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
             _reporter.test_files.add(file_path)
             _reporter.send_event("testFileStart", {"filePath": file_path})
             _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
+            
+            # Start capturing for the first file
+            _reporter.start_capture(file_path)
+        elif _reporter.current_test_file != file_path:
+            # Switch to capturing for a different test file
+            _reporter.current_test_file = file_path
 
 
 def pytest_runtest_logreport(report: TestReport) -> None:
@@ -202,6 +283,10 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
 def pytest_unconfigure(config: Config) -> None:
     """Clean up when pytest is done."""
     global _reporter
+    
+    if _reporter:
+        # Stop capturing output
+        _reporter.stop_capture()
     
     # Clear the global reporter
     _reporter = None
