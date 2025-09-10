@@ -1,7 +1,7 @@
 .PHONY: build clean test install dev adapters all
 
 # Build variables
-VERSION := 0.0.1-go
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.1-go")
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
@@ -35,7 +35,22 @@ dev:
 # Run tests
 test:
 	@echo "Running Go tests..."
-	go test -v ./...
+	go test -v -race ./internal/...
+
+# Run integration tests
+test-integration:
+	@echo "Running integration tests..."
+	go test -v ./tests/integration_go/...
+
+# Run all tests
+test-all: test test-integration
+
+# Generate test coverage
+coverage:
+	@echo "Generating test coverage..."
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
 
 # Install locally
 install: build
@@ -43,10 +58,26 @@ install: build
 	go install -ldflags "$(LDFLAGS)" ./cmd/3pio
 	@echo "✅ 3pio installed to $(GOPATH)/bin"
 
+# Format code
+fmt:
+	@echo "Formatting code..."
+	go fmt ./...
+	go mod tidy
+
+# Run linter
+lint:
+	@echo "Running linter..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run; \
+	else \
+		go vet ./...; \
+	fi
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	@rm -rf $(BUILD_DIR)
+	@rm -rf $(BUILD_DIR) coverage.out coverage.html *.test
+	@find . -name ".3pio" -type d -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ Clean complete"
 
 # Cross-platform builds
@@ -89,11 +120,16 @@ run-npm-test: build
 # Help
 help:
 	@echo "3pio Makefile targets:"
-	@echo "  make build      - Build the 3pio binary"
-	@echo "  make adapters   - Build test runner adapters"
-	@echo "  make dev        - Build with debug symbols"
-	@echo "  make test       - Run tests"
-	@echo "  make install    - Install 3pio locally"
-	@echo "  make clean      - Remove build artifacts"
-	@echo "  make build-all  - Build for all platforms"
-	@echo "  make help       - Show this help message"
+	@echo "  make build           - Build the 3pio binary"
+	@echo "  make adapters        - Build test runner adapters"
+	@echo "  make dev             - Build with debug symbols"
+	@echo "  make test            - Run unit tests"
+	@echo "  make test-integration - Run integration tests"
+	@echo "  make test-all        - Run all tests"
+	@echo "  make coverage        - Generate test coverage report"
+	@echo "  make fmt             - Format code"
+	@echo "  make lint            - Run linter"
+	@echo "  make install         - Install 3pio locally"
+	@echo "  make clean           - Remove build artifacts"
+	@echo "  make build-all       - Build for all platforms"
+	@echo "  make help            - Show this help message"
