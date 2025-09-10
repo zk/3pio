@@ -136,8 +136,10 @@ def pytest_configure(config: Config) -> None:
         # Store it in config for access in other hooks
         config._threepio_reporter = _reporter
         
-        # For now, don't suppress output - we'll handle that later
-        # Just reduce verbosity
+        # Note: Output capture is disabled via -s flag added by 3pio CLI
+        # This ensures we can capture all print statements from tests
+        
+        # Reduce verbosity for cleaner output
         if not hasattr(config.option, 'verbose') or config.option.verbose is None:
             config.option.verbose = -1
         if not hasattr(config.option, 'quiet') or not config.option.quiet:

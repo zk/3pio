@@ -70,40 +70,56 @@ export class PyTestDefinition implements TestRunnerDefinition {
     // Handle different command patterns
     const command = args[0];
     
+    // Check if -s flag is already present to avoid duplication
+    const hasCaptureDisabled = args.includes('-s') || args.includes('--capture=no');
+    
     if (command === 'npm' && args[1] === 'run') {
       // npm run test -- -p module_name [other args]
       const separatorIndex = args.indexOf('--');
       
       if (separatorIndex !== -1) {
-        // Insert plugin flag after separator
+        // Insert plugin flag and -s after separator
+        const insertArgs = ['-p', adapterModuleName];
+        if (!hasCaptureDisabled) insertArgs.push('-s');
+        
         return [
           ...args.slice(0, separatorIndex + 1),
-          '-p', adapterModuleName,
+          ...insertArgs,
           ...args.slice(separatorIndex + 1)
         ];
       } else {
-        // Add separator and plugin flag
-        return [...args, '--', '-p', adapterModuleName];
+        // Add separator, plugin flag, and -s
+        const insertArgs = ['--', '-p', adapterModuleName];
+        if (!hasCaptureDisabled) insertArgs.push('-s');
+        return [...args, ...insertArgs];
       }
     } else if (command === 'python' || command === 'python3') {
       // python -m pytest -p module_name [other args]
       // Insert after 'pytest' but before other arguments
       const pytestIndex = args.indexOf('pytest');
       if (pytestIndex !== -1) {
+        const insertArgs = ['-p', adapterModuleName];
+        if (!hasCaptureDisabled) insertArgs.push('-s');
+        
         return [
           ...args.slice(0, pytestIndex + 1),
-          '-p', adapterModuleName,
+          ...insertArgs,
           ...args.slice(pytestIndex + 1)
         ];
       }
       // Fallback: append at end
-      return [...args, '-p', adapterModuleName];
+      const insertArgs = ['-p', adapterModuleName];
+      if (!hasCaptureDisabled) insertArgs.push('-s');
+      return [...args, ...insertArgs];
     } else {
-      // Direct pytest command: pytest -p module_name [other args]
-      // Insert plugin flag early in the command
+      // Direct pytest command: pytest -p module_name -s [other args]
+      // Insert plugin flag and -s early in the command
+      const insertArgs = ['-p', adapterModuleName];
+      if (!hasCaptureDisabled) insertArgs.push('-s');
+      
       return [
         args[0],  // pytest
-        '-p', adapterModuleName,
+        ...insertArgs,
         ...args.slice(1)
       ];
     }
