@@ -1,4 +1,4 @@
-import { IPCManager } from '../ipc';
+import { IPCSender } from '../ipc-sender';
 import { Logger } from '../utils/logger';
 import type { File, Reporter, Task, Test, Suite, Vitest } from 'vitest';
 
@@ -65,7 +65,7 @@ export default class ThreePioVitestReporter implements Reporter {
     if (!this.filesStarted.has(file.filepath)) {
       this.filesStarted.add(file.filepath);
       this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
-      IPCManager.sendEvent({
+      IPCSender.sendEvent({
         eventType: 'testFileStart',
         payload: {
           filePath: file.filepath
@@ -83,7 +83,7 @@ export default class ThreePioVitestReporter implements Reporter {
     if (!this.filesStarted.has(file.filepath)) {
       this.filesStarted.add(file.filepath);
       this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
-      IPCManager.sendEvent({
+      IPCSender.sendEvent({
         eventType: 'testFileStart',
         payload: {
           filePath: file.filepath
@@ -118,7 +118,7 @@ export default class ThreePioVitestReporter implements Reporter {
     this.logger.testFlow('Test file completed', file.filepath, { status, ...testStats });
 
     this.logger.ipc('send', 'testFileResult', { filePath: file.filepath, status });
-    IPCManager.sendEvent({
+    IPCSender.sendEvent({
       eventType: 'testFileResult',
       payload: {
         filePath: file.filepath,
@@ -155,7 +155,7 @@ export default class ThreePioVitestReporter implements Reporter {
           duration: test.result?.duration
         });
         
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: 'testCase',
           payload: {
             filePath,
@@ -196,7 +196,7 @@ export default class ThreePioVitestReporter implements Reporter {
         if (!this.filesStarted.has(file.filepath)) {
           this.filesStarted.add(file.filepath);
           this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
-          await IPCManager.sendEvent({
+          await IPCSender.sendEvent({
             eventType: 'testFileStart',
             payload: {
               filePath: file.filepath
@@ -223,7 +223,7 @@ export default class ThreePioVitestReporter implements Reporter {
         
         try {
           this.logger.ipc('send', 'testFileResult', { filePath: file.filepath, status });
-          await IPCManager.sendEvent({
+          await IPCSender.sendEvent({
             eventType: 'testFileResult',
             payload: {
               filePath: file.filepath,
@@ -252,7 +252,7 @@ export default class ThreePioVitestReporter implements Reporter {
         // Non-test output is captured at CLI level for output.log
         const filePath = this.currentTestFile;
         if (!filePath) return true;
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: 'stdoutChunk',
           payload: {
             filePath,
@@ -272,7 +272,7 @@ export default class ThreePioVitestReporter implements Reporter {
         // Non-test output is captured at CLI level for output.log
         const filePath = this.currentTestFile;
         if (!filePath) return true;
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: 'stderrChunk',
           payload: {
             filePath,

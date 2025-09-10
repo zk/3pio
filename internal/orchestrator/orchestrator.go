@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/zk/3pio/internal/adapters"
 	"github.com/zk/3pio/internal/ipc"
 	"github.com/zk/3pio/internal/report"
 	"github.com/zk/3pio/internal/runner"
@@ -281,20 +282,14 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
-	// For now, return the path to the existing adapter files
-	// This will be replaced with go:embed extraction later
-	
-	// Check if adapters exist in dist directory (development mode)
-	distPath := filepath.Join("dist", adapterName)
-	if _, err := os.Stat(distPath); err == nil {
-		absPath, _ := filepath.Abs(distPath)
-		return absPath, nil
+	// Always use embedded adapters in production
+	embeddedPath, err := adapters.GetAdapterPath(adapterName)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}
 	
-	// In production, adapters will be embedded and extracted here
-	// TODO: Implement go:embed extraction
-	
-	return "", fmt.Errorf("adapter %s not found", adapterName)
+	o.logger.Debug("Using embedded adapter: %s", embeddedPath)
+	return embeddedPath, nil
 }
 
 // GetExitCode returns the exit code from the test run

@@ -1,4 +1,4 @@
-import { IPCManager } from '../ipc';
+import { IPCSender } from '../ipc-sender';
 import { Logger } from '../utils/logger';
 import type { 
   Reporter, 
@@ -53,7 +53,7 @@ export default class ThreePioJestReporter implements Reporter {
       
       this.logger.testFlow('Test case starting', testName, { suite: suiteName });
       
-      IPCManager.sendEvent({
+      IPCSender.sendEvent({
         eventType: 'testCase',
         payload: {
           filePath: test.path,
@@ -88,7 +88,7 @@ export default class ThreePioJestReporter implements Reporter {
         duration: testCaseResult.duration
       });
       
-      IPCManager.sendEvent({
+      IPCSender.sendEvent({
         eventType: 'testCase',
         payload: {
           filePath: test.path,
@@ -110,7 +110,7 @@ export default class ThreePioJestReporter implements Reporter {
     
     // Send testFileStart event
     this.logger.ipc('send', 'testFileStart', { filePath: test.path });
-    IPCManager.sendEvent({
+    IPCSender.sendEvent({
       eventType: 'testFileStart',
       payload: {
         filePath: test.path
@@ -137,7 +137,7 @@ export default class ThreePioJestReporter implements Reporter {
       // Send console output via IPC
       for (const log of testResult.console) {
         const chunk = `${log.message}\n`;
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: log.type === 'error' ? 'stderrChunk' : 'stdoutChunk',
           payload: {
             filePath: test.path,
@@ -167,7 +167,7 @@ export default class ThreePioJestReporter implements Reporter {
         const error = testCase.failureMessages?.join('\n\n');
         
         // Send test case event
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: 'testCase',
           payload: {
             filePath: test.path,
@@ -205,7 +205,7 @@ export default class ThreePioJestReporter implements Reporter {
     });
 
     this.logger.ipc('send', 'testFileResult', { filePath: test.path, status });
-    IPCManager.sendEvent({
+    IPCSender.sendEvent({
       eventType: 'testFileResult',
       payload: {
         filePath: test.path,
@@ -269,7 +269,7 @@ export default class ThreePioJestReporter implements Reporter {
       
       // Capture for IPC if we have a current test file
       if (this.currentTestFile) {
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: 'stdoutChunk',
           payload: {
             filePath: this.currentTestFile,
@@ -288,7 +288,7 @@ export default class ThreePioJestReporter implements Reporter {
       
       // Capture for IPC if we have a current test file
       if (this.currentTestFile) {
-        IPCManager.sendEvent({
+        IPCSender.sendEvent({
           eventType: 'stderrChunk',
           payload: {
             filePath: this.currentTestFile,

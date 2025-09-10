@@ -14,24 +14,16 @@ ADAPTER_DIR := adapters
 all: clean adapters build
 
 # Build the Go binary
-build:
+build: adapters
 	@echo "Building 3pio binary..."
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/3pio cmd/3pio/main.go
 	@echo "✅ Binary built: $(BUILD_DIR)/3pio"
 
-# Build adapters (uses existing TypeScript build for now)
+# Build adapters and prepare for embedding
 adapters:
-	@echo "Building adapters..."
-	@if [ -f "dist/jest.js" ] && [ -f "dist/vitest.js" ]; then \
-		echo "✅ Using existing adapters from dist/"; \
-	else \
-		echo "Building TypeScript adapters..."; \
-		npm run build; \
-	fi
-	@if [ -f "src/adapters/pytest/pytest_adapter.py" ]; then \
-		cp src/adapters/pytest/pytest_adapter.py dist/pytest_adapter.py 2>/dev/null || true; \
-	fi
+	@echo "Preparing adapters for embedding..."
+	@./scripts/prepare-adapters.sh
 
 # Development build (with debug symbols)
 dev:

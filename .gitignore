@@ -12,6 +12,11 @@ build/
 *.d.ts
 *.d.ts.map
 
+# Generated adapter files for embedding
+internal/adapters/*.js
+internal/adapters/*.mjs
+internal/adapters/*.py
+
 # Test output
 .3pio/
 coverage/

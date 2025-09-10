@@ -23,27 +23,46 @@ const commonOptions = {
   logLevel: 'info',
 };
 
+// Options for adapters that need to be self-contained
+const adapterOptions = {
+  bundle: true,
+  platform: 'node',
+  target: 'node18',
+  sourcemap: true,
+  external: [
+    'jest',
+    'vitest',
+    '@jest/reporters',
+    'fsevents'  // Native module, can't be bundled
+  ],
+  logLevel: 'info',
+};
+
 // Build configurations
 const builds = [
   {
     entryPoints: ['src/cli.ts'],
     outfile: 'dist/cli.js',
-    format: 'cjs'
+    format: 'cjs',
+    options: commonOptions
   },
   {
     entryPoints: ['src/adapters/jest.ts'],
     outfile: 'dist/jest.js',
-    format: 'cjs'
+    format: 'cjs',
+    options: adapterOptions
   },
   {
     entryPoints: ['src/adapters/vitest.ts'],
     outfile: 'dist/vitest.js',
-    format: 'esm'
+    format: 'esm',
+    options: adapterOptions
   },
   {
     entryPoints: ['src/index.ts'],
     outfile: 'dist/index.js',
-    format: 'cjs'
+    format: 'cjs',
+    options: commonOptions
   }
 ];
 
@@ -65,7 +84,13 @@ async function build() {
 
   // Build all targets
   for (const config of builds) {
-    const options = { ...commonOptions, ...config };
+    const baseOptions = config.options || commonOptions;
+    const options = { 
+      ...baseOptions, 
+      entryPoints: config.entryPoints,
+      outfile: config.outfile,
+      format: config.format
+    };
 
     if (isWatch) {
       const ctx = await esbuild.context(options);
