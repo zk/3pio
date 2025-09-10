@@ -627,3 +627,223 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 		t.Errorf("Expected stdout output to be present in log")
 	}
 }
+
+func TestManager_TestCaseOutputAssociation(t *testing.T) {
+	// Create temp directory for test output
+	tempDir, err := os.MkdirTemp("", "3pio-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create manager
+	manager, err := NewManager(tempDir, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	testFile := "example.test.js"
+	
+	// Initialize with the test file
+	manager.Initialize([]string{testFile}, "test command")
+
+	// Test 1: Start test "foo" (RUNNING status like Jest does)
+	test1StartEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	test1StartEvent.Payload.FilePath = testFile
+	test1StartEvent.Payload.TestName = "should foo correctly"
+	test1StartEvent.Payload.Status = "RUNNING"  // Jest sends RUNNING first
+
+	if err := manager.HandleEvent(test1StartEvent); err != nil {
+		t.Fatalf("HandleEvent failed for test 1 start: %v", err)
+	}
+
+	// Output from test 1
+	stdout1Event := ipc.StdoutChunkEvent{
+		EventType: ipc.EventTypeStdoutChunk,
+	}
+	stdout1Event.Payload.FilePath = testFile
+	stdout1Event.Payload.Chunk = "Output from foo test\n"
+
+	if err := manager.HandleEvent(stdout1Event); err != nil {
+		t.Fatalf("HandleEvent failed for stdout 1: %v", err)
+	}
+
+	// Test 1: Complete (PASS status)
+	test1CompleteEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	test1CompleteEvent.Payload.FilePath = testFile
+	test1CompleteEvent.Payload.TestName = "should foo correctly"
+	test1CompleteEvent.Payload.Status = ipc.TestStatusPass
+	test1CompleteEvent.Payload.Duration = 10
+
+	if err := manager.HandleEvent(test1CompleteEvent); err != nil {
+		t.Fatalf("HandleEvent failed for test 1 complete: %v", err)
+	}
+
+	// Test 2: Start test "bar" (RUNNING)
+	test2StartEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	test2StartEvent.Payload.FilePath = testFile
+	test2StartEvent.Payload.TestName = "should bar correctly"
+	test2StartEvent.Payload.Status = "RUNNING"
+
+	if err := manager.HandleEvent(test2StartEvent); err != nil {
+		t.Fatalf("HandleEvent failed for test 2 start: %v", err)
+	}
+
+	// Output from test 2
+	stdout2Event := ipc.StdoutChunkEvent{
+		EventType: ipc.EventTypeStdoutChunk,
+	}
+	stdout2Event.Payload.FilePath = testFile
+	stdout2Event.Payload.Chunk = "Output from bar test\n"
+
+	if err := manager.HandleEvent(stdout2Event); err != nil {
+		t.Fatalf("HandleEvent failed for stdout 2: %v", err)
+	}
+
+	// Test 2: Complete (PASS)
+	test2CompleteEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	test2CompleteEvent.Payload.FilePath = testFile
+	test2CompleteEvent.Payload.TestName = "should bar correctly"
+	test2CompleteEvent.Payload.Status = ipc.TestStatusPass
+	test2CompleteEvent.Payload.Duration = 15
+
+	if err := manager.HandleEvent(test2CompleteEvent); err != nil {
+		t.Fatalf("HandleEvent failed for test 2 complete: %v", err)
+	}
+
+	// Test 3: Start test "baz" (RUNNING)
+	test3StartEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	test3StartEvent.Payload.FilePath = testFile
+	test3StartEvent.Payload.TestName = "should baz correctly"
+	test3StartEvent.Payload.Status = "RUNNING"
+
+	if err := manager.HandleEvent(test3StartEvent); err != nil {
+		t.Fatalf("HandleEvent failed for test 3 start: %v", err)
+	}
+
+	// Output from test 3 (stderr)
+	stderr3Event := ipc.StderrChunkEvent{
+		EventType: ipc.EventTypeStderrChunk,
+	}
+	stderr3Event.Payload.FilePath = testFile
+	stderr3Event.Payload.Chunk = "Error output from baz test\n"
+
+	if err := manager.HandleEvent(stderr3Event); err != nil {
+		t.Fatalf("HandleEvent failed for stderr 3: %v", err)
+	}
+
+	// Test 3: Complete (FAIL)
+	test3CompleteEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	test3CompleteEvent.Payload.FilePath = testFile
+	test3CompleteEvent.Payload.TestName = "should baz correctly"
+	test3CompleteEvent.Payload.Status = ipc.TestStatusFail
+	test3CompleteEvent.Payload.Duration = 5
+	test3CompleteEvent.Payload.Error = "Expected true to be false"
+
+	if err := manager.HandleEvent(test3CompleteEvent); err != nil {
+		t.Fatalf("HandleEvent failed for test 3 complete: %v", err)
+	}
+
+	// Jest sends duplicate events at the end (simulate this behavior)
+	// These should NOT create duplicate test boundaries
+	for _, dupEvent := range []ipc.TestCaseEvent{
+		test1CompleteEvent,
+		test2CompleteEvent,
+		test3CompleteEvent,
+	} {
+		if err := manager.HandleEvent(dupEvent); err != nil {
+			t.Fatalf("HandleEvent failed for duplicate event: %v", err)
+		}
+	}
+
+	// Wait for debounce to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Read the log file
+	logPath := filepath.Join(tempDir, "logs", testFile+".log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read test log: %v", err)
+	}
+
+	logContent := string(content)
+
+	// Debug: Print actual content
+	t.Logf("Actual log content:\n%s", logContent)
+
+	// Expected format:
+	// --- Test: should foo correctly ---
+	// Output from foo test
+	//
+	// --- Test: should bar correctly ---
+	// Output from bar test
+	//
+	// --- Test: should baz correctly ---
+	// Error output from baz test
+
+	// Check that each test boundary appears exactly once
+	boundaries := []string{
+		"--- Test: should foo correctly ---",
+		"--- Test: should bar correctly ---",
+		"--- Test: should baz correctly ---",
+	}
+
+	for _, boundary := range boundaries {
+		count := strings.Count(logContent, boundary)
+		if count != 1 {
+			t.Errorf("Expected boundary %q to appear exactly once, got %d occurrences", boundary, count)
+		}
+	}
+
+	// Check that output is associated with the correct test
+	// Find the position of each boundary
+	foo_pos := strings.Index(logContent, boundaries[0])
+	bar_pos := strings.Index(logContent, boundaries[1])
+	baz_pos := strings.Index(logContent, boundaries[2])
+
+	if foo_pos == -1 || bar_pos == -1 || baz_pos == -1 {
+		t.Fatal("Not all test boundaries found in log")
+	}
+
+	// Check order
+	if foo_pos >= bar_pos || bar_pos >= baz_pos {
+		t.Error("Test boundaries are not in the expected order")
+	}
+
+	// Check that foo's output comes after foo's boundary but before bar's boundary
+	foo_output_pos := strings.Index(logContent, "Output from foo test")
+	if foo_output_pos == -1 {
+		t.Error("Foo test output not found")
+	} else if foo_output_pos <= foo_pos || foo_output_pos >= bar_pos {
+		t.Error("Foo test output is not properly associated with foo test")
+	}
+
+	// Check that bar's output comes after bar's boundary but before baz's boundary
+	bar_output_pos := strings.Index(logContent, "Output from bar test")
+	if bar_output_pos == -1 {
+		t.Error("Bar test output not found")
+	} else if bar_output_pos <= bar_pos || bar_output_pos >= baz_pos {
+		t.Error("Bar test output is not properly associated with bar test")
+	}
+
+	// Check that baz's error output comes after baz's boundary
+	baz_output_pos := strings.Index(logContent, "Error output from baz test")
+	if baz_output_pos == -1 {
+		t.Error("Baz test error output not found")
+	} else if baz_output_pos <= baz_pos {
+		t.Error("Baz test error output is not properly associated with baz test")
+	}
+}

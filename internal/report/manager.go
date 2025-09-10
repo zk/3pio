@@ -193,7 +193,10 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 					Error:    event.Payload.Error,
 				})
 				
-				// Write test case boundary to log file only when first encountering the test
+				// Write test case boundary to log file
+				// For Jest: Write on RUNNING status (test starting)
+				// For Vitest: Write on first event (which is the completion event)
+				// This prevents duplicate boundaries while supporting both test runners
 				m.appendToFileBuffer(filePath, fmt.Sprintf("\n--- Test: %s ---\n", event.Payload.TestName))
 			}
 			break
