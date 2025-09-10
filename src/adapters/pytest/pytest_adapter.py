@@ -7,10 +7,12 @@ specified by the THREEPIO_IPC_PATH environment variable.
 """
 
 import os
+import sys
 import json
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any
+from io import StringIO
 
 from _pytest.config import Config
 from _pytest.reports import TestReport
@@ -28,6 +30,9 @@ class ThreepioReporter:
         self.ipc_path = ipc_path
         self.test_files = set()
         self.test_results = {}  # Track results per file
+        self.current_test_file = None
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
         
     def send_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         """Send an event to the IPC file."""
@@ -61,6 +66,61 @@ class ThreepioReporter:
             pass
         
         return file_path
+    
+    def start_capture(self, file_path: str) -> None:
+        """Start capturing stdout/stderr for a test file."""
+        self.current_test_file = file_path
+        
+        # Store reference to original write methods
+        original_stdout_write = self.original_stdout.write
+        original_stderr_write = self.original_stderr.write
+        
+        # Create custom write functions that send to IPC
+        def stdout_write_wrapper(text):
+            # Write to original stream
+            result = original_stdout_write(text)
+            if hasattr(self.original_stdout, 'flush'):
+                self.original_stdout.flush()
+            
+            # Send to IPC if we have a current test file
+            if self.current_test_file and text:
+                try:
+                    self.send_event("stdoutChunk", {
+                        "filePath": self.current_test_file,
+                        "chunk": text
+                    })
+                except:
+                    pass  # Silently ignore IPC errors
+            
+            return result
+        
+        def stderr_write_wrapper(text):
+            # Write to original stream
+            result = original_stderr_write(text)
+            if hasattr(self.original_stderr, 'flush'):
+                self.original_stderr.flush()
+            
+            # Send to IPC if we have a current test file
+            if self.current_test_file and text:
+                try:
+                    self.send_event("stderrChunk", {
+                        "filePath": self.current_test_file,
+                        "chunk": text
+                    })
+                except:
+                    pass  # Silently ignore IPC errors
+            
+            return result
+        
+        # Wrap the write methods
+        sys.stdout.write = stdout_write_wrapper
+        sys.stderr.write = stderr_write_wrapper
+    
+    def stop_capture(self) -> None:
+        """Stop capturing stdout/stderr."""
+        sys.stdout.write = self.original_stdout.write
+        sys.stderr.write = self.original_stderr.write
+        self.current_test_file = None
 
 
 def pytest_configure(config: Config) -> None:
@@ -96,6 +156,9 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
             _reporter.test_files.add(file_path)
             _reporter.send_event("testFileStart", {"filePath": file_path})
             _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
+        
+        # Start capturing output for this test file
+        _reporter.start_capture(file_path)
 
 
 def pytest_runtest_logreport(report: TestReport) -> None:
@@ -108,6 +171,14 @@ def pytest_runtest_logreport(report: TestReport) -> None:
     # Only process the 'call' phase (actual test execution)
     if report.when != 'call':
         return
+    
+    # Stop capture after the test completes
+    if report.when == 'call':
+        # Extract file path from nodeid
+        file_path = report.nodeid.split('::')[0]
+        # Check if this is the last test in the file by looking at next item
+        # For now, we'll keep capture running until session finish
+        pass
     
     # Extract file path from nodeid (format: path/to/test.py::TestClass::test_method)
     file_path = report.nodeid.split('::')[0]
@@ -168,6 +239,9 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
     
     if not _reporter:
         return
+    
+    # Stop any active capture
+    _reporter.stop_capture()
     
     # Send testFileResult events for all test files
     for file_path in _reporter.test_files:
