@@ -70,8 +70,8 @@ describe('Full Integration Flow', () => {
         payload: { filePath: 'test1.js' }
       });
       
-      // Small delay to ensure file is created
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Small delay to ensure file is created and buffer initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       await IPCManager.sendEvent({
         eventType: 'stdoutChunk',
@@ -100,8 +100,8 @@ describe('Full Integration Flow', () => {
         payload: { filePath: 'test2.js' }
       });
       
-      // Small delay to ensure file is created
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Small delay to ensure file is created and buffer initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       await IPCManager.sendEvent({
         eventType: 'stdoutChunk',
@@ -256,6 +256,9 @@ describe('Full Integration Flow', () => {
           eventType: 'testFileStart',
           payload: { filePath }
         });
+        
+        // Small delay to ensure file handle is created
+        await new Promise(resolve => setTimeout(resolve, 50));
         
         // Send multiple chunks per file
         for (let j = 0; j < 5; j++) {

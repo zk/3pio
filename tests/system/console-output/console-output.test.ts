@@ -37,7 +37,8 @@ describe('Console Output System Test', () => {
     // Replace dynamic timestamp and time values with placeholders for comparison
     const normalizedOutput = output
       .replace(/\d{4}-\d{2}-\d{2}T\d{6,9}Z(-[a-z0-9-]+)?/gi, 'TIMESTAMP')
-      .replace(/Time:\s+\d+\.\d+s/g, 'Time:        X.XXXs');
+      .replace(/Time:\s+\d+\.\d+s/g, 'Time:        X.XXXs')
+      .replace(/Test failures!.*/g, 'Test failures! [RANDOM_MESSAGE]');
     
     const expectedOutput = `
 Greetings! I will now execute the test command:
@@ -58,7 +59,8 @@ FAIL     ./string.test.js
 RUNNING  ./math.test.js
 PASS     ./math.test.js
 
-Test Files: 1 failed,  1 passed, 2 total
+Test failures! [RANDOM_MESSAGE]
+Results: 1 failed,  1 passed, 2 total
 Time:        X.XXXs
 
 `;

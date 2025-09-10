@@ -373,6 +373,11 @@ export class ReportManager {
     const normalizedPath = path.resolve(filePath.replace(/^\.\//, ''));
     const relativePath = path.relative(process.cwd(), normalizedPath);
     
+    // Ensure log file exists (create if needed)
+    if (!this.testFileHandles.has(relativePath)) {
+      await this.createLogFileForTest(relativePath);
+    }
+    
     // Add to buffer for incremental writing to individual log files
     const buffer = this.testFileBuffers.get(relativePath);
     if (buffer) {

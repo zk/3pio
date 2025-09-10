@@ -1,4 +1,5 @@
 import pytest
+import sys
 
 
 class TestStringOperations:
@@ -8,11 +9,15 @@ class TestStringOperations:
         assert "foo" + "bar" == "foobar"
         print("Concatenation tests passed!")
 
-    def test_string_length(self):
-        print("Testing string length...")
-        assert len("Hello") == 5
-        assert len("Testing") == 7
-        print("Length tests passed!")
+    def test_fail_this_test(self):
+        print("This test is expected to fail")
+        print("Error: Intentional failure for testing", file=sys.stderr)
+        assert "foo" == "bar"  # This will fail
+
+    @pytest.mark.skip(reason="Skipping this test for consistency with Jest fixture")
+    def test_skip_this_test(self):
+        print("This should not run")
+        assert True == False
 
     def test_string_uppercase(self):
         print("Testing uppercase conversion...")

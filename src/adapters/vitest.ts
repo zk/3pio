@@ -10,6 +10,7 @@ export default class ThreePioVitestReporter implements Reporter {
   private currentTestFile: string | null = null;
   private captureEnabled: boolean = false;
   private logger: Logger;
+  private filesStarted: Set<string> = new Set();
 
   constructor() {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
@@ -59,10 +60,39 @@ export default class ThreePioVitestReporter implements Reporter {
   onTestFileStart(file: File): void {
     this.logger.testFlow('Starting test file', file.filepath);
     this.currentTestFile = file.filepath;
+    
+    // Send testFileStart event so the log file is created
+    if (!this.filesStarted.has(file.filepath)) {
+      this.filesStarted.add(file.filepath);
+      this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
+      IPCManager.sendEvent({
+        eventType: 'testFileStart',
+        payload: {
+          filePath: file.filepath
+        }
+      }).catch(error => {
+        this.logger.error('Failed to send testFileStart', error);
+      });
+    }
+    
     this.startCapture();
   }
 
   onTestFileResult(file: File): void {
+    // Send testFileStart if we haven't already (in case onTestFileStart wasn't called)
+    if (!this.filesStarted.has(file.filepath)) {
+      this.filesStarted.add(file.filepath);
+      this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
+      IPCManager.sendEvent({
+        eventType: 'testFileStart',
+        payload: {
+          filePath: file.filepath
+        }
+      }).catch(error => {
+        this.logger.error('Failed to send testFileStart', error);
+      });
+    }
+    
     this.stopCapture();
 
     // Send individual test case results
@@ -162,6 +192,20 @@ export default class ThreePioVitestReporter implements Reporter {
       this.logger.info('Processing files in onFinished (fallback mode)', { count: files.length });
       
       for (const file of files) {
+        // Send testFileStart if we haven't already
+        if (!this.filesStarted.has(file.filepath)) {
+          this.filesStarted.add(file.filepath);
+          this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
+          await IPCManager.sendEvent({
+            eventType: 'testFileStart',
+            payload: {
+              filePath: file.filepath
+            }
+          }).catch(error => {
+            this.logger.error('Failed to send testFileStart', error);
+          });
+        }
+        
         // Send test case events first
         if (file.tasks) {
           this.sendTestCaseEvents(file.filepath, file.tasks);
