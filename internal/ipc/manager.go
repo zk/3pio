@@ -20,6 +20,7 @@ type Manager struct {
 	Events   chan Event
 	errors   chan error
 	stopChan chan struct{}
+	stopped  chan struct{} // Signals when watchLoop has stopped
 	mu       sync.RWMutex
 	logger   Logger
 	file     *os.File
@@ -55,6 +56,7 @@ func NewManager(ipcPath string, logger Logger) (*Manager, error) {
 		Events:   make(chan Event, 100),
 		errors:   make(chan error, 10),
 		stopChan: make(chan struct{}),
+		stopped:  make(chan struct{}),
 		logger:   logger,
 		file:     file,
 		reader:   bufio.NewReader(file),
@@ -102,6 +104,7 @@ func (m *Manager) readExistingEvents() {
 
 // watchLoop watches for file changes and reads new events
 func (m *Manager) watchLoop() {
+	defer close(m.stopped)
 	for {
 		select {
 		case event, ok := <-m.watcher.Events:
@@ -226,16 +229,19 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 
 // Cleanup stops watching and closes resources
 func (m *Manager) Cleanup() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	// Only close stopChan if it hasn't been closed yet
+	// Signal stop to goroutines (not under lock to avoid deadlock)
 	select {
 	case <-m.stopChan:
 		// Already closed
 	default:
 		close(m.stopChan)
 	}
+
+	// Wait for watchLoop to finish before cleaning up resources
+	<-m.stopped
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	if m.watcher != nil {
 		m.watcher.Close()

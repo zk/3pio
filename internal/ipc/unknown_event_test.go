@@ -6,22 +6,36 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 // mockLogger captures log messages for testing
 type mockLogger struct {
+	mu            sync.Mutex
 	debugMessages []string
 	errorMessages []string
 }
 
 func (l *mockLogger) Debug(format string, args ...interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.debugMessages = append(l.debugMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
 }
 
 func (l *mockLogger) Error(format string, args ...interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.errorMessages = append(l.errorMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
+}
+
+func (l *mockLogger) getErrorMessages() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	messages := make([]string, len(l.errorMessages))
+	copy(messages, l.errorMessages)
+	return messages
 }
 
 func TestManager_HandleUnknownEventTypes(t *testing.T) {
@@ -130,7 +144,8 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 	foundRunComplete := false
 	foundUnknownEvent := false
 	
-	for _, msg := range logger.errorMessages {
+	errorMessages := logger.getErrorMessages()
+	for _, msg := range errorMessages {
 		if strings.Contains(msg, "Unknown event type: runComplete") {
 			foundRunComplete = true
 		}
@@ -141,12 +156,12 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 	
 	if foundRunComplete {
 		t.Error("runComplete should be handled gracefully now, not logged as error")
-		t.Logf("Error messages: %v", logger.errorMessages)
+		t.Logf("Error messages: %v", errorMessages)
 	}
 	
 	if !foundUnknownEvent {
 		t.Error("Expected error log for unknownEvent event not found")
-		t.Logf("Error messages: %v", logger.errorMessages)
+		t.Logf("Error messages: %v", errorMessages)
 	}
 }
 
@@ -196,7 +211,8 @@ func TestManager_ShouldHandleRunCompleteGracefully(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	
 	// After fix: runComplete should NOT generate an error log
-	for _, msg := range logger.errorMessages {
+	errorMessages := logger.getErrorMessages()
+	for _, msg := range errorMessages {
 		if strings.Contains(msg, "Unknown event type: runComplete") {
 			t.Errorf("runComplete event should be handled gracefully, but got error: %s", msg)
 		}
