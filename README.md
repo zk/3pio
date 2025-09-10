@@ -1,5 +1,5 @@
 <p align="center" bgcolor="#F6E26A">
-    <img src="./assets/3pio_logo_wide.jpg" width="1024" height="256" />
+    <img src="./assets/3pio_logo_wide.jpg" width="1024" height="240" />
 </p>
 
 
