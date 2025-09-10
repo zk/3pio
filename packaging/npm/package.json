@@ -1,0 +1,61 @@
+{
+  "name": "@heyzk/3pio",
+  "version": "0.0.1",
+  "description": "A context-competent test runner for coding agents",
+  "bin": {
+    "3pio": "./bin/3pio"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "keywords": [
+    "test",
+    "testing",
+    "jest",
+    "vitest",
+    "ai",
+    "adapter",
+    "reporter",
+    "go",
+    "binary"
+  ],
+  "author": "Zachary Kim (https://github.com/zk)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zk/3pio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zk/3pio/issues"
+  },
+  "homepage": "https://github.com/zk/3pio#readme",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "postinstall.js",
+    "bin/",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "jest": ">=27.0.0",
+    "vitest": ">=0.34.0"
+  },
+  "peerDependenciesMeta": {
+    "jest": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  }
+}

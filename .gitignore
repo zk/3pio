@@ -1,21 +1,38 @@
-# Dependencies
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+3pio
+/build/
+/dist/
 
-# Build output
-dist/
-build/
-*.js.map
-*.d.ts
-*.d.ts.map
+# Test binaries
+*.test
+*.out
+
+# Go workspace
+go.work
+
+# Dependency directories (remove if using modules)
+vendor/
+
+# Go coverage
+coverage.txt
+coverage.html
+*.prof
+*.cover
 
 # Test output
 .3pio/
-coverage/
 *.log
+__pycache__/
+.pytest_cache/
+
+# Node.js (for test fixtures only)
+node_modules/
+package-lock.json
 
 # IDE
 .vscode/
@@ -23,19 +40,29 @@ coverage/
 *.swp
 *.swo
 *.swn
+*.vim
+
+# OS
 .DS_Store
+Thumbs.db
+Desktop.ini
 
 # Environment
 .env
 .env.local
 .env.*.local
 
-# OS
-Thumbs.db
-Desktop.ini
-
 # Temporary files
 *.tmp
 *.temp
 .cache/
 tmp/
+/scratch/
+
+# Release artifacts
+dist/
+releases/
+
+# Embedded adapters are committed
+!internal/adapters/*.js
+!internal/adapters/*.py

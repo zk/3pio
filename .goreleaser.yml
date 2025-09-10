@@ -1,0 +1,151 @@
+# .goreleaser.yml
+# GoReleaser configuration for 3pio multi-platform builds
+
+version: 2
+
+project_name: 3pio
+
+before:
+  hooks:
+    # Build adapters before creating releases
+    - make adapters
+
+builds:
+  - id: 3pio
+    main: ./cmd/3pio/main.go
+    binary: 3pio
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Skip unsupported combinations
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - id: default
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - CHANGELOG*
+
+checksum:
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+  groups:
+    - title: "New Features"
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: "Performance Improvements"
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 2
+    - title: "Others"
+      order: 999
+
+# GitHub release configuration
+release:
+  github:
+    owner: zk
+    name: 3pio
+  draft: false
+  prerelease: auto
+  mode: replace
+  footer: |
+    ## Installation
+    
+    ### npm
+    ```bash
+    npm install -g @heyzk/3pio
+    ```
+    
+    ### pip
+    ```bash
+    pip install 3pio
+    ```
+    
+    ### Homebrew
+    ```bash
+    brew install zk/tap/3pio
+    ```
+    
+    ### Direct Download
+    Download the appropriate binary for your platform from the assets below.
+
+# Generate SBOMs for security compliance
+sboms:
+  - artifacts: archive
+    documents:
+      - "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}.spdx.sbom.json"
+
+# Homebrew tap configuration
+brews:
+  - name: 3pio
+    repository:
+      owner: zk
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    homepage: "https://github.com/zk/3pio"
+    description: "Context-competent test runner for coding agents"
+    license: "MIT"
+    test: |
+      system "#{bin}/3pio --help"
+      system "#{bin}/3pio --version"
+    caveats: |
+      3pio is a test runner adapter that works with Jest, Vitest, and pytest.
+      
+      Usage examples:
+        3pio npx jest          # Run Jest tests
+        3pio npx vitest run    # Run Vitest tests  
+        3pio pytest           # Run pytest tests
+        3pio npm test          # Run npm test script
+
+      Reports are generated in .3pio/runs/ directory.
+      
+      For more information: https://github.com/zk/3pio
+
+# Signature generation for security
+signs:
+  - cmd: cosign
+    env:
+    - COSIGN_EXPERIMENTAL=1
+    certificate_identity: 'https://github.com/{{ .Env.GITHUB_REPOSITORY }}/.github/workflows/release.yml@refs/tags/{{ .Tag }}'
+    certificate_oidc_issuer: 'https://token.actions.githubusercontent.com'
+    args:
+      - sign-blob
+      - '--output-certificate={{ .ArtifactPath }}.pem'
+      - '--output-signature={{ .ArtifactPath }}.sig'
+      - '{{ .ArtifactPath }}'
+      - --yes
+    artifacts: checksum

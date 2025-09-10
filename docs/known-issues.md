@@ -55,24 +55,45 @@ Jest's handling of console output has several important characteristics that aff
 
 For detailed investigation and implications, see [Jest Console Handling](./jest-console-handling.md).
 
-### Reporter Flag Order Quirk
+### Reporter Flag Order Critical Requirement
 
-Jest has a critical quirk where the `--reporters` flag **must come AFTER** any test file paths in the command line:
+Jest has a critical parsing issue with the `--reporters` flag that requires careful handling:
+
+#### The Problem
+The `--reporters` flag in Jest uses a greedy parsing algorithm - it treats ALL subsequent arguments as reporter module names until it encounters another flag starting with `--`. This means:
+
+- ❌ **Wrong**: `jest --reporters /path/to/reporter file.test.js` 
+  - Jest interprets `file.test.js` as a reporter module name
+- ❌ **Wrong**: `npm test -- --reporters /path/to/reporter --coverage --verbose`
+  - Jest interprets `--coverage` and `--verbose` as reporter module names
+  
+#### The Solution
+The `--reporters` flag **must come LAST** in the command line, after all other Jest options and test file paths:
 
 - ✅ **Correct**: `jest file.test.js --reporters /path/to/reporter`
-- ❌ **Wrong**: `jest --reporters /path/to/reporter file.test.js`
+- ✅ **Correct**: `jest --coverage --verbose --reporters /path/to/reporter`
+- ✅ **Correct**: `npm test -- --coverage --verbose --reporters /path/to/reporter`
 
-When `--reporters` comes before test file paths, Jest incorrectly interprets the test files as reporter module paths, causing errors like:
-```
-Error: Could not resolve a module for a custom reporter.
-  Module name: test/system/mcp-tools/click.test.js
-```
+#### Examples with Package Managers
 
-This is especially important when using npm scripts with the `--` separator:
+When using npm scripts with the `--` separator:
+- ✅ **Correct**: `npm test -- --coverage --bail --reporters /path/to/reporter`
 - ✅ **Correct**: `npm test -- file.test.js --reporters /path/to/reporter`
+- ❌ **Wrong**: `npm test -- --reporters /path/to/reporter --coverage`
 - ❌ **Wrong**: `npm test -- --reporters /path/to/reporter file.test.js`
 
-3pio automatically handles this by always placing the `--reporters` flag at the end of the command.
+#### How 3pio Handles This
+
+3pio automatically ensures correct placement by:
+1. For package manager commands with existing `--` separator: appending `--reporters` at the very end
+2. For package manager commands without `--`: adding `-- --reporters /adapter/path` at the end
+3. For direct Jest invocations: placing `--reporters` immediately after the `jest` command but using `--` to separate any test file paths
+
+This prevents errors like:
+```
+Error: Could not resolve a module for a custom reporter.
+  Module name: --coverage
+```
 
 ## Environment Variables
 
