@@ -1,8 +1,7 @@
-<div style="background-color:#F6E26A;">
-<p align="center">
+<p align="center" bgcolor="#F6E26A">
     <img src="./assets/3pio_logo.jpg" width="256" height="256" />
 </p>
-</div>
+
 
 # 3pio - Your agent's context-concious test runner 
 
