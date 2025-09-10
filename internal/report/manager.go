@@ -192,10 +192,10 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 					Duration: event.Payload.Duration,
 					Error:    event.Payload.Error,
 				})
+				
+				// Write test case boundary to log file only when first encountering the test
+				m.appendToFileBuffer(filePath, fmt.Sprintf("\n--- Test: %s ---\n", event.Payload.TestName))
 			}
-			
-			// Write test case boundary to log file
-			m.appendToFileBuffer(filePath, fmt.Sprintf("\n--- Test: %s ---\n", event.Payload.TestName))
 			break
 		}
 	}

@@ -530,3 +530,100 @@ func TestManager_Debouncing(t *testing.T) {
 		}
 	}
 }
+
+func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	// Initialize with a test file
+	testFile := "test.spec.js"
+	if err := manager.Initialize([]string{testFile}, "npm test"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send multiple events for the same test case (simulating RUNNING then PASS)
+	testName := "should work correctly"
+	suiteName := "Test Suite"
+
+	// First event: RUNNING status
+	runningEvent := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	runningEvent.Payload.FilePath = testFile
+	runningEvent.Payload.TestName = testName
+	runningEvent.Payload.SuiteName = suiteName
+	runningEvent.Payload.Status = ipc.TestStatusRunning
+
+	if err := manager.HandleEvent(runningEvent); err != nil {
+		t.Fatalf("HandleEvent failed for RUNNING: %v", err)
+	}
+
+	// Second event: PASS status (duplicate)
+	passEvent1 := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	passEvent1.Payload.FilePath = testFile
+	passEvent1.Payload.TestName = testName
+	passEvent1.Payload.SuiteName = suiteName
+	passEvent1.Payload.Status = ipc.TestStatusPass
+	passEvent1.Payload.Duration = 10
+
+	if err := manager.HandleEvent(passEvent1); err != nil {
+		t.Fatalf("HandleEvent failed for first PASS: %v", err)
+	}
+
+	// Third event: Another PASS status (another duplicate)
+	passEvent2 := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+	}
+	passEvent2.Payload.FilePath = testFile
+	passEvent2.Payload.TestName = testName
+	passEvent2.Payload.SuiteName = suiteName
+	passEvent2.Payload.Status = ipc.TestStatusPass
+	passEvent2.Payload.Duration = 10
+
+	if err := manager.HandleEvent(passEvent2); err != nil {
+		t.Fatalf("HandleEvent failed for second PASS: %v", err)
+	}
+
+	// Add some stdout output after the test
+	stdoutEvent := ipc.StdoutChunkEvent{
+		EventType: ipc.EventTypeStdoutChunk,
+	}
+	stdoutEvent.Payload.FilePath = testFile
+	stdoutEvent.Payload.Chunk = "Test output here\n"
+
+	if err := manager.HandleEvent(stdoutEvent); err != nil {
+		t.Fatalf("HandleEvent failed for stdout: %v", err)
+	}
+
+	// Wait for debounce to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Read the log file and verify only one test boundary was written
+	logPath := filepath.Join(tempDir, "logs", testFile+".log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read test log: %v", err)
+	}
+
+	// Count occurrences of the test boundary
+	boundary := fmt.Sprintf("--- Test: %s ---", testName)
+	occurrences := strings.Count(string(content), boundary)
+
+	if occurrences != 1 {
+		t.Errorf("Expected exactly 1 test boundary, but found %d occurrences\nLog content:\n%s", occurrences, string(content))
+	}
+
+	// Verify the test output is still present
+	if !strings.Contains(string(content), "Test output here") {
+		t.Errorf("Expected stdout output to be present in log")
+	}
+}
