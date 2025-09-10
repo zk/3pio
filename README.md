@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="./assets/3pio_logo.jpg" width="256" height="256" />
+</p>
+
 # 3pio - Your agent's context-concious test runner 
 
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
