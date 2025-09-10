@@ -78,11 +78,10 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 	result := make([]string, 0, len(args)+5)
 	
 	foundJest := false
-	hasTestFiles := false
-	testFileIndex := -1
+	jestIndex := -1
 	isPackageManagerCommand := false
 	
-	// Check if this is a package manager command
+	// Check if this is a package manager command that needs -- separator
 	if len(args) > 0 {
 		cmd := args[0]
 		isPackageManagerCommand = strings.Contains(cmd, "npm") || 
@@ -91,41 +90,69 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 								 strings.Contains(cmd, "bun")
 	}
 	
-	// First pass: find jest and check for test files
+	// Special handling for package manager commands that directly call jest
+	// npm exec jest and yarn jest should NOT use -- separator (they're direct invocations)
+	// pnpm exec jest and bun jest SHOULD use -- separator (they need it)
+	isDirectJestCall := false
+	if len(args) >= 2 && isPackageManagerCommand {
+		cmd := args[0]
+		// npm exec and yarn jest are direct invocations (no -- needed)
+		if (cmd == "npm" && args[1] == "exec" && len(args) > 2 && strings.Contains(args[2], "jest")) ||
+		   (cmd == "yarn" && args[1] == "jest") {
+			isDirectJestCall = true
+		}
+		// pnpm exec jest and bun jest need -- separator
+		// They are NOT marked as direct calls, so they'll use the -- separator
+	}
+	
+	// Check for bunx/npx which are treated like direct invocations
+	if len(args) > 0 && (strings.Contains(args[0], "npx") || strings.Contains(args[0], "bunx")) {
+		isDirectJestCall = true
+		isPackageManagerCommand = false
+	}
+	
+	// Find jest position and check for test files
 	for i, arg := range args {
 		if strings.Contains(arg, "jest") {
 			foundJest = true
-		}
-		// Check if this looks like a test file (not starting with -)
-		if foundJest && !strings.HasPrefix(arg, "-") && strings.Contains(arg, ".") {
-			hasTestFiles = true
-			if testFileIndex == -1 {
-				testFileIndex = i
+			if jestIndex == -1 {
+				jestIndex = i
 			}
 		}
 	}
 	
-	// Handle package manager commands (npm, yarn, etc.)
-	if !foundJest && isPackageManagerCommand {
+	// Determine if we have test files after jest command
+	hasTestFiles := false
+	if foundJest && jestIndex >= 0 {
+		for i := jestIndex + 1; i < len(args); i++ {
+			arg := args[i]
+			// Check if this looks like a test file/pattern (not a flag)
+			if !strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") {
+				// Could be a file, directory, or glob pattern
+				if strings.Contains(arg, ".") || strings.Contains(arg, "/") || !strings.Contains(arg, "=") {
+					hasTestFiles = true
+					break
+				}
+			}
+		}
+	}
+	
+	// Handle package manager commands that need -- separator (npm test, yarn test, pnpm exec jest, bun jest, etc.)
+	// This includes pnpm exec jest and bun jest even though they contain "jest"
+	if isPackageManagerCommand && !isDirectJestCall {
 		// Check if -- separator already exists
 		hasSeparator := false
-		separatorIndex := -1
-		for i, arg := range args {
+		for _, arg := range args {
 			if arg == "--" {
 				hasSeparator = true
-				separatorIndex = i
 				break
 			}
 		}
 		
 		if hasSeparator {
-			// Insert reporter flags after existing --
-			for i, arg := range args {
-				result = append(result, arg)
-				if i == separatorIndex {
-					result = append(result, "--reporters", adapterPath)
-				}
-			}
+			// Append reporter flags at the end (after all other Jest flags)
+			result = append(result, args...)
+			result = append(result, "--reporters", adapterPath)
 		} else {
 			// Add all args, then -- separator, then reporter flags
 			result = append(result, args...)
@@ -135,22 +162,32 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 		return result
 	}
 	
-	// Build the command for direct jest commands
+	// Handle direct jest invocations and direct calls through package managers
+	reporterAdded := false
+	separatorAdded := false
+	
 	for i, arg := range args {
-		if strings.Contains(arg, "jest") {
-			result = append(result, arg)
+		// Check if we need to add -- separator before this arg
+		// This happens when we've added the reporter, we have test files,
+		// and this arg is a test file (not a flag)
+		if reporterAdded && !separatorAdded && hasTestFiles && 
+		   !strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+		   i > jestIndex && (strings.Contains(arg, ".") || strings.Contains(arg, "/")) {
+			result = append(result, "--")
+			separatorAdded = true
+		}
+		
+		result = append(result, arg)
+		
+		// Add reporter after jest command
+		if !reporterAdded && strings.Contains(arg, "jest") {
 			result = append(result, "--reporters", adapterPath)
-			// If there are test files, add -- separator before them
-			if hasTestFiles && i+1 == testFileIndex {
-				result = append(result, "--")
-			}
-		} else {
-			result = append(result, arg)
+			reporterAdded = true
 		}
 	}
 	
 	// If jest wasn't found in args (fallback case), add reporter at the end
-	if !foundJest {
+	if !foundJest && !reporterAdded {
 		result = append(result, "--reporters", adapterPath)
 	}
 	
