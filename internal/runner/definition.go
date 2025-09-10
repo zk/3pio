@@ -269,11 +269,54 @@ func (v *VitestDefinition) GetTestFiles(args []string) ([]string, error) {
 
 // BuildCommand builds Vitest command with adapter
 func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []string {
-	// Handle npm commands specially - need to use -- separator
-	if len(args) >= 2 && args[0] == "npm" && (args[1] == "test" || args[1] == "run") {
-		// For npm test or npm run, use -- separator to pass args to underlying script
+	foundVitest := false
+	isPackageManagerCommand := false
+	isDirectVitestCall := false
+	
+	// Check if this is a package manager command
+	if len(args) > 0 {
+		cmd := args[0]
+		isPackageManagerCommand = strings.Contains(cmd, "npm") || 
+								 strings.Contains(cmd, "yarn") || 
+								 strings.Contains(cmd, "pnpm") || 
+								 strings.Contains(cmd, "bun") ||
+								 strings.Contains(cmd, "deno")
+	}
+	
+	// Check for vitest in the command
+	for _, arg := range args {
+		if strings.Contains(arg, "vitest") {
+			foundVitest = true
+			break
+		}
+	}
+	
+	// Determine if this is a direct vitest invocation
+	// Direct invocations include: npx/bunx vitest, yarn vitest, pnpm exec vitest, etc.
+	if len(args) >= 2 && isPackageManagerCommand {
+		cmd := args[0]
+		secondArg := args[1]
+		
+		// These are direct vitest invocations (no -- separator needed)
+		if (cmd == "yarn" && secondArg == "vitest") ||
+		   (cmd == "yarn" && secondArg == "dlx" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
+		   (cmd == "pnpm" && secondArg == "exec" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
+		   (cmd == "pnpm" && secondArg == "dlx" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
+		   (cmd == "bun" && secondArg == "x" && len(args) > 2 && strings.Contains(args[2], "vitest")) {
+			isDirectVitestCall = true
+		}
+	}
+	
+	// npx and bunx are always direct invocations
+	if len(args) > 0 && (strings.Contains(args[0], "npx") || strings.Contains(args[0], "bunx")) {
+		isDirectVitestCall = true
+		isPackageManagerCommand = false
+	}
+	
+	// Handle package manager commands that need -- separator
+	if isPackageManagerCommand && !isDirectVitestCall && !foundVitest {
+		// Commands like: npm test, yarn test, pnpm test, bun test, deno task test
 		result := make([]string, 0, len(args)+6)
-		result = append(result, args...)
 		
 		// Check if -- separator already exists
 		hasSeparator := false
@@ -284,33 +327,36 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			}
 		}
 		
-		// Add separator if not present, then add reporter flags
-		if !hasSeparator {
-			result = append(result, "--")
+		if hasSeparator {
+			// Append everything up to and including --, then add reporters
+			result = append(result, args...)
+			result = append(result, "--reporter", adapterPath, "--reporter", "default")
+		} else {
+			// Add all args, then -- separator, then reporter flags
+			result = append(result, args...)
+			result = append(result, "--", "--reporter", adapterPath, "--reporter", "default")
 		}
-		result = append(result, "--reporter", adapterPath, "--reporter", "default")
 		
 		return result
 	}
 	
-	// Direct vitest commands (npx vitest, vitest, etc.)
+	// Handle direct vitest invocations
 	result := make([]string, 0, len(args)+4)
+	reporterAdded := false
 	
-	foundVitest := false
 	for _, arg := range args {
-		if !foundVitest && strings.Contains(arg, "vitest") {
-			foundVitest = true
+		if !reporterAdded && strings.Contains(arg, "vitest") {
 			result = append(result, arg)
 			// Add reporter flags immediately after vitest command
 			result = append(result, "--reporter", adapterPath, "--reporter", "default")
+			reporterAdded = true
 		} else {
 			result = append(result, arg)
 		}
 	}
 	
-	// Fallback: if vitest wasn't found in args, add reporter at the end
-	// This shouldn't happen for vitest commands but provides safety
-	if !foundVitest {
+	// Fallback: if vitest wasn't found and reporter not added, add at the end
+	if !foundVitest && !reporterAdded {
 		result = append(result, "--reporter", adapterPath, "--reporter", "default")
 	}
 	
@@ -405,16 +451,14 @@ func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []str
 	os.Setenv("PYTHONPATH", pythonPath)
 	
 	foundPytest := false
-	for i, arg := range args {
+	for _, arg := range args {
 		result = append(result, arg)
 		
-		// After pytest command, inject plugin
+		// After pytest command, inject plugin immediately
 		if !foundPytest && (strings.Contains(arg, "pytest") || strings.Contains(arg, "py.test")) {
 			foundPytest = true
-			// Add plugin flag after pytest
-			if i == len(args)-1 || !strings.HasPrefix(args[i+1], "-") {
-				result = append(result, "-p", "pytest_adapter")
-			}
+			// Always add plugin flag immediately after pytest
+			result = append(result, "-p", "pytest_adapter")
 		}
 	}
 	
