@@ -415,14 +415,20 @@ func (m *Manager) generateMarkdownReport() string {
 		
 		// Test cases
 		if len(tf.TestCases) > 0 {
+			currentSuite := ""
 			for _, tc := range tf.TestCases {
-				tcIcon := getTestCaseIcon(tc.Status)
-				if tc.Suite != "" {
+				// Only print suite header when it changes
+				if tc.Suite != "" && tc.Suite != currentSuite {
+					if currentSuite != "" {
+						// Add extra space between different suites
+						sb.WriteString("\n")
+					}
 					sb.WriteString(fmt.Sprintf("### %s\n\n", tc.Suite))
-					sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
-				} else {
-					sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
+					currentSuite = tc.Suite
 				}
+				
+				tcIcon := getTestCaseIcon(tc.Status)
+				sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
 				
 				if tc.Duration > 0 {
 					sb.WriteString(fmt.Sprintf(" (%dms)", tc.Duration))
@@ -432,8 +438,10 @@ func (m *Manager) generateMarkdownReport() string {
 				if tc.Error != "" {
 					sb.WriteString(fmt.Sprintf("```\n%s\n```\n", tc.Error))
 				}
+				
+				// Add newline after each test case for proper spacing
+				sb.WriteString("\n")
 			}
-			sb.WriteString("\n")
 		}
 	}
 	
