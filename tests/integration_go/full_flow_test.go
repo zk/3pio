@@ -132,8 +132,8 @@ func testEmptyTestSuite(t *testing.T, fixtureDir string, command []string) {
 	cmd := exec.Command(fullCmd[0], fullCmd[1:]...)
 	cmd.Dir = projectDir
 	
-	// Run the command
-	_ = cmd.Run()
+	// Run the command (read output to prevent pipe deadlock)
+	_, _ = cmd.CombinedOutput()
 	
 	// Check if basic structure was created even for empty test suite
 	threePioDir := filepath.Join(projectDir, ".3pio")
@@ -177,8 +177,8 @@ func testLongNames(t *testing.T, fixtureDir string, command []string) {
 	cmd := exec.Command(fullCmd[0], fullCmd[1:]...)
 	cmd.Dir = projectDir
 	
-	// Run the command
-	_ = cmd.Run()
+	// Run the command (read output to prevent pipe deadlock)
+	_, _ = cmd.CombinedOutput()
 	
 	// Find the latest run directory
 	runDir := getLatestRunDir(t, projectDir)
@@ -217,7 +217,7 @@ func TestErrorRecovery(t *testing.T) {
 		cmd := exec.Command(binaryPath, "invalid-command")
 		cmd.Dir = projectDir
 		
-		err = cmd.Run()
+		_, err = cmd.CombinedOutput()
 		if err == nil {
 			t.Error("Expected error for invalid command")
 		}
@@ -241,8 +241,9 @@ func TestErrorRecovery(t *testing.T) {
 		cmd := exec.Command(binaryPath, "npx", "vitest", "run", "nonexistent.test.js")
 		cmd.Dir = projectDir
 		
-		// This should not crash, even though the test file doesn't exist
-		_ = cmd.Run()
+		// This should not crash, even though the test file doesn't exist  
+		// Read output to prevent pipe deadlock
+		_, _ = cmd.CombinedOutput()
 		
 		// The system should still create basic structure
 		threePioDir := filepath.Join(projectDir, ".3pio")

@@ -238,34 +238,19 @@ func (o *Orchestrator) Run() error {
 		o.exitCode = 130 // Standard exit code for SIGINT
 	}
 	
-	// Wait for output capture to complete with timeout
-	outputDone := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(outputDone)
-	}()
-	
-	// Wait for output capture or timeout
-	select {
-	case <-outputDone:
-		o.logger.Debug("Output capture completed")
-	case <-time.After(2 * time.Second):
-		o.logger.Debug("Output capture timeout - proceeding")
-	}
-	
-	// Stop watching for events (this closes the Events channel)
+	// Stop watching for events (this closes the Events channel and allows processEvents to exit)
 	o.ipcManager.Cleanup()
 	
 	// Wait for event processing to complete (channel is closed, range will exit)
-	select {
-	case <-eventsDone:
-		o.logger.Debug("Event processing completed")
-	case <-time.After(1 * time.Second):
-		o.logger.Debug("Event processing timeout - proceeding")
-	}
+	<-eventsDone
+	o.logger.Debug("Event processing completed")
 	
-	// Wait for all goroutines to finish
+	// Wait for output capture to complete
 	wg.Wait()
+	o.logger.Debug("Output capture completed")
+	
+	// All goroutines should be finished at this point
+	// (they were waited for via outputDone)
 	
 	// Finalize report
 	if err := o.reportManager.Finalize(o.exitCode); err != nil {

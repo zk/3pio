@@ -80,7 +80,8 @@ func TestReportFileGeneration(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npx", "vitest", "run", "math.test.js", "string.test.js")
 	cmd.Dir = projectDir
 	// Ignore output and exit code - test failures are expected
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Find the latest run directory
 	runDir := getLatestRunDir(t, projectDir)
@@ -133,7 +134,8 @@ func TestTestRunMdContent(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npx", "vitest", "run", "math.test.js", "string.test.js")
 	cmd.Dir = projectDir
 	// Ignore exit code - test failures are expected
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Find and read test-run.md
 	runDir := getLatestRunDir(t, projectDir)
@@ -262,7 +264,8 @@ func TestOutputLogContent(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npx", "vitest", "run", "math.test.js", "string.test.js")
 	cmd.Dir = projectDir
 	// Ignore exit code - test failures are expected
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Find and read output.log
 	runDir := getLatestRunDir(t, projectDir)
@@ -309,7 +312,8 @@ func TestJestIntegration(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npx", "jest", "math.test.js", "string.test.js")
 	cmd.Dir = projectDir
 	// Ignore exit code - test failures are expected
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Find the latest run directory
 	runDir := getLatestRunDir(t, projectDir)
@@ -355,7 +359,8 @@ func TestPytestIntegration(t *testing.T) {
 	cmd := exec.Command(binaryPath, "pytest", "-v")
 	cmd.Dir = projectDir
 	// Ignore exit code - test failures are expected
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Find the latest run directory
 	runDir := getLatestRunDir(t, projectDir)

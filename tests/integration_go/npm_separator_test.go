@@ -85,7 +85,8 @@ func TestBasicJestExampleFileHandling(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npx", "jest", "example.test.js")
 	cmd.Dir = projectDir
 	// Ignore exit code - test might fail
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Verify that files were created
 	runDir := getLatestRunDir(t, projectDir)
@@ -120,7 +121,8 @@ func TestNpmRunTestCommand(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npm", "run", "test")
 	cmd.Dir = projectDir
 	// Ignore exit code - focus on whether we can handle the command
-	_ = cmd.Run()
+	// Read output to prevent pipe deadlock
+	_, _ = cmd.CombinedOutput()
 	
 	// Check if run directory was created (basic success indicator)
 	runsDir := filepath.Join(projectDir, ".3pio", "runs")

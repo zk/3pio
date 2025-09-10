@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"io"
 	"os/exec"
 	"path/filepath"
 	"syscall"
@@ -25,6 +26,10 @@ func TestInterruptedTestRun(t *testing.T) {
 	// Start 3pio process
 	cmd := exec.Command(binaryPath, "npx", "jest")
 	cmd.Dir = projectDir
+	
+	// Set up pipes to prevent deadlock
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 	
 	// Start the command
 	if err := cmd.Start(); err != nil {
@@ -96,6 +101,10 @@ func TestGracefulShutdownOnSIGINT(t *testing.T) {
 	cmd := exec.Command(binaryPath, "npx", "vitest", "run", "math.test.js")
 	cmd.Dir = projectDir
 	
+	// Set up pipes to prevent deadlock
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("Failed to start command: %v", err)
@@ -143,6 +152,10 @@ func TestQuickProcessTermination(t *testing.T) {
 	// Start and immediately kill the process (very quick termination)
 	cmd := exec.Command(binaryPath, "npx", "jest")
 	cmd.Dir = projectDir
+	
+	// Set up pipes to prevent deadlock
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 	
 	// Start the command
 	if err := cmd.Start(); err != nil {
