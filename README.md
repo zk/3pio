@@ -19,6 +19,9 @@ npx @heyzk/3pio [your test command]
 3pio npx jest
 3pio npx vitest run
 ```
+
+**Note:** 3pio writes it's files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
+
 ## Supported Test Runners
 
 ### Jest
