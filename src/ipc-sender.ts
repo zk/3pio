@@ -9,7 +9,14 @@ export class IPCSender {
   /**
    * Send an event to the IPC file (used by adapters)
    */
-  static sendEvent(event: IPCEvent): void {
+  static sendEvent(event: IPCEvent): Promise<void> {
+    return Promise.resolve(this.sendEventSync(event));
+  }
+  
+  /**
+   * Synchronous version of sendEvent
+   */
+  static sendEventSync(event: IPCEvent): void {
     const ipcPath = process.env.THREEPIO_IPC_PATH;
     if (!ipcPath) {
       console.error('THREEPIO_IPC_PATH not set');

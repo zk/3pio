@@ -202,6 +202,14 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		}
 		event = e
 
+	case EventTypeRunComplete:
+		var e RunCompleteEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse run complete event: %v", err)
+			return
+		}
+		event = e
+
 	default:
 		m.logger.Error("Unknown event type: %s", eventType)
 		return

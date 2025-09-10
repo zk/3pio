@@ -80,6 +80,16 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 	foundJest := false
 	hasTestFiles := false
 	testFileIndex := -1
+	isPackageManagerCommand := false
+	
+	// Check if this is a package manager command
+	if len(args) > 0 {
+		cmd := args[0]
+		isPackageManagerCommand = strings.Contains(cmd, "npm") || 
+								 strings.Contains(cmd, "yarn") || 
+								 strings.Contains(cmd, "pnpm") || 
+								 strings.Contains(cmd, "bun")
+	}
 	
 	// First pass: find jest and check for test files
 	for i, arg := range args {
@@ -95,7 +105,37 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 		}
 	}
 	
-	// Build the command
+	// Handle package manager commands (npm, yarn, etc.)
+	if !foundJest && isPackageManagerCommand {
+		// Check if -- separator already exists
+		hasSeparator := false
+		separatorIndex := -1
+		for i, arg := range args {
+			if arg == "--" {
+				hasSeparator = true
+				separatorIndex = i
+				break
+			}
+		}
+		
+		if hasSeparator {
+			// Insert reporter flags after existing --
+			for i, arg := range args {
+				result = append(result, arg)
+				if i == separatorIndex {
+					result = append(result, "--reporters", adapterPath)
+				}
+			}
+		} else {
+			// Add all args, then -- separator, then reporter flags
+			result = append(result, args...)
+			result = append(result, "--", "--reporters", adapterPath)
+		}
+		
+		return result
+	}
+	
+	// Build the command for direct jest commands
 	for i, arg := range args {
 		if strings.Contains(arg, "jest") {
 			result = append(result, arg)
@@ -109,7 +149,7 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 		}
 	}
 	
-	// If jest wasn't found in args (e.g., npm test), add reporter at the end
+	// If jest wasn't found in args (fallback case), add reporter at the end
 	if !foundJest {
 		result = append(result, "--reporters", adapterPath)
 	}
@@ -192,23 +232,47 @@ func (v *VitestDefinition) GetTestFiles(args []string) ([]string, error) {
 
 // BuildCommand builds Vitest command with adapter
 func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []string {
+	// Handle npm commands specially - need to use -- separator
+	if len(args) >= 2 && args[0] == "npm" && (args[1] == "test" || args[1] == "run") {
+		// For npm test or npm run, use -- separator to pass args to underlying script
+		result := make([]string, 0, len(args)+6)
+		result = append(result, args...)
+		
+		// Check if -- separator already exists
+		hasSeparator := false
+		for _, arg := range args {
+			if arg == "--" {
+				hasSeparator = true
+				break
+			}
+		}
+		
+		// Add separator if not present, then add reporter flags
+		if !hasSeparator {
+			result = append(result, "--")
+		}
+		result = append(result, "--reporter", adapterPath, "--reporter", "default")
+		
+		return result
+	}
+	
+	// Direct vitest commands (npx vitest, vitest, etc.)
 	result := make([]string, 0, len(args)+4)
 	
 	foundVitest := false
-	for i, arg := range args {
-		result = append(result, arg)
-		
-		// After vitest command, inject reporter
+	for _, arg := range args {
 		if !foundVitest && strings.Contains(arg, "vitest") {
 			foundVitest = true
-			// Add reporter flags after vitest
-			if i == len(args)-1 || !strings.HasPrefix(args[i+1], "--") {
-				result = append(result, "--reporter", adapterPath, "--reporter", "default")
-			}
+			result = append(result, arg)
+			// Add reporter flags immediately after vitest command
+			result = append(result, "--reporter", adapterPath, "--reporter", "default")
+		} else {
+			result = append(result, arg)
 		}
 	}
 	
-	// If vitest wasn't found in args, add reporter at the end
+	// Fallback: if vitest wasn't found in args, add reporter at the end
+	// This shouldn't happen for vitest commands but provides safety
 	if !foundVitest {
 		result = append(result, "--reporter", adapterPath, "--reporter", "default")
 	}

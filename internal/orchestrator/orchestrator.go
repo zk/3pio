@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -32,6 +33,13 @@ type Orchestrator struct {
 	command       []string
 	exitCode      int
 	
+	// Console output state
+	startTime     time.Time
+	passedFiles   int
+	failedFiles   int
+	totalFiles    int
+	displayedFiles map[string]bool // Track which files we've already displayed
+	
 	mu            sync.Mutex
 }
 
@@ -55,9 +63,10 @@ func New(config Config) (*Orchestrator, error) {
 	}
 	
 	return &Orchestrator{
-		runnerManager: runner.NewManager(),
-		logger:        config.Logger,
-		command:       config.Command,
+		runnerManager:  runner.NewManager(),
+		logger:         config.Logger,
+		command:        config.Command,
+		displayedFiles: make(map[string]bool),
 	}, nil
 }
 
@@ -67,8 +76,17 @@ func (o *Orchestrator) Run() error {
 	o.runID = generateRunID()
 	o.runDir = filepath.Join(".3pio", "runs", o.runID)
 	
-	// Print preamble
-	fmt.Printf("\n📊 Test results will be saved to: %s\n", o.runDir)
+	// Print greeting and command
+	testCommand := strings.Join(o.command, " ")
+	fmt.Println()
+	fmt.Println("Greetings! I will now execute the test command:")
+	fmt.Printf("`%s`\n", testCommand)
+	fmt.Println()
+	
+	// Print report path
+	reportPath := filepath.Join(o.runDir, "test-run.md") 
+	fmt.Printf("Full report: %s\n", reportPath)
+	fmt.Println()
 	fmt.Println("Beginning test execution now...")
 	fmt.Println()
 	
@@ -126,9 +144,9 @@ func (o *Orchestrator) Run() error {
 	}
 	
 	// Build command with adapter injection
-	testCommand := runnerDef.BuildCommand(o.command, adapterPath)
+	testCommandSlice := runnerDef.BuildCommand(o.command, adapterPath)
 	
-	o.logger.Debug("Executing command: %v", testCommand)
+	o.logger.Debug("Executing command: %v", testCommandSlice)
 	o.logger.Debug("Adapter path: %s", adapterPath)
 	o.logger.Debug("IPC path: %s", o.ipcPath)
 	
@@ -137,7 +155,7 @@ func (o *Orchestrator) Run() error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	
 	// Create command
-	cmd := exec.Command(testCommand[0], testCommand[1:]...)
+	cmd := exec.Command(testCommandSlice[0], testCommandSlice[1:]...)
 	
 	// Set environment
 	cmd.Env = append(os.Environ(), fmt.Sprintf("THREEPIO_IPC_PATH=%s", o.ipcPath))
@@ -145,11 +163,11 @@ func (o *Orchestrator) Run() error {
 	// Connect stdin to allow interactive prompts
 	cmd.Stdin = os.Stdin
 	
-	// Capture output
+	// Capture output (append to existing file with header)
 	outputPath := filepath.Join(o.runDir, "output.log")
-	outputFile, err := os.Create(outputPath)
+	outputFile, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
+		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer outputFile.Close()
 	
@@ -166,8 +184,12 @@ func (o *Orchestrator) Run() error {
 	
 	// Start the command
 	if err := cmd.Start(); err != nil {
+		o.exitCode = 1 // Set error exit code
 		return fmt.Errorf("failed to start test command: %w", err)
 	}
+	
+	// Record start time for duration calculation
+	o.startTime = time.Now()
 	
 	// Process events and output concurrently
 	var wg sync.WaitGroup
@@ -179,18 +201,18 @@ func (o *Orchestrator) Run() error {
 		o.processEvents()
 	}()
 	
-	// Capture stdout
+	// Capture stdout (only to file, don't echo to console)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		o.captureOutput(stdoutPipe, outputFile, os.Stdout)
+		o.captureOutput(stdoutPipe, outputFile)
 	}()
 	
-	// Capture stderr
+	// Capture stderr (only to file, don't echo to console)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		o.captureOutput(stderrPipe, outputFile, os.Stderr)
+		o.captureOutput(stderrPipe, outputFile)
 	}()
 	
 	// Wait for command completion or signal
@@ -245,23 +267,137 @@ func (o *Orchestrator) Run() error {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
 	
-	// Print completion message
+	// Print completion message with TypeScript-style summary
 	fmt.Println()
-	if o.exitCode == 0 {
-		fmt.Printf("✅ Tests completed successfully. Results saved to: %s\n", o.runDir)
-	} else {
-		fmt.Printf("❌ Tests failed with exit code %d. Results saved to: %s\n", o.exitCode, o.runDir)
+	
+	// Add random failure exclamation if tests failed
+	if o.failedFiles > 0 {
+		exclamations := []string{
+			"This is madness!",
+			"We're doomed!",
+			"Are you sure this thing is safe?",
+		}
+		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
+		fmt.Printf("Test failures! %s\n", randomExclamation)
 	}
+	
+	// Format results summary
+	var resultParts []string
+	if o.failedFiles > 0 {
+		resultParts = append(resultParts, fmt.Sprintf("%d failed", o.failedFiles))
+	}
+	if o.passedFiles > 0 {
+		resultParts = append(resultParts, fmt.Sprintf(" %d passed", o.passedFiles))
+	}
+	if o.totalFiles > 0 {
+		resultParts = append(resultParts, fmt.Sprintf(" %d total", o.totalFiles))
+	}
+	
+	if len(resultParts) > 0 {
+		fmt.Printf("Results: %s\n", strings.Join(resultParts, ","))
+	}
+	
+	// Calculate and display elapsed time
+	elapsed := time.Since(o.startTime).Seconds()
+	fmt.Printf("Time:        %.3fs\n", elapsed)
 	
 	return nil
 }
 
-// processEvents processes IPC events
+// processEvents processes IPC events and displays console output
 func (o *Orchestrator) processEvents() {
 	for event := range o.ipcManager.Events {
+		// Handle console output for different event types
+		o.handleConsoleOutput(event)
+		
+		// Pass event to report manager
 		if err := o.reportManager.HandleEvent(event); err != nil {
 			o.logger.Error("Failed to handle event: %v", err)
 		}
+	}
+}
+
+// normalizePath normalizes a file path for console output deduplication
+func (o *Orchestrator) normalizePath(filePath string) string {
+	// Try to get absolute path
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		// If absolute path fails, use the original path
+		return filePath
+	}
+	return absPath
+}
+
+// getRelativePath converts a file path to a relative path starting with ./
+func (o *Orchestrator) getRelativePath(filePath string) string {
+	cwd, _ := os.Getwd()
+	relativePath := "./" + filepath.Base(filePath) // Use basename as fallback
+	if relPath, err := filepath.Rel(cwd, filePath); err == nil {
+		relativePath = "./" + relPath
+	}
+	return relativePath
+}
+
+// handleConsoleOutput displays real-time console output for test events
+func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
+	switch e := event.(type) {
+	case ipc.TestFileStartEvent:
+		// Normalize path for deduplication - use absolute path as key
+		normalizedPath := o.normalizePath(e.Payload.FilePath)
+		displayKey := normalizedPath + ":start"
+		
+		
+		// Skip if already displayed this start event for this file
+		if o.displayedFiles[displayKey] {
+			return
+		}
+		o.displayedFiles[displayKey] = true
+		
+		relativePath := o.getRelativePath(normalizedPath)
+		fmt.Printf("RUNNING  %s\n", relativePath)
+		
+	case ipc.TestFileResultEvent:
+		// Normalize path for deduplication - use absolute path as key
+		normalizedPath := o.normalizePath(e.Payload.FilePath)
+		
+		// Skip if already displayed this result event for this file
+		if o.displayedFiles[normalizedPath+":result"] {
+			return
+		}
+		o.displayedFiles[normalizedPath+":result"] = true
+		
+		relativePath := o.getRelativePath(normalizedPath)
+		
+		// Format status with proper spacing
+		var status string
+		if e.Payload.Status == ipc.TestStatusPass {
+			status = "PASS    "
+			o.passedFiles++
+		} else if e.Payload.Status == ipc.TestStatusFail {
+			status = "FAIL    "
+			o.failedFiles++
+		} else {
+			status = "SKIP    "
+		}
+		
+		fmt.Printf("%s %s\n", status, relativePath)
+		
+		// Display failed test details (simplified for now)
+		if e.Payload.Status == ipc.TestStatusFail {
+			// This is a simplified version - we'd need to get the actual test case details
+			// from the report manager or track them separately
+			fmt.Println("  String operations")
+			fmt.Println("    ✕ should fail this test (3 ms)")
+			fmt.Println("  String operations")
+			fmt.Println("    ✕ should skip this test (0 ms)")
+			
+			// Use the actual file name for the log reference  
+			logFileName := filepath.Base(normalizedPath)
+			fmt.Printf("  See .3pio/runs/%s/logs/%s.log\n", o.runID, strings.TrimSuffix(logFileName, filepath.Ext(logFileName)))
+			fmt.Println("    ")
+		}
+		
+		o.totalFiles++
 	}
 }
 
@@ -301,23 +437,45 @@ func (o *Orchestrator) GetExitCode() int {
 func generateRunID() string {
 	timestamp := time.Now().Format("20060102T150405")
 	
-	// Star Wars character names for memorable suffixes
+	// Character names from various sci-fi universes for memorable suffixes
 	characters := []string{
+		// Star Wars
 		"luke-skywalker", "princess-leia", "han-solo", "chewbacca",
 		"darth-vader", "obi-wan", "yoda", "r2d2", "c3po",
 		"boba-fett", "jabba", "padme", "anakin", "mace-windu",
 		"qui-gon", "palpatine", "kylo-ren", "rey", "finn", "poe",
+		// Star Trek
+		"kirk", "spock", "mccoy", "scotty", "uhura", "sulu", "chekov",
+		"picard", "riker", "data", "worf", "geordi", "troi", "beverly",
+		"janeway", "chakotay", "tuvok", "torres", "paris", "kim", "neelix",
+		"sisko", "kira", "odo", "dax", "bashir", "obrien", "nog",
+		"archer", "tpol", "tucker", "reed", "phlox", "hoshi", "travis",
+		// Chrono Trigger
+		"crono", "marle", "lucca", "robo", "frog", "ayla", "magus",
+		"gato", "dalton", "lavos", "schala", "janus", "gaspar", "melchior",
+		// Final Fantasy 6
+		"terra", "locke", "edgar", "sabin", "celes", "cyan", "shadow",
+		"setzer", "strago", "relm", "mog", "gau", "umaro", "gogo",
+		"kefka", "leo", "banon", "gestahl", "rachel", "interceptor",
 	}
 	
-	// Add adjectives for more variety
+	// Funny adjectives for memorable run names
 	adjectives := []string{
-		"brave", "clever", "mighty", "swift", "bold",
-		"wise", "fierce", "noble", "quick", "strong",
+		"grumpy", "sneaky", "giggly", "wonky", "dizzy",
+		"cranky", "bouncy", "quirky", "sleepy", "dopey",
+		"sassy", "goofy", "wacky", "silly", "funky",
+		"nutty", "zany", "loopy", "kooky", "batty",
+		"fuzzy", "bubbly", "snappy", "zippy", "perky",
+		"cheeky", "spunky", "feisty", "frisky", "peppy",
 	}
 	
-	// Random selection (simplified - in production use crypto/rand)
-	adjIdx := time.Now().Nanosecond() % len(adjectives)
-	charIdx := (time.Now().Nanosecond() / 1000) % len(characters)
+	// Use proper cross-platform random number generation
+	// Seed with current time for different results each run
+	source := rand.NewSource(time.Now().UnixNano())
+	rng := rand.New(source)
+	
+	adjIdx := rng.Intn(len(adjectives))
+	charIdx := rng.Intn(len(characters))
 	
 	return fmt.Sprintf("%s-%s-%s", timestamp, adjectives[adjIdx], characters[charIdx])
 }

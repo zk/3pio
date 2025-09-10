@@ -11,6 +11,7 @@ const (
 	EventTypeTestFileStart  EventType = "testFileStart"
 	EventTypeTestCase       EventType = "testCase"
 	EventTypeTestFileResult EventType = "testFileResult"
+	EventTypeRunComplete    EventType = "runComplete"
 )
 
 // TestStatus represents the status of a test
@@ -90,6 +91,14 @@ type TestFileResultEvent struct {
 }
 
 func (e TestFileResultEvent) Type() EventType { return EventTypeTestFileResult }
+
+// RunCompleteEvent indicates that the test runner has completed
+type RunCompleteEvent struct {
+	EventType EventType `json:"eventType"`
+	Payload   struct{}  `json:"payload"`
+}
+
+func (e RunCompleteEvent) Type() EventType { return EventTypeRunComplete }
 
 // TestCase represents a test case in the test run state
 type TestCase struct {

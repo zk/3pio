@@ -88,7 +88,8 @@ providing persistent, structured, file-based records that are context-efficient 
 	}
 }
 
-func runTests(args []string) error {
+// runTestsCore contains the core logic for running tests (testable)
+func runTestsCore(args []string) (int, error) {
 	// Create orchestrator configuration
 	config := orchestrator.Config{
 		Command: args,
@@ -98,14 +99,14 @@ func runTests(args []string) error {
 	orch, err := orchestrator.New(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create orchestrator: %v\n", err)
-		return err
+		return 1, err
 	}
 
 	// Run tests
 	if err := orch.Run(); err != nil {
 		// Check if it's a test runner not found error
 		if strings.Contains(err.Error(), "no test runner detected") {
-			fmt.Fprintf(os.Stderr, "\n❌ Could not detect test runner from command: %s\n", strings.Join(args, " "))
+			fmt.Fprintf(os.Stderr, "\nError: Could not detect test runner from command: %s\n", strings.Join(args, " "))
 			fmt.Fprintf(os.Stderr, "\n3pio currently supports:\n")
 			fmt.Fprintf(os.Stderr, "  • Jest\n")
 			fmt.Fprintf(os.Stderr, "  • Vitest (requires v3.0+)\n")
@@ -115,14 +116,19 @@ func runTests(args []string) error {
 			fmt.Fprintf(os.Stderr, "  3pio npx jest\n")
 			fmt.Fprintf(os.Stderr, "  3pio npx vitest run\n")
 			fmt.Fprintf(os.Stderr, "  3pio pytest\n")
-			os.Exit(1)
+			return 1, err
 		}
 		
 		fmt.Fprintf(os.Stderr, "Test execution failed: %v\n", err)
-		os.Exit(orch.GetExitCode())
+		return orch.GetExitCode(), err
 	}
 
-	// Exit with the same code as the test runner
-	os.Exit(orch.GetExitCode())
-	return nil
+	// Return the exit code
+	return orch.GetExitCode(), nil
+}
+
+func runTests(args []string) error {
+	exitCode, err := runTestsCore(args)
+	os.Exit(exitCode)
+	return err // Never reached, but needed for signature
 }

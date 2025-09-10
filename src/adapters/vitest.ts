@@ -196,14 +196,16 @@ export default class ThreePioVitestReporter implements Reporter {
         if (!this.filesStarted.has(file.filepath)) {
           this.filesStarted.add(file.filepath);
           this.logger.ipc('send', 'testFileStart', { filePath: file.filepath });
-          await IPCSender.sendEvent({
-            eventType: 'testFileStart',
-            payload: {
-              filePath: file.filepath
-            }
-          }).catch(error => {
+          try {
+            await IPCSender.sendEvent({
+              eventType: 'testFileStart',
+              payload: {
+                filePath: file.filepath
+              }
+            });
+          } catch (error) {
             this.logger.error('Failed to send testFileStart', error);
-          });
+          }
         }
         
         // Send test case events first

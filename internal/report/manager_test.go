@@ -1,0 +1,390 @@
+package report
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/zk/3pio/internal/ipc"
+	"github.com/zk/3pio/internal/runner"
+)
+
+// mockLogger for testing
+type mockLogger struct {
+	debugMessages []string
+	errorMessages []string
+	infoMessages  []string
+}
+
+func (l *mockLogger) Debug(format string, args ...interface{}) {
+	l.debugMessages = append(l.debugMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
+}
+
+func (l *mockLogger) Error(format string, args ...interface{}) {
+	l.errorMessages = append(l.errorMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
+}
+
+func (l *mockLogger) Info(format string, args ...interface{}) {
+	l.infoMessages = append(l.infoMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
+}
+
+func TestManager_Initialize(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	// Test with empty test files list (dynamic discovery)
+	testFiles := []string{}
+	args := "npm test"
+
+	if err := manager.Initialize(testFiles, args); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Check that test-run.md was created
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+		t.Error("test-run.md was not created")
+	}
+
+	// Check that logs directory was created
+	logsDir := filepath.Join(tempDir, "logs")
+	if _, err := os.Stat(logsDir); os.IsNotExist(err) {
+		t.Error("logs directory was not created")
+	}
+
+	// Check that output.log was created
+	outputLogPath := filepath.Join(tempDir, "output.log")
+	if _, err := os.Stat(outputLogPath); os.IsNotExist(err) {
+		t.Error("output.log was not created")
+	}
+}
+
+func TestManager_InitializeWithStaticFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	// Test with static test files
+	testFiles := []string{"math.test.js", "string.test.js"}
+	args := "npx jest"
+
+	if err := manager.Initialize(testFiles, args); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Check that individual log files were created
+	for _, file := range testFiles {
+		logPath := filepath.Join(tempDir, "logs", file+".log")
+		if _, err := os.Stat(logPath); os.IsNotExist(err) {
+			t.Errorf("Log file for %s was not created at %s", file, logPath)
+		}
+	}
+}
+
+func TestManager_HandleTestFileStartEvent(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	// Initialize with empty files (dynamic discovery)
+	if err := manager.Initialize([]string{}, "npm test"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send a testFileStart event (dynamic registration)
+	testFile := "/absolute/path/to/new.test.js"
+	event := ipc.TestFileStartEvent{
+		EventType: ipc.EventTypeTestFileStart,
+		Payload: struct {
+			FilePath string `json:"filePath"`
+		}{
+			FilePath: testFile,
+		},
+	}
+
+	if err := manager.HandleEvent(event); err != nil {
+		t.Fatalf("HandleEvent failed: %v", err)
+	}
+
+	// Check that log file was created for the dynamically registered test
+	// The Go implementation sanitizes file names by using only the base name
+	sanitizedName := filepath.Base(testFile) + ".log"
+	logPath := filepath.Join(tempDir, "logs", sanitizedName)
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		t.Errorf("Log file for dynamically registered file was not created at %s", logPath)
+	}
+}
+
+func TestManager_HandleStdoutChunkEvent(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	testFile := "math.test.js"
+	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send stdout chunk event
+	testOutput := "✓ should add numbers correctly\n"
+	event := ipc.StdoutChunkEvent{
+		EventType: ipc.EventTypeStdoutChunk,
+		Payload: struct {
+			FilePath string `json:"filePath"`
+			Chunk    string `json:"chunk"`
+		}{
+			FilePath: testFile,
+			Chunk:    testOutput,
+		},
+	}
+
+	if err := manager.HandleEvent(event); err != nil {
+		t.Fatalf("HandleEvent failed: %v", err)
+	}
+
+	// Wait for debounced write
+	time.Sleep(200 * time.Millisecond)
+
+	// Check that content was written to test log
+	logPath := filepath.Join(tempDir, "logs", testFile+".log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read test log: %v", err)
+	}
+
+	if !strings.Contains(string(content), testOutput) {
+		t.Errorf("Expected test log to contain output, got: %s", string(content))
+	}
+}
+
+func TestManager_HandleTestCaseEvent(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	testFile := "math.test.js"
+	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send test case event
+	event := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+		Payload: struct {
+			FilePath  string          `json:"filePath"`
+			TestName  string          `json:"testName"`
+			SuiteName string          `json:"suiteName,omitempty"`
+			Status    ipc.TestStatus  `json:"status"`
+			Duration  int             `json:"duration,omitempty"`
+			Error     string          `json:"error,omitempty"`
+		}{
+			FilePath:  testFile,
+			TestName:  "should add numbers correctly",
+			SuiteName: "Math operations",
+			Status:    ipc.TestStatusPass,
+			Duration:  10,
+		},
+	}
+
+	if err := manager.HandleEvent(event); err != nil {
+		t.Fatalf("HandleEvent failed: %v", err)
+	}
+
+	// Wait for state update
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that test case was recorded in the final report
+	// We can't directly access internal state, but we can check the final report generation
+	// by finalizing the manager and reading the markdown file
+	manager.Finalize(0)
+
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read test report: %v", err)
+	}
+
+	reportContent := string(content)
+	if !strings.Contains(reportContent, "should add numbers correctly") {
+		t.Errorf("Expected report to contain test case name, got: %s", reportContent)
+	}
+
+	if !strings.Contains(reportContent, "Math operations") {
+		t.Errorf("Expected report to contain suite name, got: %s", reportContent)
+	}
+}
+
+func TestManager_HandleTestFileResultEvent(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	testFile := "math.test.js"
+	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send test file result event
+	event := ipc.TestFileResultEvent{
+		EventType: ipc.EventTypeTestFileResult,
+		Payload: struct {
+			FilePath     string          `json:"filePath"`
+			Status       ipc.TestStatus  `json:"status"`
+			FailedTests  []struct {
+				Name     string `json:"name"`
+				Duration int    `json:"duration,omitempty"`
+			} `json:"failedTests,omitempty"`
+		}{
+			FilePath: testFile,
+			Status:   ipc.TestStatusPass,
+		},
+	}
+
+	if err := manager.HandleEvent(event); err != nil {
+		t.Fatalf("HandleEvent failed: %v", err)
+	}
+
+	// Wait for state update
+	time.Sleep(100 * time.Millisecond)
+
+	// Finalize to generate final report
+	manager.Finalize(0)
+
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read test report: %v", err)
+	}
+
+	reportContent := string(content)
+	if !strings.Contains(reportContent, "Status: **PASS**") {
+		t.Errorf("Expected report to show PASS status, got: %s", reportContent)
+	}
+}
+
+func TestManager_HandleRunCompleteEvent(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	if err := manager.Initialize([]string{}, "npm test"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send runComplete event - should not cause error
+	event := ipc.RunCompleteEvent{
+		EventType: ipc.EventTypeRunComplete,
+		Payload:   struct{}{},
+	}
+
+	if err := manager.HandleEvent(event); err != nil {
+		t.Errorf("HandleEvent should handle runComplete gracefully, got error: %v", err)
+	}
+
+	// Should not generate any error logs
+	for _, msg := range logger.errorMessages {
+		if strings.Contains(msg, "runComplete") {
+			t.Errorf("Unexpected error message about runComplete: %s", msg)
+		}
+	}
+}
+
+func TestManager_Debouncing(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer manager.Finalize(0)
+
+	testFile := "math.test.js"
+	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Send multiple stdout chunks quickly (should be debounced)
+	for i := 0; i < 5; i++ {
+		event := ipc.StdoutChunkEvent{
+			EventType: ipc.EventTypeStdoutChunk,
+			Payload: struct {
+				FilePath string `json:"filePath"`
+				Chunk    string `json:"chunk"`
+			}{
+				FilePath: testFile,
+				Chunk:    fmt.Sprintf("Line %d\n", i),
+			},
+		}
+
+		if err := manager.HandleEvent(event); err != nil {
+			t.Fatalf("HandleEvent failed: %v", err)
+		}
+
+		time.Sleep(10 * time.Millisecond) // Much less than debounce delay
+	}
+
+	// Wait for debounce to trigger
+	time.Sleep(200 * time.Millisecond)
+
+	// Check that all content was written (debouncing should collect all writes)
+	logPath := filepath.Join(tempDir, "logs", testFile+".log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read test log: %v", err)
+	}
+
+	for i := 0; i < 5; i++ {
+		expected := fmt.Sprintf("Line %d", i)
+		if !strings.Contains(string(content), expected) {
+			t.Errorf("Expected test log to contain %s, got: %s", expected, string(content))
+		}
+	}
+}

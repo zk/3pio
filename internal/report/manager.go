@@ -98,6 +98,11 @@ func (m *Manager) Initialize(testFiles []string, args string) error {
 		m.registerTestFileInternal(file)
 	}
 	
+	// Write output.log header
+	if err := m.writeOutputLogHeader(args); err != nil {
+		return fmt.Errorf("failed to write output log header: %w", err)
+	}
+	
 	// Write initial state
 	return m.writeState()
 }
@@ -145,7 +150,6 @@ func (m *Manager) handleTestFileStart(event ipc.TestFileStartEvent) error {
 		}
 	}
 	
-	m.logger.Info("RUNNING %s", filePath)
 	return m.scheduleWrite()
 }
 
@@ -157,8 +161,9 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 	m.ensureTestFileRegisteredInternal(filePath)
 	
 	// Find the test file and add/update test case
+	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
-		if m.state.TestFiles[i].File == filePath {
+		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
 			// Initialize test cases if needed
 			if m.state.TestFiles[i].TestCases == nil {
 				m.state.TestFiles[i].TestCases = make([]ipc.TestCase, 0)
@@ -203,21 +208,19 @@ func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
 	filePath := event.Payload.FilePath
 	
 	// Update file status and counters
+	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
-		if m.state.TestFiles[i].File == filePath {
+		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
 			m.state.TestFiles[i].Status = event.Payload.Status
 			m.state.FilesCompleted++
 			
 			switch event.Payload.Status {
 			case ipc.TestStatusPass:
 				m.state.FilesPassed++
-				m.logger.Info("PASS %s", filePath)
 			case ipc.TestStatusFail:
 				m.state.FilesFailed++
-				m.logger.Info("FAIL %s", filePath)
 			case ipc.TestStatusSkip:
 				m.state.FilesSkipped++
-				m.logger.Info("SKIP %s", filePath)
 			}
 			
 			break
@@ -258,9 +261,12 @@ func (m *Manager) handleStderrChunk(event ipc.StderrChunkEvent) error {
 
 // ensureTestFileRegisteredInternal ensures a test file is registered (internal, assumes lock held)
 func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
-	// Check if already registered
+	// Normalize the incoming file path
+	normalizedPath := m.normalizePath(filePath)
+	
+	// Check if already registered (compare normalized paths)
 	for _, tf := range m.state.TestFiles {
-		if tf.File == filePath {
+		if m.normalizePath(tf.File) == normalizedPath {
 			return
 		}
 	}
@@ -362,43 +368,60 @@ func (m *Manager) writeState() error {
 	return os.WriteFile(reportPath, []byte(report), 0644)
 }
 
+// writeOutputLogHeader writes the header for output.log
+func (m *Manager) writeOutputLogHeader(args string) error {
+	header := fmt.Sprintf(`# 3pio Test Output Log
+# Timestamp: %s
+# Command: %s
+# This file contains all stdout/stderr output from the test run.
+# ---
+
+`, time.Now().Format(time.RFC3339), args)
+	
+	_, err := m.outputFile.WriteString(header)
+	return err
+}
+
 // generateMarkdownReport generates the markdown report
 func (m *Manager) generateMarkdownReport() string {
 	var sb strings.Builder
 	
 	// Header
-	sb.WriteString("# Test Run Report\n\n")
+	sb.WriteString("# 3pio Test Run\n\n")
 	sb.WriteString(fmt.Sprintf("**Started:** %s\n", m.state.Timestamp.Format(time.RFC3339)))
 	sb.WriteString(fmt.Sprintf("**Status:** %s\n", m.state.Status))
 	sb.WriteString(fmt.Sprintf("**Arguments:** `%s`\n\n", m.state.Arguments))
 	
 	// Summary
 	sb.WriteString("## Summary\n\n")
-	sb.WriteString(fmt.Sprintf("- **Total Files:** %d\n", m.state.TotalFiles))
-	sb.WriteString(fmt.Sprintf("- **Completed:** %d\n", m.state.FilesCompleted))
-	sb.WriteString(fmt.Sprintf("- **Passed:** %d\n", m.state.FilesPassed))
-	sb.WriteString(fmt.Sprintf("- **Failed:** %d\n", m.state.FilesFailed))
-	sb.WriteString(fmt.Sprintf("- **Skipped:** %d\n\n", m.state.FilesSkipped))
+	sb.WriteString(fmt.Sprintf("- Total Files: %d\n", m.state.TotalFiles))
+	sb.WriteString(fmt.Sprintf("- Files Completed: %d\n", m.state.FilesCompleted))
+	sb.WriteString(fmt.Sprintf("- Files Passed: %d\n", m.state.FilesPassed))
+	sb.WriteString(fmt.Sprintf("- Files Failed: %d\n", m.state.FilesFailed))
+	sb.WriteString(fmt.Sprintf("- Files Skipped: %d\n\n", m.state.FilesSkipped))
 	
 	// Test Files
-	sb.WriteString("## Test Files\n\n")
 	for _, tf := range m.state.TestFiles {
-		statusIcon := getStatusIcon(tf.Status)
-		sb.WriteString(fmt.Sprintf("### %s %s\n\n", statusIcon, tf.File))
+		sb.WriteString(fmt.Sprintf("## %s\n\n", tf.File))
 		
+		// Status
+		statusText := strings.ToUpper(string(tf.Status))
+		sb.WriteString(fmt.Sprintf("Status: **%s**\n\n", statusText))
+		
+		// Log file link
 		if tf.LogFile != "" {
-			sb.WriteString(fmt.Sprintf("📄 [View Log](logs/%s)\n\n", tf.LogFile))
+			sb.WriteString(fmt.Sprintf("[Log](./logs/%s)\n\n", tf.LogFile))
 		}
 		
 		// Test cases
 		if len(tf.TestCases) > 0 {
-			sb.WriteString("#### Test Cases\n\n")
 			for _, tc := range tf.TestCases {
-				tcIcon := getStatusIcon(tc.Status)
+				tcIcon := getTestCaseIcon(tc.Status)
 				if tc.Suite != "" {
-					sb.WriteString(fmt.Sprintf("- %s **%s** > %s", tcIcon, tc.Suite, tc.Name))
+					sb.WriteString(fmt.Sprintf("### %s\n\n", tc.Suite))
+					sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
 				} else {
-					sb.WriteString(fmt.Sprintf("- %s %s", tcIcon, tc.Name))
+					sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
 				}
 				
 				if tc.Duration > 0 {
@@ -407,15 +430,18 @@ func (m *Manager) generateMarkdownReport() string {
 				sb.WriteString("\n")
 				
 				if tc.Error != "" {
-					sb.WriteString(fmt.Sprintf("  ```\n  %s\n  ```\n", tc.Error))
+					sb.WriteString(fmt.Sprintf("```\n%s\n```\n", tc.Error))
 				}
 			}
 			sb.WriteString("\n")
 		}
 	}
 	
+	// Output log link
+	sb.WriteString("[output.log](./output.log)\n\n")
+	
 	// Footer
-	sb.WriteString(fmt.Sprintf("\n---\n*Updated: %s*\n", m.state.UpdatedAt.Format(time.RFC3339)))
+	sb.WriteString(fmt.Sprintf("---\n*Updated: %s*\n", m.state.UpdatedAt.Format(time.RFC3339)))
 	
 	return sb.String()
 }
@@ -451,15 +477,24 @@ func (m *Manager) Finalize(exitCode int) error {
 	return m.writeState()
 }
 
+// normalizePath normalizes a file path for comparison
+func (m *Manager) normalizePath(filePath string) string {
+	// Try to get absolute path
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		// If we can't get absolute path, use the original
+		return filePath
+	}
+	return absPath
+}
+
 // sanitizeFileName sanitizes a file path for use as a filename
 func sanitizeFileName(filePath string) string {
-	// Replace path separators with dashes
-	name := strings.ReplaceAll(filePath, "/", "-")
-	name = strings.ReplaceAll(name, "\\", "-")
-	name = strings.ReplaceAll(name, "..", "")
+	// Get just the filename from the path (no directories)
+	name := filepath.Base(filePath)
 	
-	// Remove leading dashes
-	name = strings.TrimPrefix(name, "-")
+	// Replace any remaining dangerous characters
+	name = strings.ReplaceAll(name, "..", "")
 	
 	return name
 }
@@ -479,6 +514,20 @@ func getStatusIcon(status ipc.TestStatus) string {
 		return "🔄"
 	default:
 		return "❓"
+	}
+}
+
+// getTestCaseIcon returns an icon for individual test cases
+func getTestCaseIcon(status ipc.TestStatus) string {
+	switch status {
+	case ipc.TestStatusPass:
+		return "✓"
+	case ipc.TestStatusFail:
+		return "✕"
+	case ipc.TestStatusSkip:
+		return "○"
+	default:
+		return "~" // Running or unknown
 	}
 }
 
