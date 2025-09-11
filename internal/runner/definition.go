@@ -448,7 +448,7 @@ func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []str
 	} else {
 		pythonPath = adapterDir
 	}
-	os.Setenv("PYTHONPATH", pythonPath)
+	_ = os.Setenv("PYTHONPATH", pythonPath)
 	
 	foundPytest := false
 	for _, arg := range args {

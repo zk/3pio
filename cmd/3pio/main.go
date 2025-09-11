@@ -121,7 +121,7 @@ func runTestsCore(args []string) (int, error) {
 }
 
 func runTests(args []string) error {
-	exitCode, err := runTestsCore(args)
+	exitCode, _ := runTestsCore(args)
 	os.Exit(exitCode)
-	return err // Never reached, but needed for signature
+	return nil // Never reached, but needed for signature
 }

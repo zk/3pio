@@ -349,7 +349,7 @@ func (m *Manager) flushFileBuffer(filePath string) {
 	m.fileBuffers[filePath] = make([]string, 0)
 	
 	// Sync to disk
-	file.Sync()
+	_ = file.Sync()
 }
 
 // scheduleWrite schedules a debounced state write
@@ -469,12 +469,12 @@ func (m *Manager) Finalize(exitCode int) error {
 	
 	// Close all file handles
 	for _, file := range m.fileHandles {
-		file.Close()
+		_ = file.Close()
 	}
 	
 	// Close output.log
 	if m.outputFile != nil {
-		m.outputFile.Close()
+		_ = m.outputFile.Close()
 	}
 	
 	// Update final status
@@ -510,23 +510,6 @@ func sanitizeFileName(filePath string) string {
 	return name
 }
 
-// getStatusIcon returns an icon for a test status
-func getStatusIcon(status ipc.TestStatus) string {
-	switch status {
-	case ipc.TestStatusPass:
-		return "✅"
-	case ipc.TestStatusFail:
-		return "❌"
-	case ipc.TestStatusSkip:
-		return "⏭️"
-	case ipc.TestStatusPending:
-		return "⏳"
-	case ipc.TestStatusRunning:
-		return "🔄"
-	default:
-		return "❓"
-	}
-}
 
 // getTestCaseIcon returns an icon for individual test cases
 func getTestCaseIcon(status ipc.TestStatus) string {

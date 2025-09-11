@@ -40,7 +40,7 @@ func TestManager_Initialize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	// Test with empty test files list (dynamic discovery)
 	testFiles := []string{}
@@ -78,7 +78,7 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	// Test with static test files
 	testFiles := []string{"math.test.js", "string.test.js"}
@@ -106,7 +106,7 @@ func TestManager_HandleTestFileStartEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	// Initialize with empty files (dynamic discovery)
 	if err := manager.Initialize([]string{}, "npm test"); err != nil {
@@ -146,7 +146,7 @@ func TestManager_HandleStdoutChunkEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	testFile := "math.test.js"
 	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
@@ -194,7 +194,7 @@ func TestManager_HandleTestCaseEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	testFile := "math.test.js"
 	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
@@ -230,7 +230,7 @@ func TestManager_HandleTestCaseEvent(t *testing.T) {
 	// Check that test case was recorded in the final report
 	// We can't directly access internal state, but we can check the final report generation
 	// by finalizing the manager and reading the markdown file
-	manager.Finalize(0)
+	_ = manager.Finalize(0)
 
 	reportPath := filepath.Join(tempDir, "test-run.md")
 	content, err := os.ReadFile(reportPath)
@@ -257,7 +257,7 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	testFile := "math.test.js"
 	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
@@ -288,7 +288,7 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Finalize to generate final report
-	manager.Finalize(0)
+	_ = manager.Finalize(0)
 
 	reportPath := filepath.Join(tempDir, "test-run.md")
 	content, err := os.ReadFile(reportPath)
@@ -311,7 +311,7 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 	
 	testFile := "test.js"
 	if err := manager.Initialize([]string{testFile}, "jest"); err != nil {
@@ -378,15 +378,15 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 	}
 	
 	// Handle all events
-	manager.HandleEvent(event1)
-	manager.HandleEvent(event2)
-	manager.HandleEvent(event3)
+	_ = manager.HandleEvent(event1)
+	_ = manager.HandleEvent(event2)
+	_ = manager.HandleEvent(event3)
 	
 	// Wait for state updates
 	time.Sleep(100 * time.Millisecond)
 	
 	// Finalize and check report
-	manager.Finalize(0)
+	_ = manager.Finalize(0)
 	
 	reportPath := filepath.Join(tempDir, "test-run.md")
 	content, err := os.ReadFile(reportPath)
@@ -453,7 +453,7 @@ func TestManager_HandleRunCompleteEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	if err := manager.Initialize([]string{}, "npm test"); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
@@ -486,7 +486,7 @@ func TestManager_Debouncing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	testFile := "math.test.js"
 	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
@@ -540,7 +540,7 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	// Initialize with a test file
 	testFile := "test.spec.js"
@@ -634,19 +634,19 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Create manager
 	manager, err := NewManager(tempDir, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Finalize(0)
+	defer func() { _ = manager.Finalize(0) }()
 
 	testFile := "example.test.js"
 	
 	// Initialize with the test file
-	manager.Initialize([]string{testFile}, "test command")
+	_ = manager.Initialize([]string{testFile}, "test command")
 
 	// Test 1: Start test "foo" (RUNNING status like Jest does)
 	test1StartEvent := ipc.TestCaseEvent{

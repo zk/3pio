@@ -48,7 +48,7 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Cleanup()
+	defer func() { _ = manager.Cleanup() }()
 	
 	// Write various event types to the file
 	events := []map[string]interface{}{
@@ -90,7 +90,7 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 			t.Fatalf("Failed to write newline: %v", err)
 		}
 	}
-	file.Close()
+	_ = file.Close()
 	
 	// Start watching
 	if err := manager.WatchEvents(); err != nil {
@@ -105,12 +105,13 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 	
 	// Collect all events with timeout
 	timeout := time.After(1 * time.Second)
+loop:
 	for len(receivedEvents) < 2 { // expect testCase + runComplete
 		select {
 		case event := <-manager.Events:
 			receivedEvents = append(receivedEvents, event.Type())
 		case <-timeout:
-			break
+			break loop
 		}
 	}
 	
@@ -177,7 +178,7 @@ func TestManager_ShouldHandleRunCompleteGracefully(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
-	defer manager.Cleanup()
+	defer func() { _ = manager.Cleanup() }()
 	
 	// Write a runComplete event
 	event := map[string]interface{}{
@@ -200,7 +201,7 @@ func TestManager_ShouldHandleRunCompleteGracefully(t *testing.T) {
 	if _, err := file.WriteString("\n"); err != nil {
 		t.Fatalf("Failed to write newline: %v", err)
 	}
-	file.Close()
+	_ = file.Close()
 	
 	// Start watching
 	if err := manager.WatchEvents(); err != nil {

@@ -39,8 +39,6 @@ type Orchestrator struct {
 	failedFiles   int
 	totalFiles    int
 	displayedFiles map[string]bool // Track which files we've already displayed
-	
-	mu            sync.Mutex
 }
 
 // Logger interface for logging
@@ -169,7 +167,7 @@ func (o *Orchestrator) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
-	defer outputFile.Close()
+	defer func() { _ = outputFile.Close() }()
 	
 	// Create pipes for stdout and stderr
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -234,12 +232,12 @@ func (o *Orchestrator) Run() error {
 		}
 	case sig := <-sigChan:
 		o.logger.Info("Received signal: %v", sig)
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		o.exitCode = 130 // Standard exit code for SIGINT
 	}
 	
 	// Stop watching for events (this closes the Events channel and allows processEvents to exit)
-	o.ipcManager.Cleanup()
+	_ = o.ipcManager.Cleanup()
 	
 	// Wait for event processing to complete (channel is closed, range will exit)
 	<-eventsDone
@@ -360,13 +358,14 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		
 		// Format status with proper spacing
 		var status string
-		if e.Payload.Status == ipc.TestStatusPass {
+		switch e.Payload.Status {
+		case ipc.TestStatusPass:
 			status = "PASS    "
 			o.passedFiles++
-		} else if e.Payload.Status == ipc.TestStatusFail {
+		case ipc.TestStatusFail:
 			status = "FAIL    "
 			o.failedFiles++
-		} else {
+		default:
 			status = "SKIP    "
 		}
 		
@@ -397,7 +396,7 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
 		for _, output := range outputs {
-			output.Write([]byte(line))
+			_, _ = output.Write([]byte(line))
 		}
 	}
 	

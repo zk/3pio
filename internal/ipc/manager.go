@@ -245,12 +245,12 @@ func (m *Manager) Cleanup() error {
 	defer m.mu.Unlock()
 
 	if m.watcher != nil {
-		m.watcher.Close()
+		_ = m.watcher.Close()
 		m.watcher = nil
 	}
 
 	if m.file != nil {
-		m.file.Close()
+		_ = m.file.Close()
 		m.file = nil
 	}
 
@@ -291,7 +291,7 @@ func SendEvent(event interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to open IPC file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Write JSON line
 	if _, err := file.Write(data); err != nil {

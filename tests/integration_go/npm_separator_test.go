@@ -24,7 +24,7 @@ func TestNpmSeparatorHandling(t *testing.T) {
 	// Run 3pio with npm test -- format
 	cmd := exec.Command(binaryPath, "npm", "test", "--", "example.test.js")
 	cmd.Dir = projectDir
-	output, err := cmd.CombinedOutput()
+	output, _ := cmd.CombinedOutput()
 	
 	// We expect this to work (exit code might be non-zero due to test failures, but that's OK)
 	outputStr := string(output)

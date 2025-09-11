@@ -78,7 +78,7 @@ func TestOrchestrator_RunnerDetection(t *testing.T) {
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Failed to change to temp directory: %v", err)
 	}
-	defer os.Chdir(originalDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Create a package.json with jest dependency
 	packageJSON := `{
@@ -139,7 +139,7 @@ func TestOrchestrator_RunWithInvalidRunner(t *testing.T) {
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Failed to change to temp directory: %v", err)
 	}
-	defer os.Chdir(originalDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	config := Config{
 		Command: []string{"unknown-test-runner"},
@@ -228,7 +228,7 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Failed to change to temp directory: %v", err)
 	}
-	defer os.Chdir(originalDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Create a basic package.json with jest
 	packageJSON := `{
@@ -265,7 +265,7 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 
 	// Attempt to start the run process (this will fail because npm isn't available,
 	// but it should create the directory structure)
-	orch.Run()
+	_ = orch.Run()
 
 	// Check that .3pio directory was created
 	threepioDir := filepath.Join(tempDir, ".3pio")

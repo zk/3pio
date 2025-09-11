@@ -129,7 +129,7 @@ func extractAdapter(name string) (string, error) {
 
 	// Make Python adapter executable
 	if name == "pytest_adapter.py" {
-		os.Chmod(adapterPath, 0755)
+		_ = os.Chmod(adapterPath, 0755)
 	}
 
 	// Return absolute path for compatibility with all test runners

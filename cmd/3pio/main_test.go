@@ -140,14 +140,15 @@ func TestMain_Args(t *testing.T) {
 			// But we can test that the args parsing doesn't panic
 			if len(tc.args) > 1 {
 				firstArg := tc.args[1]
-				if firstArg == "--help" || firstArg == "-h" || firstArg == "help" {
-					// Help case
-				} else if firstArg == "--version" || firstArg == "-v" || firstArg == "version" {
-					// Version case  
-				} else if firstArg == "run" {
-					// Run subcommand case
-				} else {
-					// Assume it's a test command
+				switch {
+				case firstArg == "--help" || firstArg == "-h" || firstArg == "help":
+					// Help case - no action needed
+				case firstArg == "--version" || firstArg == "-v" || firstArg == "version":
+					// Version case - no action needed
+				case firstArg == "run":
+					// Run subcommand case - no action needed
+				default:
+					// Assume it's a test command - no action needed
 				}
 			}
 			// If we get here without panicking, the test passes
@@ -157,17 +158,9 @@ func TestMain_Args(t *testing.T) {
 
 func TestVersionInfo(t *testing.T) {
 	// Test that version variables are set (they're set by build flags)
-	if version == "" {
-		// Version may be empty in tests, that's ok
-	}
-	
-	if commit == "" {
-		// Commit may be empty in tests, that's ok  
-	}
-	
-	if date == "" {
-		// Date may be empty in tests, that's ok
-	}
-	
+	// Version, commit, and date may be empty in tests, that's ok
 	// The test passes if we don't panic accessing these variables
+	_ = version
+	_ = commit
+	_ = date
 }
