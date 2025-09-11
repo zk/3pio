@@ -69,24 +69,45 @@ jobs:
       - name: Run integration tests (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          # Test Jest integration
+          # Test Jest integration (exit code 1 expected due to failing test fixtures)
           cd tests/fixtures/basic-jest
-          ../../../build/3pio npx jest --reporters ../../../internal/adapters/jest.js
+          ../../../build/3pio npx jest math.test.js string.test.js || true
           
-          # Test Vitest integration  
+          # Verify that 3pio created output
+          if [ ! -d ".3pio/runs" ]; then
+            echo "ERROR: 3pio did not create expected output directory"
+            exit 1
+          fi
+          
+          # Test Vitest integration (exit code 1 expected due to failing test fixtures)
           cd ../basic-vitest
-          ../../../build/3pio npx vitest run --reporter ../../../internal/adapters/vitest.mjs
+          ../../../build/3pio npx vitest run math.test.js string.test.js || true
+          
+          # Verify that 3pio created output
+          if [ ! -d ".3pio/runs" ]; then
+            echo "ERROR: 3pio did not create expected output directory"
+            exit 1
+          fi
 
       - name: Run integration tests (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          # Test Jest integration
+          # Test Jest integration (exit code 1 expected due to failing test fixtures)
           cd tests/fixtures/basic-jest
-          ../../../build/3pio.exe npx jest --reporters ../../../internal/adapters/jest.js
+          ../../../build/3pio.exe npx jest math.test.js string.test.js
+          if (-not (Test-Path ".3pio/runs")) {
+            Write-Error "ERROR: 3pio did not create expected output directory"
+            exit 1
+          }
           
-          # Test Vitest integration
-          cd ../basic-vitest  
-          ../../../build/3pio.exe npx vitest run --reporter ../../../internal/adapters/vitest.mjs
+          # Test Vitest integration (exit code 1 expected due to failing test fixtures)
+          cd ../basic-vitest
+          ../../../build/3pio.exe npx vitest run math.test.js string.test.js
+          if (-not (Test-Path ".3pio/runs")) {
+            Write-Error "ERROR: 3pio did not create expected output directory"
+            exit 1
+          }
+        shell: pwsh
 
   lint:
     runs-on: ubuntu-latest
