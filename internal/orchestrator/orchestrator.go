@@ -441,7 +441,8 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 	// Always use embedded adapters in production
-	embeddedPath, err := adapters.GetAdapterPath(adapterName)
+	// Pass IPC path and run ID for injection
+	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runID)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}

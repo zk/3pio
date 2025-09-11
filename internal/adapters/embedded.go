@@ -1,12 +1,13 @@
 package adapters
 
 import (
-	"crypto/md5"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"sync"
 )
 
@@ -32,34 +33,14 @@ var cache = &adapterCache{
 	paths: make(map[string]string),
 }
 
-// GetAdapterPath returns the path to an extracted adapter
-func GetAdapterPath(name string) (string, error) {
-	// Check cache first
-	cache.mu.RLock()
-	if path, ok := cache.paths[name]; ok {
-		cache.mu.RUnlock()
-		// Verify file still exists
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-	}
-	cache.mu.RUnlock()
-
-	// Extract adapter
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	path, err := extractAdapter(name)
-	if err != nil {
-		return "", err
-	}
-
-	cache.paths[name] = path
-	return path, nil
+// GetAdapterPath returns the path to an extracted adapter with IPC path injected
+func GetAdapterPath(name string, ipcPath string, runID string) (string, error) {
+	// No caching needed since each run gets its own adapter
+	return extractAdapter(name, ipcPath, runID)
 }
 
-// extractAdapter extracts an embedded adapter to .3pio/adapters directory
-func extractAdapter(name string) (string, error) {
+// extractAdapter extracts an embedded adapter with IPC path injected
+func extractAdapter(name string, ipcPath string, runID string) (string, error) {
 	var content []byte
 	var filename string
 	var isESM bool
@@ -86,9 +67,29 @@ func extractAdapter(name string) (string, error) {
 		return "", fmt.Errorf("unknown adapter: %s", name)
 	}
 
-	// Use .3pio/adapters directory with version hash
-	hash := fmt.Sprintf("%x", md5.Sum(content))[:8]
-	adapterDir := filepath.Join(".3pio", "adapters", hash)
+	// Replace template markers with actual IPC path
+	contentStr := string(content)
+	
+	// For JavaScript adapters, use JSON-like escaping
+	if name == "vitest.js" || name == "jest.js" {
+		escapedPath := strconv.Quote(ipcPath) // Go's strconv.Quote is similar to JSON.stringify
+		// Replace the markers
+		pattern := regexp.MustCompile(`/\*__IPC_PATH__\*/".*?"/\*__IPC_PATH__\*/`)
+		contentStr = pattern.ReplaceAllString(contentStr, escapedPath)
+	}
+	
+	// For Python adapter, use Python string escaping
+	if name == "pytest_adapter.py" {
+		// Python uses similar escaping to JSON for basic strings
+		escapedPath := strconv.Quote(ipcPath)
+		pattern := regexp.MustCompile(`#__IPC_PATH__#".*?"#__IPC_PATH__#`)
+		contentStr = pattern.ReplaceAllString(contentStr, escapedPath)
+	}
+	
+	content = []byte(contentStr)
+	
+	// Use run ID for adapter directory (e.g., "20250911T085108-feisty-han-solo")
+	adapterDir := filepath.Join(".3pio", "adapters", runID)
 	if err := os.MkdirAll(adapterDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create adapter directory: %w", err)
 	}
@@ -96,28 +97,7 @@ func extractAdapter(name string) (string, error) {
 	// Write adapter file
 	adapterPath := filepath.Join(adapterDir, filename)
 
-	// Check if file already exists with correct content
-	if existing, err := os.ReadFile(adapterPath); err == nil {
-		if string(existing) == string(content) {
-			// Also check if package.json exists for ESM modules
-			if isESM {
-				pkgPath := filepath.Join(adapterDir, "package.json")
-				if _, err := os.Stat(pkgPath); err == nil {
-					// Return absolute path
-					if absPath, err := filepath.Abs(adapterPath); err == nil {
-						return absPath, nil
-					}
-					return adapterPath, nil
-				}
-			} else {
-				// Return absolute path
-				if absPath, err := filepath.Abs(adapterPath); err == nil {
-					return absPath, nil
-				}
-				return adapterPath, nil
-			}
-		}
-	}
+	// No need to check if file exists - each run gets its own adapter
 
 	// Write the adapter file
 	if err := os.WriteFile(adapterPath, content, 0644); err != nil {

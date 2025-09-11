@@ -144,9 +144,9 @@ def pytest_configure(config: Config) -> None:
     """Register the 3pio reporter if IPC path is set."""
     global _reporter
     
-    ipc_path = os.environ.get('THREEPIO_IPC_PATH')
+    ipc_path = #__IPC_PATH__#"WILL_BE_REPLACED"#__IPC_PATH__#
     
-    if ipc_path:
+    if True:  # IPC path will always be present after injection
         # Create the reporter instance
         _reporter = ThreepioReporter(ipc_path)
         

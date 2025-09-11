@@ -104,11 +104,7 @@ var IPCSender = class {
    * Synchronous version of sendEvent
    */
   static sendEventSync(event) {
-    const ipcPath = process.env.THREEPIO_IPC_PATH;
-    if (!ipcPath) {
-      console.error("THREEPIO_IPC_PATH not set");
-      return;
-    }
+    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     try {
       const dir = path.dirname(ipcPath);
       if (!fs.existsSync(dir)) {
@@ -249,19 +245,15 @@ var ThreePioVitestReporter = class {
       "==================================",
       `3pio Vitest Adapter v${packageJson.version}`,
       "Configuration:",
-      `  - IPC Path: ${process.env.THREEPIO_IPC_PATH || "not set"}`,
+      `  - IPC Path: ${/*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/}`,
       `  - Process ID: ${process.pid}`,
       "=================================="
     ]);
   }
   onInit(ctx) {
     this.logger.lifecycle("Test run initializing");
-    const ipcPath = process.env.THREEPIO_IPC_PATH;
-    if (!ipcPath) {
-      this.logger.error("THREEPIO_IPC_PATH not set - adapter cannot function");
-    } else {
-      this.logger.info("IPC communication channel ready", { path: ipcPath });
-    }
+    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+    this.logger.info("IPC communication channel ready", { path: ipcPath });
     this.logger.initComplete({ ipcPath });
     this.logger.debug("Starting global capture for test output");
     this.startCapture();
