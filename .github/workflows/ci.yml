@@ -35,8 +35,12 @@ jobs:
       
       - name: Install test fixture dependencies
         run: |
-          cd tests/fixtures/basic-jest && npm ci
-          cd ../basic-vitest && npm ci
+          for dir in tests/fixtures/*/; do
+            if [ -f "$dir/package.json" ]; then
+              echo "Installing dependencies in $dir"
+              (cd "$dir" && npm ci)
+            fi
+          done
 
       - name: Run Go tests
         run: go test -v ./...
