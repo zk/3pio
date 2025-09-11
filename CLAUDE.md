@@ -4,36 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-3pio is an AI-first test runner adapter that acts as a "protocol droid" for test frameworks. It translates traditional test runner output (Jest, Vitest) into a format optimized for AI agents - providing persistent, structured, file-based records that are context-efficient and searchable.
+3pio is a context friendly test runner. It translates traditional test runner output (Jest, Vitest, pytest) into a format optimized for coding agents - providing persistent, structured, file-based records that are context-efficient and searchable.
 
 ## Key Architecture Components
 
-### Core Components
-1. **CLI Orchestrator** (`src/cli.ts`) - Main entry point, manages test lifecycle
-2. **Report Manager** (`src/ReportManager.ts`) - Handles all report file I/O with incremental writing and debouncing
-3. **IPC Manager** (`src/ipc.ts`) - File-based communication between adapters and CLI
-4. **Test Runner Adapters** (`src/adapters/`) - Silent reporters running inside test processes
+### Core Components (Go Implementation)
+1. **CLI Orchestrator** (`cmd/3pio/main.go`) - Main entry point, manages test lifecycle
+2. **Report Manager** (`internal/report/`) - Handles all report file I/O with incremental writing
+3. **IPC Manager** (`internal/ipc/`) - File-based communication between adapters and CLI
+4. **Test Runner Adapters** (`internal/adapters/`) - JavaScript/Python reporters embedded in the binary
+5. **Process Manager** (`internal/process/`) - Spawns and monitors test runner processes
+6. **Output Parser** (`internal/output/`) - Parses stdout/stderr streams
 
 ### Data Flow
 - CLI attempts dry run (optional) → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs incrementally → final report at `.3pio/runs/[timestamp]-[memorable-name]/test-run.md`
 
 ### Incremental Log Writing
 - Individual test log files are created immediately when a test file is registered
-- Output is written incrementally to log files with debouncing (100ms delay, 500ms max wait)
-- File handles are kept open during test execution for efficiency
+- Output is written incrementally to log files
 - Partial results are available even if the test run is interrupted (e.g., Ctrl+C)
 - All file handles are properly closed and buffers flushed during finalization
-
-### Test Discovery Modes
-- **Static Discovery**: When test files can be determined upfront (e.g., explicit file arguments, Jest --listTests)
-- **Dynamic Discovery**: Files are registered as they send their first event (e.g., npm run test with Vitest)
-- The system seamlessly handles both modes without user configuration
 
 ### Console Output Capture Strategy
 - **Jest**: 3pio does NOT use Jest's default reporter to avoid duplicate output
 - **Vitest**: 3pio DOES include Vitest's default reporter for better user experience
+- **pytest**: Uses custom plugin that integrates with pytest's hook system
 - All console output from tests is captured at the CLI process level by monitoring stdout/stderr streams
-- Jest runs tests in worker processes, so the reporter cannot directly capture console output
 - The captured output is stored in `.3pio/runs/*/output.log` as a complete record
 - Individual test log files may be empty if the output parser cannot attribute console logs to specific test files
 
@@ -41,38 +37,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Build
 ```bash
-npm run build  # Use esbuild to compile TypeScript
+# Build the Go binary
+make build
+
+# Build with all adapters embedded
+make adapters && make build
+
+# Build all platform binaries
+goreleaser build --snapshot --clean
 ```
 
 ### Test
 ```bash
-# Run all tests
-npm test
+# Run all tests (unit + integration)
+make test
 
-# Test specific adapter
-npm test -- src/adapters/jest.test.ts
-npm test -- src/adapters/vitest.test.ts
+# Run Go tests directly
+go test ./...
 
-# Test CLI orchestrator
-npm test -- src/cli.test.ts
+# Run integration tests only
+go test ./tests/integration_go
+
+# Test with fixtures
+cd tests/fixtures/basic-jest && ../../../build/3pio npx jest
+cd tests/fixtures/basic-vitest && ../../../build/3pio npx vitest run
 ```
 
 ### Development
 ```bash
-npm run dev    # Watch mode for development
-npm run lint   # Run linter
-npm run typecheck  # Type checking with tsc
+# Build and install locally
+make build
+./build/3pio --version
+
+# Run with debug output
+THREEPIO_DEBUG=1 ./build/3pio npm test
 ```
 
 ### Local Testing
 ```bash
-# Link package locally for testing
-npm link
-
 # Test with sample projects
-3pio run jest
-3pio run vitest
-3pio run npm test
+./build/3pio npx jest
+./build/3pio npx vitest run
+./build/3pio pytest
+./build/3pio npm test
 ```
 
 ## Implementation Guidelines
@@ -88,8 +95,9 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 ### Adapter Development
 - Adapters must be **silent** - no stdout/stderr output
 - Read `THREEPIO_IPC_PATH` environment variable for IPC file location
-- Patch `process.stdout.write` and `process.stderr.write` during test execution
-- Restore original functions after test completion
+- JavaScript adapters patch `process.stdout.write` and `process.stderr.write` during test execution
+- Python adapter uses pytest hooks to capture output
+- Adapters are embedded in the Go binary using `embed` package
 
 ### Error Handling
 - Mirror exit codes from underlying test runners
@@ -106,31 +114,32 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 
 ### Unit Tests Required For
 - Argument parsing logic (CLI)
-- Test runner detection from package.json
+- Test runner detection
 - Command modification for adapter injection
 - IPC event serialization/deserialization
-- Report state management and debounced writes
+- Report state management
 
 ### Integration Tests Required For
-- Full CLI flow with mock components
-- Adapter lifecycle hooks with real test runners
+- Full CLI flow with real test runners
+- Adapter lifecycle hooks
 - IPC file watching and event handling
 - Report generation accuracy
+- Process management and signal handling
 
 ### End-to-End Tests Required For
-- Complete runs against sample Jest/Vitest projects
+- Complete runs against fixture projects (Jest/Vitest/pytest)
 - Correct preamble generation
 - Accurate report file generation
 - Exit code mirroring
+- Interrupt handling (SIGINT/SIGTERM)
 
 ## Technical Stack
-- **Language**: TypeScript
-- **Runtime**: Node.js
-- **Build**: esbuild (for speed)
-- **CLI Framework**: commander.js
-- **Shell Execution**: zx (for robust command handling)
-- **File Watching**: chokidar (for IPC monitoring)
-- **Debouncing**: lodash.debounce (for report writes)
+- **Language**: Go
+- **Build**: Go compiler with embedded resources
+- **Adapters**: JavaScript (Jest/Vitest) and Python (pytest)
+- **IPC**: File-based JSON Lines format
+- **File Watching**: fsnotify (Go package)
+- **Testing**: Go testing package + integration fixtures
 
 ## Known Issues and Gotchas
 
@@ -155,6 +164,8 @@ For detailed information about these issues and their solutions, see `docs/known
 
 ## Misc
 
-- There are sample projects for jest and vitest at `sample-projects/`
+- Test fixtures for Jest, Vitest, and pytest are at `tests/fixtures/`
 - Generated test files and scripts should not be put in the root directory. Any temporary files should go in the `./scratch` directory.
 - When we make design decisions update `docs/design-decisions.md` noting the decision and rationale.
+- Adapters are prepared for embedding using `make adapters` which runs `scripts/prepare-adapters.sh`
+- Debug logging can be enabled with `THREEPIO_DEBUG=1` environment variable

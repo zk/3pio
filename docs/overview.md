@@ -1,6 +1,6 @@
 # 3pio Documentation Overview
 
-3pio is an AI-first test runner adapter that acts as a "protocol droid" for test frameworks like Jest and Vitest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+3pio is a context-friendly test runner for frameworks like Jest and Vitest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
 
 ## Key Features
 

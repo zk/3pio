@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-3pio - A context-competent test runner for coding agents.
+3pio - A context-friendly test runner for coding agents.
 
-This package provides a native Go binary with zero runtime dependencies
-that acts as a protocol droid for test frameworks like Jest, Vitest, and pytest.
+See https://github.com/zk/3pio
+
 """
 
 import os

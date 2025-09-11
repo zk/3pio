@@ -7,7 +7,23 @@
 
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
+``` markdown
+**Note To Agents:**
+
+Welcome!
+
+If your user indicated they would like to install and use 3pio for running tests choose the package manager that best fits with their project or use case:
+
+- JavaScript/TypeScript, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
+- JavaScript/TypeScript, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
+- Python & pytest, `pip install threepio` 
+```
+
 ## Installation / Usage
+
+Point your coding agent at this README ([raw link](https://raw.githubusercontent.com/zk/3pio/refs/heads/main/README.md)).
+
+or:
 
 ```bash
 npm install -g @heyzk/3pio

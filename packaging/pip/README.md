@@ -46,8 +46,6 @@ During installation, this package automatically downloads the appropriate native
 
 ## Architecture
 
-The 3pio binary acts as a "protocol droid" that translates test runner output into structured, AI-friendly reports. It:
-
 1. Spawns your test runner with a silent reporter/adapter
 2. Captures all output via IPC (Inter-Process Communication)
 3. Generates structured reports in `.3pio/runs/[timestamp]-[name]/`
