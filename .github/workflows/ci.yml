@@ -31,8 +31,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install Node.js dependencies
-        run: npm ci
+      # Node.js is needed for test fixtures but no root package.json exists
 
       - name: Run Go tests
         run: go test -v ./...
@@ -81,16 +80,16 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Run Go linting
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
 
-      - name: Run TypeScript linting
-        run: npm run lint
-
-      - name: Run TypeScript type checking
-        run: npm run typecheck
+      - name: Run Go formatting check
+        run: |
+          gofmt_files=$(gofmt -l .)
+          if [ -n "$gofmt_files" ]; then
+            echo "The following files need formatting:"
+            echo "$gofmt_files"
+            exit 1
+          fi

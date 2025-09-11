@@ -32,8 +32,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install Node.js dependencies
-        run: npm ci
+      # Node.js is needed for adapters but no root package.json exists
 
       - name: Run Go tests
         run: go test -v ./...
@@ -60,8 +59,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install Node.js dependencies
-        run: npm ci
+      # Node.js is needed for adapters but no root package.json exists
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.5.0
