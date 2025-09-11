@@ -87,7 +87,7 @@ type TestFileResultEvent struct {
 		FilePath    string     `json:"filePath"`
 		Status      TestStatus `json:"status"`
 		FailedTests []struct {
-			Name     string `json:"name"`
+			Name     string  `json:"name"`
 			Duration float64 `json:"duration,omitempty"`
 		} `json:"failedTests,omitempty"`
 	} `json:"payload"`

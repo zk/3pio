@@ -271,7 +271,7 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 			FilePath    string         `json:"filePath"`
 			Status      ipc.TestStatus `json:"status"`
 			FailedTests []struct {
-				Name     string `json:"name"`
+				Name     string  `json:"name"`
 				Duration float64 `json:"duration,omitempty"`
 			} `json:"failedTests,omitempty"`
 		}{

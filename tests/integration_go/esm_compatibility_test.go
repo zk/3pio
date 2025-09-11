@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-
 // TestESModuleJestCompatibility verifies that 3pio works with ES module Jest projects
 func TestESModuleJestCompatibility(t *testing.T) {
 	t.Parallel()
@@ -18,7 +17,7 @@ func TestESModuleJestCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtureDir := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "tests", "fixtures", "jest-esm")
-	
+
 	// Clean up any previous runs
 	_ = os.RemoveAll(filepath.Join(fixtureDir, ".3pio"))
 
@@ -43,7 +42,7 @@ func TestESModuleJestCompatibility(t *testing.T) {
 	// Check the generated report
 	runDir := findLatestRunDir(t, fixtureDir)
 	reportPath := filepath.Join(runDir, "test-run.md")
-	
+
 	reportContent, err := os.ReadFile(reportPath)
 	if err != nil {
 		t.Fatalf("Failed to read test-run.md: %v", err)

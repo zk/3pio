@@ -39,7 +39,7 @@ type Orchestrator struct {
 	failedFiles    int
 	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
-	
+
 	// Error capture
 	stderrCapture strings.Builder
 }
@@ -262,7 +262,7 @@ func (o *Orchestrator) Run() error {
 		// If tests were processed, this is just a test failure, not a command error
 		if o.totalFiles == 0 {
 			errorDetails = commandErr.Error()
-			
+
 			// Include stderr content if available for command errors
 			stderrContent := strings.TrimSpace(o.stderrCapture.String())
 			if stderrContent != "" {

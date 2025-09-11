@@ -108,7 +108,7 @@ func TestErrorDetailsInReport(t *testing.T) {
 	// Check the test-run.md file
 	runDir := findLatestRunDir(t, fixtureDir)
 	reportPath := filepath.Join(runDir, "test-run.md")
-	
+
 	reportContent, err := os.ReadFile(reportPath)
 	if err != nil {
 		t.Fatalf("Failed to read test-run.md: %v", err)
@@ -163,7 +163,7 @@ func TestJestConfigError(t *testing.T) {
 	// Check the report includes the error
 	runDir := findLatestRunDir(t, fixtureDir)
 	reportPath := filepath.Join(runDir, "test-run.md")
-	
+
 	reportContent, err := os.ReadFile(reportPath)
 	if err != nil {
 		t.Fatalf("Failed to read test-run.md: %v", err)

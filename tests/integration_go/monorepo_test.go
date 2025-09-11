@@ -80,7 +80,7 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 
 	// Check that adapters were created with unique IPC paths
 	adaptersDir := filepath.Join(projectDir, ".3pio", "adapters")
-	
+
 	// List all adapter directories
 	entries, err := os.ReadDir(adaptersDir)
 	if err != nil {
@@ -97,17 +97,17 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 				adapterPath := filepath.Join(adaptersDir, entry.Name(), "vitest.js")
 				if fileExists(adapterPath) {
 					content := readFile(t, adapterPath)
-					
+
 					// Check that the adapter does NOT contain template markers
 					if strings.Contains(content, "/*__IPC_PATH__*/") {
 						t.Error("Adapter still contains template markers")
 					}
-					
+
 					// Check that the adapter does NOT contain WILL_BE_REPLACED
 					if strings.Contains(content, "WILL_BE_REPLACED") {
 						t.Error("Adapter still contains WILL_BE_REPLACED placeholder")
 					}
-					
+
 					// Check that the adapter contains a valid IPC path
 					if !strings.Contains(content, ".3pio/ipc/") || !strings.Contains(content, ".jsonl") {
 						t.Error("Adapter does not contain a valid injected IPC path")
@@ -147,7 +147,7 @@ func TestMonorepoMultiplePackagesParallel(t *testing.T) {
 
 	// Run the command
 	output, exitErr := cmd.CombinedOutput()
-	
+
 	// Check exit code (should be 0 if all tests pass)
 	if exitErr != nil {
 		if exitError, ok := exitErr.(*exec.ExitError); ok {
@@ -177,26 +177,26 @@ func TestMonorepoMultiplePackagesParallel(t *testing.T) {
 		if strings.HasSuffix(entry.Name(), ".jsonl") {
 			ipcPath := filepath.Join(ipcDir, entry.Name())
 			content := readFile(t, ipcPath)
-			
+
 			// Check for events from both packages
 			if !strings.Contains(content, "packages/package-a/math.test.js") {
 				t.Error("IPC file does not contain events from package-a")
 			}
-			
+
 			if !strings.Contains(content, "packages/package-b/string.test.js") {
 				t.Error("IPC file does not contain events from package-b")
 			}
-			
+
 			// Check for test case events
 			if !strings.Contains(content, `"eventType":"testCase"`) {
 				t.Error("IPC file does not contain testCase events")
 			}
-			
+
 			// Check for test file events
 			if !strings.Contains(content, `"eventType":"testFileStart"`) {
 				t.Error("IPC file does not contain testFileStart events")
 			}
-			
+
 			if !strings.Contains(content, `"eventType":"testFileResult"`) {
 				t.Error("IPC file does not contain testFileResult events")
 			}
@@ -205,23 +205,23 @@ func TestMonorepoMultiplePackagesParallel(t *testing.T) {
 
 	// Verify summary shows tests from both packages
 	testRunContent := readFile(t, filepath.Join(runDir, "test-run.md"))
-	
+
 	// Verify that all 6 tests are present (3 from each package)
 	expectedTests := []string{
 		"should add numbers correctly",
-		"should subtract numbers correctly", 
+		"should subtract numbers correctly",
 		"should multiply numbers correctly",
 		"should concatenate strings",
 		"should convert to uppercase",
 		"should check string length",
 	}
-	
+
 	for _, test := range expectedTests {
 		if !strings.Contains(testRunContent, test) {
 			t.Errorf("Expected test '%s' not found in test-run.md", test)
 		}
 	}
-	
+
 	// Verify both files passed
 	if !strings.Contains(testRunContent, "Files Passed: 2") {
 		t.Logf("test-run.md content:\n%s", testRunContent)

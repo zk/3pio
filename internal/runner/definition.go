@@ -286,8 +286,8 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 	// Check for vitest executable in the command (not in config file names)
 	for _, arg := range args {
 		// Check if this is actually the vitest command or its CLI entry point
-		if arg == "vitest" || 
-			strings.HasSuffix(arg, "/vitest") || 
+		if arg == "vitest" ||
+			strings.HasSuffix(arg, "/vitest") ||
 			strings.HasSuffix(arg, ".bin/vitest") ||
 			strings.Contains(arg, "vitest@") ||
 			strings.Contains(arg, "vitest/dist/cli") { // Handle node execution of vitest CLI
@@ -341,13 +341,13 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 					break
 				}
 			}
-			
+
 			// Check if there are already user-provided flags after --
 			hasUserFlags := separatorIdx != -1 && separatorIdx < len(args)-1
-			
+
 			// Append everything up to and including --, then add reporters
 			result = append(result, args...)
-			
+
 			// Only add 'run' if package.json needs it AND user hasn't provided flags
 			if !hasUserFlags && v.shouldAddRunForPackageScript() {
 				result = append(result, "run")
@@ -357,7 +357,7 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			// Add all args, then -- separator, then reporter flags
 			result = append(result, args...)
 			result = append(result, "--")
-			
+
 			// Check if we need to add 'run' command for vitest
 			if v.shouldAddRunForPackageScript() {
 				result = append(result, "run")
@@ -375,8 +375,8 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 
 	for i, arg := range args {
 		// Only check for vitest command or its CLI entry point
-		if !reporterAdded && (arg == "vitest" || 
-			strings.HasSuffix(arg, "/vitest") || 
+		if !reporterAdded && (arg == "vitest" ||
+			strings.HasSuffix(arg, "/vitest") ||
 			strings.HasSuffix(arg, ".bin/vitest") ||
 			strings.Contains(arg, "vitest@") ||
 			strings.Contains(arg, "vitest/dist/cli")) {
@@ -384,17 +384,17 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			// Add reporter flags immediately after vitest command
 			result = append(result, "--reporter", adapterPath, "--reporter", "default")
 			reporterAdded = true
-			
+
 			// Check if next argument is a vitest subcommand
 			// If not, we need to add 'run' to prevent watch mode
 			if i+1 < len(args) {
 				nextArg := args[i+1]
 				// Check if next arg is a known vitest subcommand
-				isSubcommand := nextArg == "run" || nextArg == "watch" || 
-					nextArg == "bench" || nextArg == "typecheck" || 
-					nextArg == "list" || nextArg == "related" || 
+				isSubcommand := nextArg == "run" || nextArg == "watch" ||
+					nextArg == "bench" || nextArg == "typecheck" ||
+					nextArg == "list" || nextArg == "related" ||
 					nextArg == "init"
-				
+
 				if !isSubcommand && !strings.HasPrefix(nextArg, "-") {
 					// Next arg is not a subcommand or flag, so we need to add 'run'
 					needsRunCommand = true
@@ -406,7 +406,7 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 				// No more args after vitest, need to add 'run'
 				needsRunCommand = true
 			}
-			
+
 			if needsRunCommand {
 				result = append(result, "run")
 			}

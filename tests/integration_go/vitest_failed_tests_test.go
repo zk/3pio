@@ -17,7 +17,7 @@ func TestVitestFailedTestsReporting(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtureDir := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "tests", "fixtures", "basic-vitest")
-	
+
 	// Clean up any previous runs
 	_ = os.RemoveAll(filepath.Join(fixtureDir, ".3pio"))
 

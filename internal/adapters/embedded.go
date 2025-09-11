@@ -61,7 +61,7 @@ func extractAdapter(name string, ipcPath string, runID string) (string, error) {
 
 	// Replace template markers with actual IPC path
 	contentStr := string(content)
-	
+
 	// For JavaScript adapters, use JSON-like escaping
 	if name == "vitest.js" || name == "jest.js" {
 		escapedPath := strconv.Quote(ipcPath) // Go's strconv.Quote is similar to JSON.stringify
@@ -69,7 +69,7 @@ func extractAdapter(name string, ipcPath string, runID string) (string, error) {
 		pattern := regexp.MustCompile(`/\*__IPC_PATH__\*/".*?"/\*__IPC_PATH__\*/`)
 		contentStr = pattern.ReplaceAllString(contentStr, escapedPath)
 	}
-	
+
 	// For Python adapter, use Python string escaping
 	if name == "pytest_adapter.py" {
 		// Python uses similar escaping to JSON for basic strings
@@ -77,9 +77,9 @@ func extractAdapter(name string, ipcPath string, runID string) (string, error) {
 		pattern := regexp.MustCompile(`#__IPC_PATH__#".*?"#__IPC_PATH__#`)
 		contentStr = pattern.ReplaceAllString(contentStr, escapedPath)
 	}
-	
+
 	content = []byte(contentStr)
-	
+
 	// Use run ID for adapter directory (e.g., "20250911T085108-feisty-han-solo")
 	adapterDir := filepath.Join(".3pio", "adapters", runID)
 	if err := os.MkdirAll(adapterDir, 0755); err != nil {

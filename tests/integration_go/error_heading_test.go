@@ -11,7 +11,7 @@ import (
 func TestNoEmptyErrorHeading(t *testing.T) {
 	// This test verifies that we don't show an empty "Error:" heading
 	// when tests fail but there's no actual error message
-	
+
 	fixtureDir := filepath.Join("..", "fixtures", "basic-vitest")
 	if _, err := os.Stat(fixtureDir); err != nil {
 		t.Skipf("Fixture directory not found: %s", fixtureDir)
@@ -27,21 +27,21 @@ func TestNoEmptyErrorHeading(t *testing.T) {
 	// Run a test that we know will fail
 	cmd := exec.Command(threePioBinary, "npx", "vitest", "run", "string.test.js")
 	cmd.Dir = fixtureDir
-	
+
 	output, _ := cmd.CombinedOutput()
 	outputStr := string(output)
-	
+
 	// Check if "Error:" appears in the output
 	if strings.Contains(outputStr, "Error:") {
 		// If it does appear, make sure it's followed by actual content
 		errorIndex := strings.Index(outputStr, "Error:")
 		afterError := outputStr[errorIndex+6:] // Skip "Error:"
-		
+
 		// Check the next line after "Error:"
 		lines := strings.Split(afterError, "\n")
 		if len(lines) > 0 {
 			firstLineAfterError := strings.TrimSpace(lines[0])
-			
+
 			// The first line after "Error:" should not be empty
 			if firstLineAfterError == "" {
 				// Check if the second line has content (in case of formatting)
@@ -56,7 +56,7 @@ func TestNoEmptyErrorHeading(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Verify that test failure message is still shown
 	if !strings.Contains(outputStr, "Test failures!") && !strings.Contains(outputStr, "FAIL") {
 		t.Errorf("Test failure indication not found in output:\n%s", outputStr)
@@ -66,7 +66,7 @@ func TestNoEmptyErrorHeading(t *testing.T) {
 func TestErrorHeadingWithActualError(t *testing.T) {
 	// This test verifies that when there IS an actual error (like config error),
 	// the Error: heading is shown with the error message
-	
+
 	fixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
 	if _, err := os.Stat(fixtureDir); err != nil {
 		t.Skipf("Fixture directory not found: %s", fixtureDir)
@@ -82,15 +82,15 @@ func TestErrorHeadingWithActualError(t *testing.T) {
 	// Run npx jest which should fail with config error
 	cmd := exec.Command(threePioBinary, "npx", "jest")
 	cmd.Dir = fixtureDir
-	
+
 	output, _ := cmd.CombinedOutput()
 	outputStr := string(output)
-	
+
 	// When there's a real error, Error: should appear with content
 	if strings.Contains(outputStr, "Error:") {
 		errorIndex := strings.Index(outputStr, "Error:")
 		afterError := outputStr[errorIndex+6:] // Skip "Error:"
-		
+
 		// Should have actual error content mentioning the config issue
 		if !strings.Contains(afterError, "preset") || !strings.Contains(afterError, "non-existent-preset") {
 			t.Errorf("Error: heading found but without expected error details\nOutput:\n%s", outputStr)

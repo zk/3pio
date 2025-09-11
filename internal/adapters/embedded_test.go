@@ -47,8 +47,8 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
 				// Check that the path was properly escaped
-				if !strings.Contains(contentStr, `"/home/user's files/.3pio/ipc/test.jsonl"`) && 
-				   !strings.Contains(contentStr, `"/home/user\'s files/.3pio/ipc/test.jsonl"`) {
+				if !strings.Contains(contentStr, `"/home/user's files/.3pio/ipc/test.jsonl"`) &&
+					!strings.Contains(contentStr, `"/home/user\'s files/.3pio/ipc/test.jsonl"`) {
 					t.Errorf("Expected escaped IPC path not found in adapter content")
 				}
 				// Check that template markers were removed
@@ -103,7 +103,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 				contentStr := string(content)
 				// Check that Unicode characters are preserved
 				if !strings.Contains(contentStr, `"/home/用户/.3pio/ipc/test.jsonl"`) &&
-				   !strings.Contains(contentStr, `"/home/\u7528\u6237/.3pio/ipc/test.jsonl"`) {
+					!strings.Contains(contentStr, `"/home/\u7528\u6237/.3pio/ipc/test.jsonl"`) {
 					t.Errorf("Expected Unicode path not found in adapter content")
 				}
 			},
