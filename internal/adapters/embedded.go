@@ -3,6 +3,7 @@ package adapters
 import (
 	"crypto/md5"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,7 +67,12 @@ func extractAdapter(name string) (string, error) {
 	switch name {
 	case "jest.js":
 		content = jestAdapter
-		filename = "jest.js"
+		// Check if target project is ES module
+		if isProjectESM() {
+			filename = "jest.cjs" // Use .cjs extension for ES module projects
+		} else {
+			filename = "jest.js"
+		}
 		isESM = false
 	case "vitest.js":
 		content = vitestAdapter
@@ -138,6 +144,30 @@ func extractAdapter(name string) (string, error) {
 		return adapterPath, nil // Fall back to relative path if abs fails
 	}
 	return absPath, nil
+}
+
+// isProjectESM checks if the current project is configured as an ES module
+func isProjectESM() bool {
+	// Check if package.json exists and has "type": "module"
+	packagePath := "package.json"
+	if _, err := os.Stat(packagePath); err != nil {
+		return false // No package.json found
+	}
+
+	data, err := os.ReadFile(packagePath)
+	if err != nil {
+		return false // Can't read package.json
+	}
+
+	var pkg struct {
+		Type string `json:"type"`
+	}
+
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return false // Invalid JSON
+	}
+
+	return pkg.Type == "module"
 }
 
 // CleanupAdapters removes all extracted adapter files
