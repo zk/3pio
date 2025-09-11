@@ -17,13 +17,22 @@ all: clean adapters build
 build: adapters
 	@echo "Building 3pio binary..."
 	@mkdir -p $(BUILD_DIR)
+ifeq ($(OS),Windows_NT)
+	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/3pio.exe cmd/3pio/main.go
+	@echo "Binary built: $(BUILD_DIR)/3pio.exe"
+else
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/3pio cmd/3pio/main.go
 	@echo "✅ Binary built: $(BUILD_DIR)/3pio"
+endif
 
 # Build adapters and prepare for embedding
 adapters:
 	@echo "Preparing adapters for embedding..."
+ifeq ($(OS),Windows_NT)
+	@powershell -ExecutionPolicy Bypass -File scripts/prepare-adapters.ps1
+else
 	@./scripts/prepare-adapters.sh
+endif
 
 # Development build (with debug symbols)
 dev:
