@@ -1,0 +1,6 @@
+{
+  "name": "jest-ts-config",
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}

@@ -62,43 +62,14 @@ func findLatestRunDir(t *testing.T, projectDir string) string {
 func TestErrorReportingToConsole(t *testing.T) {
 	t.Parallel()
 
-	// Create a temporary directory with a broken Jest setup
-	tempDir := t.TempDir()
-	
-	// Create a package.json with Jest but missing configuration
-	packageJSON := `{
-		"name": "broken-jest",
-		"scripts": {
-			"test": "jest"
-		},
-		"devDependencies": {
-			"jest": "^29.0.0"
-		}
-	}`
-	if err := os.WriteFile(filepath.Join(tempDir, "package.json"), []byte(packageJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a broken Jest config that will cause an error
-	jestConfig := `module.exports = {
-		preset: 'non-existent-preset'
-	};`
-	if err := os.WriteFile(filepath.Join(tempDir, "jest.config.js"), []byte(jestConfig), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a simple test file
-	testFile := `describe('test', () => {
-		it('should work', () => {
-			expect(true).toBe(true);
-		});
-	});`
-	if err := os.WriteFile(filepath.Join(tempDir, "test.spec.js"), []byte(testFile), 0644); err != nil {
-		t.Fatal(err)
+	// Use the jest-config-error fixture
+	fixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
+	if _, err := os.Stat(fixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", fixtureDir)
 	}
 
 	// Run 3pio and capture output
-	output, _, exitCode := runBinary(t, tempDir, "npx", "jest")
+	output, _, exitCode := runBinary(t, fixtureDir, "npx", "jest")
 
 	// The test should fail due to missing preset
 	if exitCode == 0 {
@@ -120,33 +91,14 @@ func TestErrorReportingToConsole(t *testing.T) {
 func TestErrorDetailsInReport(t *testing.T) {
 	t.Parallel()
 
-	// Create a temporary directory with a broken Jest setup
-	tempDir := t.TempDir()
-	
-	// Create a package.json with Jest but missing configuration
-	packageJSON := `{
-		"name": "broken-jest",
-		"scripts": {
-			"test": "jest"
-		},
-		"devDependencies": {
-			"jest": "^29.0.0"
-		}
-	}`
-	if err := os.WriteFile(filepath.Join(tempDir, "package.json"), []byte(packageJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a Jest config that references a non-existent preset
-	jestConfig := `{
-		"preset": "non-existent-preset"
-	}`
-	if err := os.WriteFile(filepath.Join(tempDir, "jest.config.json"), []byte(jestConfig), 0644); err != nil {
-		t.Fatal(err)
+	// Use the jest-config-error fixture
+	fixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
+	if _, err := os.Stat(fixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", fixtureDir)
 	}
 
 	// Run 3pio
-	_, _, exitCode := runBinary(t, tempDir, "npx", "jest")
+	_, _, exitCode := runBinary(t, fixtureDir, "npx", "jest")
 
 	// Should fail
 	if exitCode == 0 {
@@ -154,7 +106,7 @@ func TestErrorDetailsInReport(t *testing.T) {
 	}
 
 	// Check the test-run.md file
-	runDir := findLatestRunDir(t, tempDir)
+	runDir := findLatestRunDir(t, fixtureDir)
 	reportPath := filepath.Join(runDir, "test-run.md")
 	
 	reportContent, err := os.ReadFile(reportPath)
@@ -189,30 +141,14 @@ func TestErrorDetailsInReport(t *testing.T) {
 func TestJestConfigError(t *testing.T) {
 	t.Parallel()
 
-	// Create a temporary directory with TypeScript Jest config
-	tempDir := t.TempDir()
-	
-	// Create a package.json with Jest
-	packageJSON := `{
-		"name": "jest-ts-config",
-		"devDependencies": {
-			"jest": "^29.0.0"
-		}
-	}`
-	if err := os.WriteFile(filepath.Join(tempDir, "package.json"), []byte(packageJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a TypeScript Jest config (without ts-node installed)
-	jestConfig := `export default {
-		testEnvironment: 'node'
-	};`
-	if err := os.WriteFile(filepath.Join(tempDir, "jest.config.ts"), []byte(jestConfig), 0644); err != nil {
-		t.Fatal(err)
+	// Use the jest-ts-config-error fixture
+	fixtureDir := filepath.Join("..", "fixtures", "jest-ts-config-error")
+	if _, err := os.Stat(fixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", fixtureDir)
 	}
 
 	// Run 3pio
-	output, _, exitCode := runBinary(t, tempDir, "npx", "jest")
+	output, _, exitCode := runBinary(t, fixtureDir, "npx", "jest")
 
 	// Should fail
 	if exitCode == 0 {
@@ -225,7 +161,7 @@ func TestJestConfigError(t *testing.T) {
 	}
 
 	// Check the report includes the error
-	runDir := findLatestRunDir(t, tempDir)
+	runDir := findLatestRunDir(t, fixtureDir)
 	reportPath := filepath.Join(runDir, "test-run.md")
 	
 	reportContent, err := os.ReadFile(reportPath)
