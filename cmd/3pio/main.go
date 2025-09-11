@@ -64,6 +64,16 @@ Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
 
 	// Disable default completion command
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	
+	// Custom help template to put Usage before Examples
+	rootCmd.SetHelpTemplate(`{{.Long}}
+
+Usage:
+  {{.UseLine}}
+
+Flags:
+{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+`)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
