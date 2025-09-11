@@ -95,6 +95,37 @@ Error: Could not resolve a module for a custom reporter.
   Module name: --coverage
 ```
 
+## Coverage Mode Limitations
+
+### Coverage Reporting Interference
+
+When test runners are executed with coverage enabled (e.g., `--coverage` flag), 3pio may fail to capture individual test results:
+
+#### Affected Commands
+- `vitest --coverage` or `vitest run --coverage`
+- `jest --coverage` or `jest --collectCoverage`
+- `pytest --cov=module`
+
+#### Symptoms
+- Tests run successfully but 3pio only captures the final summary
+- `test-run.md` shows 0 files despite tests executing
+- `output.log` contains test results but individual test tracking is lost
+
+#### Why This Happens
+Coverage instrumentation changes how test runners output results. The coverage reporter often takes precedence over custom reporters, preventing 3pio's adapter from receiving test events.
+
+#### Workaround
+Run tests without coverage during development:
+```bash
+# Instead of
+3pio npm test:ci  # (which includes --coverage)
+
+# Use
+3pio npm test -- --run --no-coverage
+```
+
+**Note**: This primarily affects CI/CD workflows where coverage is mandatory. For day-to-day development, developers typically run tests without coverage for faster feedback.
+
 ## Environment Variables
 
 - `THREEPIO_IPC_PATH` must be explicitly passed to child processes
