@@ -140,12 +140,12 @@ func TestMain_Args(t *testing.T) {
 			// But we can test that the args parsing doesn't panic
 			if len(tc.args) > 1 {
 				firstArg := tc.args[1]
-				switch {
-				case firstArg == "--help" || firstArg == "-h" || firstArg == "help":
+				switch firstArg {
+				case "--help", "-h", "help":
 					// Help case - no action needed
-				case firstArg == "--version" || firstArg == "-v" || firstArg == "version":
+				case "--version", "-v", "version":
 					// Version case - no action needed
-				case firstArg == "run":
+				case "run":
 					// Run subcommand case - no action needed
 				default:
 					// Assume it's a test command - no action needed
