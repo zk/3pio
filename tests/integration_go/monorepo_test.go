@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func TestMonorepoIPCPathInjection(t *testing.T) {
 	// Skip if vitest is not available
 	if _, err := exec.LookPath("npx"); err != nil {
@@ -109,10 +116,15 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 					}
 
 					// Check that the adapter contains a valid IPC path
-					// On Windows, paths use backslashes
-					hasValidPath := (strings.Contains(content, ".3pio/ipc/") || strings.Contains(content, ".3pio\\ipc\\")) &&
-						strings.Contains(content, ".jsonl")
-					if !hasValidPath {
+					// On Windows, paths use backslashes which are escaped in JSON strings
+					hasForwardSlash := strings.Contains(content, ".3pio/ipc/")
+					hasBackslash := strings.Contains(content, ".3pio\\\\ipc\\\\") // Escaped backslashes in JSON
+					hasJsonl := strings.Contains(content, ".jsonl")
+					
+					if !hasJsonl || (!hasForwardSlash && !hasBackslash) {
+						t.Logf("Adapter path check failed. Has forward slash: %v, Has escaped backslash: %v, Has .jsonl: %v", 
+							hasForwardSlash, hasBackslash, hasJsonl)
+						t.Logf("Sample of adapter content: %s", content[:min(500, len(content))])
 						t.Error("Adapter does not contain a valid injected IPC path")
 					}
 				}
