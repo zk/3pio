@@ -214,8 +214,32 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		}
 		event = e
 
+	case EventTypeCollectionStart:
+		var e CollectionStartEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse collection start event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeCollectionError:
+		var e CollectionErrorEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse collection error event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeCollectionFinish:
+		var e CollectionFinishEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse collection finish event: %v", err)
+			return
+		}
+		event = e
+
 	default:
-		m.logger.Error("Unknown event type: %s", eventType)
+		m.logger.Error("[3PIO ERROR] Unknown event type: %s", eventType)
 		return
 	}
 

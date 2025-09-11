@@ -15,8 +15,9 @@ from typing import Optional, Dict, Any
 from io import StringIO, TextIOBase
 
 from _pytest.config import Config
-from _pytest.reports import TestReport
+from _pytest.reports import TestReport, CollectReport
 from _pytest.nodes import Item
+from _pytest.terminal import TerminalReporter
 
 
 # Global reporter instance
@@ -152,9 +153,12 @@ def pytest_configure(config: Config) -> None:
         # Store it in config for access in other hooks
         config._threepio_reporter = _reporter
         
-        # Start capturing immediately to prevent any output leakage
-        # We'll update the file path when tests actually run
-        _reporter.start_capture(None)
+        # Start capturing immediately to catch collection errors
+        # Use a special file path for collection phase
+        _reporter.start_capture("__collection__")
+        
+        # Send an event to indicate collection is starting
+        _reporter.send_event("collectionStart", {"phase": "collection"})
         
         # Note: Output capture is disabled via -s flag added by 3pio CLI
         # This ensures we can capture all print statements from tests
@@ -164,6 +168,49 @@ def pytest_configure(config: Config) -> None:
             config.option.verbose = -1
         if not hasattr(config.option, 'quiet') or not config.option.quiet:
             config.option.quiet = True
+
+
+def pytest_collectreport(report: CollectReport) -> None:
+    """Handle collection errors."""
+    global _reporter
+    
+    if not _reporter:
+        return
+    
+    # Check if there was a collection error
+    if report.failed:
+        # Extract the file path if available
+        file_path = str(report.nodeid) if report.nodeid else "__collection__"
+        
+        # Send collection error event
+        payload = {
+            "filePath": file_path,
+            "error": str(report.longrepr) if hasattr(report, 'longrepr') else "Collection failed",
+            "phase": "collection"
+        }
+        
+        _reporter.send_event("collectionError", payload)
+        
+        # Also send as stderr to capture the error
+        if hasattr(report, 'longrepr') and report.longrepr:
+            _reporter.send_event("stderrChunk", {
+                "filePath": file_path,
+                "chunk": f"Collection Error:\n{str(report.longrepr)}\n"
+            })
+
+
+def pytest_collection_finish(session) -> None:
+    """Called after collection is completed."""
+    global _reporter
+    
+    if _reporter:
+        # Send event to indicate collection finished
+        _reporter.send_event("collectionFinish", {
+            "collected": session.testscollected if hasattr(session, 'testscollected') else 0
+        })
+        
+        # If no tests were collected, we might still be in collection phase capture
+        # Keep capturing for any subsequent errors
 
 
 def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:

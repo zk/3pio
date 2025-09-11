@@ -6,12 +6,15 @@ import "time"
 type EventType string
 
 const (
-	EventTypeStdoutChunk    EventType = "stdoutChunk"
-	EventTypeStderrChunk    EventType = "stderrChunk"
-	EventTypeTestFileStart  EventType = "testFileStart"
-	EventTypeTestCase       EventType = "testCase"
-	EventTypeTestFileResult EventType = "testFileResult"
-	EventTypeRunComplete    EventType = "runComplete"
+	EventTypeStdoutChunk      EventType = "stdoutChunk"
+	EventTypeStderrChunk      EventType = "stderrChunk"
+	EventTypeTestFileStart    EventType = "testFileStart"
+	EventTypeTestCase         EventType = "testCase"
+	EventTypeTestFileResult   EventType = "testFileResult"
+	EventTypeRunComplete      EventType = "runComplete"
+	EventTypeCollectionStart  EventType = "collectionStart"
+	EventTypeCollectionError  EventType = "collectionError"
+	EventTypeCollectionFinish EventType = "collectionFinish"
 )
 
 // TestStatus represents the status of a test
@@ -99,6 +102,38 @@ type RunCompleteEvent struct {
 }
 
 func (e RunCompleteEvent) Type() EventType { return EventTypeRunComplete }
+
+// CollectionStartEvent indicates test collection is starting (pytest specific)
+type CollectionStartEvent struct {
+	EventType EventType `json:"eventType"`
+	Payload   struct {
+		Phase string `json:"phase"`
+	} `json:"payload"`
+}
+
+func (e CollectionStartEvent) Type() EventType { return EventTypeCollectionStart }
+
+// CollectionErrorEvent represents an error during test collection (pytest specific)
+type CollectionErrorEvent struct {
+	EventType EventType `json:"eventType"`
+	Payload   struct {
+		FilePath string `json:"filePath"`
+		Error    string `json:"error"`
+		Phase    string `json:"phase"`
+	} `json:"payload"`
+}
+
+func (e CollectionErrorEvent) Type() EventType { return EventTypeCollectionError }
+
+// CollectionFinishEvent indicates test collection is complete (pytest specific)
+type CollectionFinishEvent struct {
+	EventType EventType `json:"eventType"`
+	Payload   struct {
+		Collected int `json:"collected"`
+	} `json:"payload"`
+}
+
+func (e CollectionFinishEvent) Type() EventType { return EventTypeCollectionFinish }
 
 // TestCase represents a test case in the test run state
 type TestCase struct {
