@@ -102,12 +102,6 @@ release:
     ### Direct Download
     Download the appropriate binary for your platform from the assets below.
 
-# Generate SBOMs for security compliance (disabled for now)
-# sboms:
-#   - artifacts: archive
-#     documents:
-#       - "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}.spdx.sbom.json"
-
 # Homebrew tap configuration
 brews:
   - name: 3pio
@@ -134,16 +128,3 @@ brews:
       Reports are written to .3pio/runs/[timestamp]-[memorable-name]/
       
       For more information: https://github.com/zk/3pio
-
-# Signature generation for security (disabled for now)
-# signs:
-#   - cmd: cosign
-#     env:
-#     - COSIGN_EXPERIMENTAL=1
-#     args:
-#       - sign-blob
-#       - '--output-certificate=${artifact}.pem'
-#       - '--output-signature=${artifact}.sig'
-#       - '${artifact}'
-#       - --yes
-#     artifacts: checksum
