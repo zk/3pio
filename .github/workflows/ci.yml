@@ -92,25 +92,34 @@ jobs:
       - name: Run integration tests (Windows)
         if: matrix.os == 'windows-latest'
         run: |
+          $ErrorActionPreference = "Continue"
+          
           # Test Jest integration (exit code 1 expected due to failing test fixtures)
           cd tests/fixtures/basic-jest
           & ../../../build/3pio.exe npx jest math.test.js string.test.js
-          # Ignore exit code, just check if output was created
+          $jestExitCode = $LASTEXITCODE
+          
+          # Check if output was created
           if (-not (Test-Path ".3pio/runs")) {
-            Write-Error "ERROR: 3pio did not create expected output directory"
+            Write-Error "ERROR: 3pio did not create expected output directory for Jest"
             exit 1
           }
-          Write-Host "Jest integration test completed successfully"
+          Write-Host "Jest integration test completed (exit code: $jestExitCode)"
           
           # Test Vitest integration (exit code 1 expected due to failing test fixtures)
           cd ../basic-vitest
           & ../../../build/3pio.exe npx vitest run math.test.js string.test.js
-          # Ignore exit code, just check if output was created
+          $vitestExitCode = $LASTEXITCODE
+          
+          # Check if output was created
           if (-not (Test-Path ".3pio/runs")) {
-            Write-Error "ERROR: 3pio did not create expected output directory"
+            Write-Error "ERROR: 3pio did not create expected output directory for Vitest"
             exit 1
           }
-          Write-Host "Vitest integration test completed successfully"
+          Write-Host "Vitest integration test completed (exit code: $vitestExitCode)"
+          
+          # Success - tests ran and created output
+          exit 0
         shell: pwsh
 
   lint:
