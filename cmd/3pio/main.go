@@ -17,7 +17,7 @@ var (
 
 func main() {
 	var rootCmd = &cobra.Command{
-		Use:   "3pio",
+		Use:   "3pio [your test command]",
 		Short: "AI-first test runner adapter",
 		Long: `3pio translates traditional test runner output into a format optimized for AI agents,
 providing persistent, structured, file-based records that are context-efficient and searchable.
@@ -27,11 +27,11 @@ providing persistent, structured, file-based records that are context-efficient 
   • output.log      - Complete stdout/stderr output from the entire test run  
   • logs/*.log      - stdout/stderr output for specific test files with test case demarcation
 
-Usage examples:
-  3pio npm test
-  3pio npx jest
-  3pio npx vitest run
-  3pio pytest`,
+Examples:
+  3pio npm test              # Run npm test script
+  3pio npx jest             # Run Jest directly
+  3pio npx vitest run       # Run Vitest
+  3pio pytest               # Run pytest`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
