@@ -23,7 +23,7 @@ func main() {
 AI agents, providing persistent, structured, file-based records that are
 context-efficient and searchable.
 
-3pio generates structured reports in .3pio/runs/[timestamp]-[memorable-name]/:
+Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
   • test-run.md  - Main report with test summary and individual test results
   • output.log   - Complete stdout/stderr output from the entire test run  
   • logs/*.log   - Per-file output with test case demarcation
