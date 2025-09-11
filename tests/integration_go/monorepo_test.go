@@ -109,7 +109,10 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 					}
 
 					// Check that the adapter contains a valid IPC path
-					if !strings.Contains(content, ".3pio/ipc/") || !strings.Contains(content, ".jsonl") {
+					// On Windows, paths use backslashes
+					hasValidPath := (strings.Contains(content, ".3pio/ipc/") || strings.Contains(content, ".3pio\\ipc\\")) &&
+						strings.Contains(content, ".jsonl")
+					if !hasValidPath {
 						t.Error("Adapter does not contain a valid injected IPC path")
 					}
 				}

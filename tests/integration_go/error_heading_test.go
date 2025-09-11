@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,11 @@ func TestNoEmptyErrorHeading(t *testing.T) {
 
 	// Build path to 3pio binary
 	cwd, _ := os.Getwd()
-	threePioBinary := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "build", "3pio")
+	binaryName := "3pio"
+	if runtime.GOOS == "windows" {
+		binaryName = "3pio.exe"
+	}
+	threePioBinary := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "build", binaryName)
 	if _, err := os.Stat(threePioBinary); err != nil {
 		t.Fatalf("3pio binary not found at %s. Run 'make build' first.", threePioBinary)
 	}
@@ -74,7 +79,11 @@ func TestErrorHeadingWithActualError(t *testing.T) {
 
 	// Build path to 3pio binary
 	cwd, _ := os.Getwd()
-	threePioBinary := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "build", "3pio")
+	binaryName := "3pio"
+	if runtime.GOOS == "windows" {
+		binaryName = "3pio.exe"
+	}
+	threePioBinary := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "build", binaryName)
 	if _, err := os.Stat(threePioBinary); err != nil {
 		t.Fatalf("3pio binary not found at %s. Run 'make build' first.", threePioBinary)
 	}
