@@ -43,11 +43,13 @@ jobs:
             fi
           done
 
+      - name: Build binary for tests
+        run: |
+          make adapters
+          make build
+
       - name: Run Go tests
         run: go test -v ./...
-
-      - name: Build and test adapters
-        run: make adapters
 
   release:
     needs: test
