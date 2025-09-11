@@ -24,32 +24,7 @@ providing persistent, structured, file-based records that are context-efficient 
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
-	// Version command
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("3pio version %s\n", version)
-			fmt.Printf("Commit: %s\n", commit)
-			fmt.Printf("Built: %s\n", date)
-		},
-	})
-
-	// Run command (explicit subcommand)
-	var runCmd = &cobra.Command{
-		Use:                "run [test command]",
-		Short:              "Run tests with 3pio instrumentation",
-		Args:               cobra.MinimumNArgs(1),
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTests(args)
-		},
-		Example: `  3pio run npm test
-  3pio run npx jest
-  3pio run npx vitest run
-  3pio run pytest`,
-	}
-	rootCmd.AddCommand(runCmd)
+	// No subcommands - 3pio works as a direct wrapper
 
 	// Allow running without "run" subcommand
 	rootCmd.DisableFlagParsing = true
@@ -68,10 +43,6 @@ providing persistent, structured, file-based records that are context-efficient 
 				fmt.Printf("Commit: %s\n", commit)
 				fmt.Printf("Built: %s\n", date)
 				return nil
-			}
-			// Check if it's the "run" subcommand
-			if firstArg == "run" {
-				return runTests(args[1:])
 			}
 			// Otherwise, assume it's a test command
 			return runTests(args)
