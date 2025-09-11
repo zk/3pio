@@ -33,7 +33,8 @@ jobs:
 
       # Node.js is needed for test fixtures but no root package.json exists
       
-      - name: Install test fixture dependencies
+      - name: Install test fixture dependencies (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
           for dir in tests/fixtures/*/; do
             if [ -f "$dir/package.json" ]; then
@@ -41,6 +42,20 @@ jobs:
               (cd "$dir" && npm ci)
             fi
           done
+      
+      - name: Install test fixture dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Get-ChildItem -Path tests/fixtures -Directory | ForEach-Object {
+            $packageJson = Join-Path $_.FullName "package.json"
+            if (Test-Path $packageJson) {
+              Write-Host "Installing dependencies in $_"
+              Push-Location $_.FullName
+              npm ci
+              Pop-Location
+            }
+          }
+        shell: pwsh
 
       - name: Run Go tests
         run: go test -v ./...
