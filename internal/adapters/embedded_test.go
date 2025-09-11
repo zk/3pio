@@ -122,8 +122,8 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up any existing adapter directory for this run
 			adapterDir := filepath.Join(".3pio", "adapters", tt.runID)
-			os.RemoveAll(adapterDir)
-			defer os.RemoveAll(adapterDir)
+			_ = os.RemoveAll(adapterDir)
+			defer func() { _ = os.RemoveAll(adapterDir) }()
 
 			// Call GetAdapterPath with IPC path and run ID
 			path, err := GetAdapterPath(tt.adapterName, tt.ipcPath, tt.runID)
@@ -170,8 +170,8 @@ func TestGetAdapterPath_UniqueAdaptersPerRun(t *testing.T) {
 	runID2 := "20250911T085108-run2"
 
 	// Clean up
-	defer os.RemoveAll(filepath.Join(".3pio", "adapters", runID1))
-	defer os.RemoveAll(filepath.Join(".3pio", "adapters", runID2))
+	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID1)) }()
+	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID2)) }()
 
 	// Get adapter for first run
 	path1, err := GetAdapterPath("jest.js", ipcPath1, runID1)
@@ -217,7 +217,7 @@ func TestGetAdapterPath_ESMHandling(t *testing.T) {
 	runID := "20250911T085108-esm-test"
 
 	// Clean up
-	defer os.RemoveAll(filepath.Join(".3pio", "adapters", runID))
+	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID)) }()
 
 	// Test Vitest adapter (ESM)
 	path, err := GetAdapterPath("vitest.js", ipcPath, runID)
@@ -242,7 +242,7 @@ func TestGetAdapterPath_PythonExecutable(t *testing.T) {
 	runID := "20250911T085108-python-exec-test"
 
 	// Clean up
-	defer os.RemoveAll(filepath.Join(".3pio", "adapters", runID))
+	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID)) }()
 
 	// Test Python adapter
 	path, err := GetAdapterPath("pytest_adapter.py", ipcPath, runID)

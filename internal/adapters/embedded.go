@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"sync"
 )
 
 // Embedded adapter files
@@ -23,15 +22,8 @@ var (
 	pytestAdapter []byte
 )
 
-// adapterCache manages extracted adapter paths
-type adapterCache struct {
-	mu    sync.RWMutex
-	paths map[string]string
-}
-
-var cache = &adapterCache{
-	paths: make(map[string]string),
-}
+// Removed adapterCache as we no longer cache adapters
+// Each run gets its own unique adapter instance
 
 // GetAdapterPath returns the path to an extracted adapter with IPC path injected
 func GetAdapterPath(name string, ipcPath string, runID string) (string, error) {
