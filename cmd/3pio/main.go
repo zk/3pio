@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/orchestrator"
 )
 
@@ -83,9 +84,18 @@ Flags:
 
 // runTestsCore contains the core logic for running tests (testable)
 func runTestsCore(args []string) (int, error) {
+	// Create file logger
+	fileLogger, err := logger.NewFileLogger()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create debug logger: %v\n", err)
+		return 1, err
+	}
+	defer fileLogger.Close()
+
 	// Create orchestrator configuration
 	config := orchestrator.Config{
 		Command: args,
+		Logger:  fileLogger,
 	}
 
 	// Create and run orchestrator

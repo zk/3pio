@@ -2,16 +2,26 @@
 
 ## Debug Logging
 
-3pio provides debug logging capabilities to help troubleshoot issues with test runner adapters and the overall system.
+3pio provides comprehensive debug logging to help troubleshoot issues with test runner adapters and the overall system. All components write to a centralized debug log file.
 
 ### Debug Log Location
 
-All debug logs are written to `.3pio/debug.log` in your project directory.
+All debug logs are written to `.3pio/debug.log` in your project directory. This includes:
+- CLI orchestrator logs (process management, runner detection, IPC events)
+- Adapter logs (Jest, Vitest, pytest lifecycle events)
+- Error messages and stack traces
 
 ### What Gets Logged
 
+#### CLI Orchestrator
+- Session start/end with PID and working directory
+- Test runner detection and command building
+- Process spawning and management
+- IPC event processing
+- Report generation
+- Error conditions
+
 #### Jest Adapter
-The Jest adapter logs the following events:
 - `onRunStart` - When the test run begins
 - `onTestStart` - When each test file starts
 - `onTestResult` - When each test file completes (with pass/fail status)
@@ -19,16 +29,43 @@ The Jest adapter logs the following events:
 - IPC communication errors
 - Environment variable issues (e.g., missing `THREEPIO_IPC_PATH`)
 
-#### Log Format
+#### Vitest Adapter
+- Initialization and configuration
+- Test file discovery
+- Test execution lifecycle events
+- IPC communication status
+- Adapter shutdown
+
+#### pytest Adapter
+- Plugin initialization
+- Test collection phase
+- Test execution hooks
+- Test results and outcomes
+- Session completion
+
+### Log Format
+
+The debug log uses a consistent timestamped format:
 ```
-2025-09-08T08:50:00.000Z [jest-adapter] onRunStart called
-2025-09-08T08:50:00.100Z [jest-adapter] IPC path: /path/to/.3pio/ipc/timestamp.jsonl
-2025-09-08T08:50:00.200Z [jest-adapter] onTestStart called for: /path/to/test.js
+=== 3pio Debug Log ===
+Session started: 2025-09-11T13:40:56-10:00
+PID: 60381
+Working directory: /Users/project/path
+---
+
+[2025-09-11 13:40:56.856] [DEBUG] Using embedded adapter: /path/to/adapter
+[2025-09-11 13:40:56.860] [DEBUG] Executing command: [npx vitest run]
+[2025-09-11 13:40:56.865] [INFO] Test runner detected: vitest
+[vitest-adapter] Lifecycle: Test run initializing
+[jest-adapter] onRunStart called
+[pytest-adapter] Session started
+
+--- Session ended: 2025-09-11T13:40:57-10:00 ---
 ```
 
 ### Enabling Debug Mode
 
-Debug logging is automatically enabled when running tests through 3pio. No additional configuration is needed.
+Debug logging is automatically enabled for all 3pio runs. The file logger writes to `.3pio/debug.log` without any console output (unless errors occur).
 
 ### Viewing Debug Logs
 

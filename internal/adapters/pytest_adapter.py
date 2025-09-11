@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 from io import StringIO, TextIOBase
+from datetime import datetime
 
 from _pytest.config import Config
 from _pytest.reports import TestReport, CollectReport
@@ -35,6 +36,9 @@ class ThreepioReporter:
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
         self.capture_enabled = False
+        self.debug_log_path = Path.cwd() / ".3pio" / "debug.log"
+        self._ensure_debug_log_dir()
+        self._log_startup()
         
     def send_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         """Send an event to the IPC file."""
@@ -50,8 +54,48 @@ class ThreepioReporter:
                 f.write(json.dumps(event) + '\n')
                 f.flush()  # Ensure immediate write
         except Exception as e:
-            # For debugging - normally we'd be silent
+            # Log error to debug log but stay silent in console
+            self._log_error(f"Failed to send IPC event: {e}")
+    
+    def _ensure_debug_log_dir(self) -> None:
+        """Ensure the debug log directory exists."""
+        try:
+            self.debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
             pass
+    
+    def _log(self, level: str, message: str) -> None:
+        """Write a log message to the debug log file."""
+        try:
+            timestamp = datetime.now().isoformat()
+            log_line = f"{timestamp} {level:5} | [pytest-adapter] {message}\n"
+            with open(self.debug_log_path, 'a') as f:
+                f.write(log_line)
+                f.flush()
+        except Exception:
+            pass
+    
+    def _log_startup(self) -> None:
+        """Log startup information."""
+        self._log("INFO", "==================================")
+        self._log("INFO", "3pio pytest Adapter v0.0.1")
+        self._log("INFO", "Configuration:")
+        self._log("INFO", f"  - IPC Path: {self.ipc_path}")
+        self._log("INFO", f"  - Process ID: {os.getpid()}")
+        self._log("INFO", "==================================")
+    
+    def _log_info(self, message: str) -> None:
+        """Log an info message."""
+        self._log("INFO", message)
+    
+    def _log_error(self, message: str) -> None:
+        """Log an error message."""
+        self._log("ERROR", message)
+    
+    def _log_debug(self, message: str) -> None:
+        """Log a debug message."""
+        if os.environ.get("THREEPIO_DEBUG") == "1":
+            self._log("DEBUG", message)
     
     def get_file_path(self, item: Item) -> str:
         """Extract the test file path from a test item."""
@@ -149,6 +193,7 @@ def pytest_configure(config: Config) -> None:
     if True:  # IPC path will always be present after injection
         # Create the reporter instance
         _reporter = ThreepioReporter(ipc_path)
+        _reporter._log_info("Plugin initialized in pytest_configure")
         
         # Store it in config for access in other hooks
         config._threepio_reporter = _reporter
@@ -303,6 +348,8 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
     
     if not _reporter:
         return
+    
+    _reporter._log_info(f"Session finished with exit status: {exitstatus}")
     
     # Send testFileResult events for all test files
     for file_path in _reporter.test_files:

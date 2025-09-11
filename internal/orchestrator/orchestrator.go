@@ -60,7 +60,7 @@ type Config struct {
 // New creates a new orchestrator
 func New(config Config) (*Orchestrator, error) {
 	if config.Logger == nil {
-		config.Logger = &consoleLogger{}
+		return nil, fmt.Errorf("logger is required")
 	}
 
 	return &Orchestrator{
@@ -503,19 +503,3 @@ func generateRunID() string {
 	return fmt.Sprintf("%s-%s-%s", timestamp, adjectives[adjIdx], characters[charIdx])
 }
 
-// consoleLogger is a simple console logger
-type consoleLogger struct{}
-
-func (c *consoleLogger) Debug(format string, args ...interface{}) {
-	if os.Getenv("THREEPIO_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
-	}
-}
-
-func (c *consoleLogger) Error(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "[ERROR] "+format+"\n", args...)
-}
-
-func (c *consoleLogger) Info(format string, args ...interface{}) {
-	fmt.Printf(format+"\n", args...)
-}

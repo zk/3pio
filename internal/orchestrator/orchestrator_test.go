@@ -52,18 +52,13 @@ func TestOrchestrator_NewWithoutLogger(t *testing.T) {
 		Command: []string{"npx", "jest"},
 	}
 
-	orch, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create orchestrator: %v", err)
+	_, err := New(config)
+	if err == nil {
+		t.Fatal("Expected error when creating orchestrator without logger")
 	}
 
-	if orch == nil {
-		t.Fatal("Expected orchestrator to be created")
-	}
-
-	// Should use console logger as default
-	if orch.logger == nil {
-		t.Error("Expected default logger to be set")
+	if err.Error() != "logger is required" {
+		t.Errorf("Expected 'logger is required' error, got: %v", err)
 	}
 }
 
