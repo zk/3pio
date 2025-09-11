@@ -29,9 +29,9 @@ Examples:
   3pio pytest           # Run pytest
 
 Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
-  • test-run.md  - Main report with test summary and individual test results
-  • output.log   - Complete stdout/stderr output from the entire test run  
-  • logs/*.log   - Per-file output with test case demarcation`,
+• test-run.md  - Main report with test summary and individual test results
+• output.log   - Complete stdout/stderr output from the entire test run  
+• logs/*.log   - Per-file output with test case demarcation`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
