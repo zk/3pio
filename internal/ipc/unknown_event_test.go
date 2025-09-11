@@ -42,14 +42,14 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 	// Create temporary IPC file
 	tempDir := t.TempDir()
 	ipcPath := filepath.Join(tempDir, "test.jsonl")
-	
+
 	logger := &mockLogger{}
 	manager, err := NewManager(ipcPath, logger)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
 	defer func() { _ = manager.Cleanup() }()
-	
+
 	// Write various event types to the file
 	events := []map[string]interface{}{
 		{
@@ -71,13 +71,13 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Write events to file
 	file, err := os.OpenFile(ipcPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Fatalf("Failed to open file: %v", err)
 	}
-	
+
 	for _, event := range events {
 		data, err := json.Marshal(event)
 		if err != nil {
@@ -91,18 +91,18 @@ func TestManager_HandleUnknownEventTypes(t *testing.T) {
 		}
 	}
 	_ = file.Close()
-	
+
 	// Start watching
 	if err := manager.WatchEvents(); err != nil {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
-	
+
 	// Wait for events to be processed
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Check that we received the testCase event
 	var receivedEvents []EventType
-	
+
 	// Collect all events with timeout
 	timeout := time.After(1 * time.Second)
 loop:
@@ -114,10 +114,10 @@ loop:
 			break loop
 		}
 	}
-	
+
 	// Verify we got both testCase and runComplete events
 	if len(receivedEvents) < 2 {
-		t.Errorf("Expected at least 2 events (testCase, runComplete), got %d: %v", 
+		t.Errorf("Expected at least 2 events (testCase, runComplete), got %d: %v",
 			len(receivedEvents), receivedEvents)
 	} else {
 		// Check for testCase event
@@ -131,7 +131,7 @@ loop:
 				foundRunComplete = true
 			}
 		}
-		
+
 		if !foundTestCase {
 			t.Errorf("Expected testCase event, got events: %v", receivedEvents)
 		}
@@ -139,12 +139,12 @@ loop:
 			t.Errorf("Expected runComplete event, got events: %v", receivedEvents)
 		}
 	}
-	
+
 	// Check that unknown events were logged as errors
 	// runComplete should NOT be an error anymore, but unknownEvent should be
 	foundRunComplete := false
 	foundUnknownEvent := false
-	
+
 	errorMessages := logger.getErrorMessages()
 	for _, msg := range errorMessages {
 		if strings.Contains(msg, "Unknown event type: runComplete") {
@@ -154,12 +154,12 @@ loop:
 			foundUnknownEvent = true
 		}
 	}
-	
+
 	if foundRunComplete {
 		t.Error("runComplete should be handled gracefully now, not logged as error")
 		t.Logf("Error messages: %v", errorMessages)
 	}
-	
+
 	if !foundUnknownEvent {
 		t.Error("Expected error log for unknownEvent event not found")
 		t.Logf("Error messages: %v", errorMessages)
@@ -169,28 +169,28 @@ loop:
 func TestManager_ShouldHandleRunCompleteGracefully(t *testing.T) {
 	// This test verifies that runComplete events should be handled gracefully
 	// rather than logged as errors, since they are legitimate completion markers
-	
+
 	tempDir := t.TempDir()
 	ipcPath := filepath.Join(tempDir, "test.jsonl")
-	
+
 	logger := &mockLogger{}
 	manager, err := NewManager(ipcPath, logger)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
 	defer func() { _ = manager.Cleanup() }()
-	
+
 	// Write a runComplete event
 	event := map[string]interface{}{
 		"eventType": "runComplete",
 		"payload":   map[string]interface{}{},
 	}
-	
+
 	file, err := os.OpenFile(ipcPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Fatalf("Failed to open file: %v", err)
 	}
-	
+
 	data, err := json.Marshal(event)
 	if err != nil {
 		t.Fatalf("Failed to marshal event: %v", err)
@@ -202,15 +202,15 @@ func TestManager_ShouldHandleRunCompleteGracefully(t *testing.T) {
 		t.Fatalf("Failed to write newline: %v", err)
 	}
 	_ = file.Close()
-	
+
 	// Start watching
 	if err := manager.WatchEvents(); err != nil {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
-	
+
 	// Wait for events to be processed
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// After fix: runComplete should NOT generate an error log
 	errorMessages := logger.getErrorMessages()
 	for _, msg := range errorMessages {

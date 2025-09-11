@@ -190,19 +190,19 @@ func TestGenerateRunID(t *testing.T) {
 
 	// Check if the character part is from our known lists
 	characterPart := strings.Join(parts[2:], "-") // Handle multi-part character names like "luke-skywalker"
-	
+
 	// Sample of expected characters from various universes (we don't need to check all)
 	knownCharacters := []string{
 		// Star Wars
 		"luke-skywalker", "yoda", "darth-vader", "obi-wan", "r2d2",
-		// Star Trek  
+		// Star Trek
 		"picard", "spock", "kirk", "data", "janeway", "sisko", "archer", "uhura", "worf", "torres", "kira", "tucker",
 		// Chrono Trigger
 		"crono", "marle", "lucca", "robo", "frog", "ayla", "magus", "schala",
 		// Final Fantasy 6
 		"terra", "locke", "edgar", "sabin", "celes", "cyan", "shadow", "setzer", "kefka", "mog",
 	}
-	
+
 	found := false
 	for _, char := range knownCharacters {
 		if characterPart == char {
@@ -210,7 +210,7 @@ func TestGenerateRunID(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		// This is just a warning since we have many characters
 		t.Logf("Character part '%s' not in sample list (full runID: %s)", characterPart, runID1)
@@ -305,7 +305,7 @@ func TestOrchestrator_ConsoleLogging(t *testing.T) {
 
 	// Test that the logger can be called (basic functionality)
 	orch.logger.Debug("Test debug message")
-	orch.logger.Info("Test info message") 
+	orch.logger.Info("Test info message")
 	orch.logger.Error("Test error message")
 
 	// Verify messages were captured

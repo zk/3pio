@@ -15,12 +15,12 @@ func NewManager() *Manager {
 	m := &Manager{
 		runners: make(map[string]Definition),
 	}
-	
+
 	// Register built-in runners
 	m.Register("jest", NewJestDefinition())
 	m.Register("vitest", NewVitestDefinition())
 	m.Register("pytest", NewPytestDefinition())
-	
+
 	return m
 }
 
@@ -37,7 +37,7 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 			return def, nil
 		}
 	}
-	
+
 	// Special handling for npm/yarn/pnpm commands
 	if len(command) > 0 {
 		packageManager := command[0]
@@ -50,7 +50,7 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 			}
 		}
 	}
-	
+
 	return nil, fmt.Errorf("no test runner detected for command: %s", strings.Join(command, " "))
 }
 
@@ -84,7 +84,7 @@ func (b *BaseOutputParser) ParseTestOutput(output string) map[string][]string {
 	// Basic implementation - can be overridden by specific parsers
 	result := make(map[string][]string)
 	lines := strings.Split(output, "\n")
-	
+
 	currentFile := ""
 	for _, line := range lines {
 		// Look for file patterns
@@ -93,19 +93,19 @@ func (b *BaseOutputParser) ParseTestOutput(output string) map[string][]string {
 			parts := strings.Fields(line)
 			for _, part := range parts {
 				if strings.HasSuffix(part, ".js") || strings.HasSuffix(part, ".ts") ||
-				   strings.HasSuffix(part, ".jsx") || strings.HasSuffix(part, ".tsx") ||
-				   strings.HasSuffix(part, ".py") {
+					strings.HasSuffix(part, ".jsx") || strings.HasSuffix(part, ".tsx") ||
+					strings.HasSuffix(part, ".py") {
 					currentFile = part
 					break
 				}
 			}
 		}
-		
+
 		if currentFile != "" {
 			result[currentFile] = append(result[currentFile], line)
 		}
 	}
-	
+
 	return result
 }
 
@@ -123,10 +123,10 @@ func NewJestOutputParser() *JestOutputParser {
 func (j *JestOutputParser) ParseTestOutput(output string) map[string][]string {
 	result := make(map[string][]string)
 	lines := strings.Split(output, "\n")
-	
+
 	currentFile := ""
 	collectingOutput := false
-	
+
 	for _, line := range lines {
 		// Jest file markers
 		if strings.HasPrefix(line, "PASS ") || strings.HasPrefix(line, "FAIL ") {
@@ -147,7 +147,7 @@ func (j *JestOutputParser) ParseTestOutput(output string) map[string][]string {
 			}
 		}
 	}
-	
+
 	return result
 }
 
@@ -165,9 +165,9 @@ func NewVitestOutputParser() *VitestOutputParser {
 func (v *VitestOutputParser) ParseTestOutput(output string) map[string][]string {
 	result := make(map[string][]string)
 	lines := strings.Split(output, "\n")
-	
+
 	currentFile := ""
-	
+
 	for _, line := range lines {
 		// Vitest file markers (with checkmarks or X)
 		if strings.Contains(line, "✓") || strings.Contains(line, "✗") || strings.Contains(line, "↓") {
@@ -175,23 +175,23 @@ func (v *VitestOutputParser) ParseTestOutput(output string) map[string][]string 
 			parts := strings.Fields(line)
 			for _, part := range parts {
 				if strings.HasSuffix(part, ".js") || strings.HasSuffix(part, ".ts") ||
-				   strings.HasSuffix(part, ".jsx") || strings.HasSuffix(part, ".tsx") {
+					strings.HasSuffix(part, ".jsx") || strings.HasSuffix(part, ".tsx") {
 					currentFile = strings.TrimPrefix(part, "./")
 					break
 				}
 			}
 		}
-		
+
 		if currentFile != "" {
 			result[currentFile] = append(result[currentFile], line)
-			
+
 			// Check if this is the end of output for this file
 			if strings.TrimSpace(line) == "" {
 				currentFile = ""
 			}
 		}
 	}
-	
+
 	return result
 }
 
@@ -209,30 +209,30 @@ func NewPytestOutputParser() *PytestOutputParser {
 func (p *PytestOutputParser) ParseTestOutput(output string) map[string][]string {
 	result := make(map[string][]string)
 	lines := strings.Split(output, "\n")
-	
+
 	currentFile := ""
-	
+
 	for _, line := range lines {
 		// pytest file markers
-		if strings.HasSuffix(line, ".py") && (strings.Contains(line, "PASSED") || 
-		   strings.Contains(line, "FAILED") || strings.Contains(line, "SKIPPED")) {
+		if strings.HasSuffix(line, ".py") && (strings.Contains(line, "PASSED") ||
+			strings.Contains(line, "FAILED") || strings.Contains(line, "SKIPPED")) {
 			// Extract file name
 			parts := strings.Split(line, "::")
 			if len(parts) > 0 {
 				currentFile = strings.TrimSpace(parts[0])
 			}
 		}
-		
+
 		if currentFile != "" {
 			result[currentFile] = append(result[currentFile], line)
-			
+
 			// Check for section separators
 			if strings.HasPrefix(line, "=") || strings.HasPrefix(line, "-") {
 				currentFile = ""
 			}
 		}
 	}
-	
+
 	return result
 }
 

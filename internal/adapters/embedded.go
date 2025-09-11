@@ -1,8 +1,8 @@
 package adapters
 
 import (
-	_ "embed"
 	"crypto/md5"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +71,7 @@ func extractAdapter(name string) (string, error) {
 	case "vitest.js":
 		content = vitestAdapter
 		filename = "vitest.js"
-		isESM = true  // Vitest adapter is ESM
+		isESM = true // Vitest adapter is ESM
 	case "pytest_adapter.py":
 		content = pytestAdapter
 		filename = "pytest_adapter.py"
@@ -89,7 +89,7 @@ func extractAdapter(name string) (string, error) {
 
 	// Write adapter file
 	adapterPath := filepath.Join(adapterDir, filename)
-	
+
 	// Check if file already exists with correct content
 	if existing, err := os.ReadFile(adapterPath); err == nil {
 		if string(existing) == string(content) {

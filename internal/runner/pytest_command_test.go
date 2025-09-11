@@ -7,7 +7,7 @@ import (
 func TestPytestBuildCommand(t *testing.T) {
 	pytest := NewPytestDefinition()
 	adapterPath := "/tmp/pytest_adapter.py"
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -64,7 +64,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"py.test"},
 			expected: []string{"py.test", "-p", "pytest_adapter"},
 		},
-		
+
 		// Python module invocations (10 examples)
 		{
 			name:     "python -m pytest",
@@ -116,7 +116,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"python", "-m", "pytest", "--durations=10"},
 			expected: []string{"python", "-m", "pytest", "-p", "pytest_adapter", "--durations=10"},
 		},
-		
+
 		// Poetry invocations (10 examples)
 		{
 			name:     "poetry run pytest",
@@ -168,7 +168,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"poetry", "run", "pytest", "--pdb"},
 			expected: []string{"poetry", "run", "pytest", "-p", "pytest_adapter", "--pdb"},
 		},
-		
+
 		// Pipenv invocations (10 examples)
 		{
 			name:     "pipenv run pytest",
@@ -220,7 +220,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"pipenv", "run", "pytest", "--doctest-modules"},
 			expected: []string{"pipenv", "run", "pytest", "-p", "pytest_adapter", "--doctest-modules"},
 		},
-		
+
 		// Tox invocations (10 examples)
 		{
 			name:     "tox with pytest",
@@ -272,7 +272,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"tox", "-l"},
 			expected: []string{"tox", "-l", "-p", "pytest_adapter"},
 		},
-		
+
 		// Virtual environment variations
 		{
 			name:     "venv pytest",
@@ -294,7 +294,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"venv/bin/python", "-m", "pytest"},
 			expected: []string{"venv/bin/python", "-m", "pytest", "-p", "pytest_adapter"},
 		},
-		
+
 		// Make and script invocations
 		{
 			name:     "make test (simulated as pytest)",
@@ -306,7 +306,7 @@ func TestPytestBuildCommand(t *testing.T) {
 			args:     []string{"./scripts/test.sh", "pytest"},
 			expected: []string{"./scripts/test.sh", "pytest", "-p", "pytest_adapter"},
 		},
-		
+
 		// Edge cases
 		{
 			name:     "pytest with plugin already specified",
@@ -329,18 +329,18 @@ func TestPytestBuildCommand(t *testing.T) {
 			expected: []string{"PYTEST_TIMEOUT=300", "pytest", "-p", "pytest_adapter"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := pytest.BuildCommand(tt.args, adapterPath)
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("BuildCommand() length = %v, want %v", len(result), len(tt.expected))
 				t.Errorf("Got:      %v", result)
 				t.Errorf("Expected: %v", tt.expected)
 				return
 			}
-			
+
 			for i, v := range result {
 				if v != tt.expected[i] {
 					t.Errorf("BuildCommand() result[%d] = %v, want %v", i, v, tt.expected[i])

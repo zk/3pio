@@ -57,14 +57,14 @@ jobs:
           }
         shell: pwsh
 
-      - name: Run Go tests
-        run: go test -v ./...
+      - name: Prepare adapters
+        run: make adapters
 
       - name: Build binary
         run: make build
 
-      - name: Test adapters
-        run: make adapters
+      - name: Run Go tests
+        run: go test -v ./...
 
       - name: Run integration tests (Unix)
         if: matrix.os != 'windows-latest'

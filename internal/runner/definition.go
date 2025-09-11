@@ -12,16 +12,16 @@ import (
 type Definition interface {
 	// Matches determines if this runner can handle the given command
 	Matches(command []string) bool
-	
+
 	// GetTestFiles returns list of test files (empty for dynamic discovery)
 	GetTestFiles(args []string) ([]string, error)
-	
+
 	// BuildCommand builds the command with adapter injection
 	BuildCommand(args []string, adapterPath string) []string
-	
+
 	// GetAdapterFileName returns the adapter file name
 	GetAdapterFileName() string
-	
+
 	// InterpretExitCode maps exit codes to success/failure
 	InterpretExitCode(code int) string
 }
@@ -76,20 +76,20 @@ func (j *JestDefinition) GetTestFiles(args []string) ([]string, error) {
 // BuildCommand builds Jest command with adapter
 func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []string {
 	result := make([]string, 0, len(args)+5)
-	
+
 	foundJest := false
 	jestIndex := -1
 	isPackageManagerCommand := false
-	
+
 	// Check if this is a package manager command that needs -- separator
 	if len(args) > 0 {
 		cmd := args[0]
-		isPackageManagerCommand = strings.Contains(cmd, "npm") || 
-								 strings.Contains(cmd, "yarn") || 
-								 strings.Contains(cmd, "pnpm") || 
-								 strings.Contains(cmd, "bun")
+		isPackageManagerCommand = strings.Contains(cmd, "npm") ||
+			strings.Contains(cmd, "yarn") ||
+			strings.Contains(cmd, "pnpm") ||
+			strings.Contains(cmd, "bun")
 	}
-	
+
 	// Special handling for package manager commands that directly call jest
 	// npm exec jest and yarn jest should NOT use -- separator (they're direct invocations)
 	// pnpm exec jest and bun jest SHOULD use -- separator (they need it)
@@ -98,19 +98,19 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 		cmd := args[0]
 		// npm exec and yarn jest are direct invocations (no -- needed)
 		if (cmd == "npm" && args[1] == "exec" && len(args) > 2 && strings.Contains(args[2], "jest")) ||
-		   (cmd == "yarn" && args[1] == "jest") {
+			(cmd == "yarn" && args[1] == "jest") {
 			isDirectJestCall = true
 		}
 		// pnpm exec jest and bun jest need -- separator
 		// They are NOT marked as direct calls, so they'll use the -- separator
 	}
-	
+
 	// Check for bunx/npx which are treated like direct invocations
 	if len(args) > 0 && (strings.Contains(args[0], "npx") || strings.Contains(args[0], "bunx")) {
 		isDirectJestCall = true
 		isPackageManagerCommand = false
 	}
-	
+
 	// Find jest position and check for test files
 	for i, arg := range args {
 		if strings.Contains(arg, "jest") {
@@ -120,7 +120,7 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 			}
 		}
 	}
-	
+
 	// Determine if we have test files after jest command
 	hasTestFiles := false
 	if foundJest && jestIndex >= 0 {
@@ -136,7 +136,7 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 			}
 		}
 	}
-	
+
 	// Handle package manager commands that need -- separator (npm test, yarn test, pnpm exec jest, bun jest, etc.)
 	// This includes pnpm exec jest and bun jest even though they contain "jest"
 	if isPackageManagerCommand && !isDirectJestCall {
@@ -148,7 +148,7 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 				break
 			}
 		}
-		
+
 		if hasSeparator {
 			// Append reporter flags at the end (after all other Jest flags)
 			result = append(result, args...)
@@ -158,39 +158,39 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 			result = append(result, args...)
 			result = append(result, "--", "--reporters", adapterPath)
 		}
-		
+
 		return result
 	}
-	
+
 	// Handle direct jest invocations and direct calls through package managers
 	reporterAdded := false
 	separatorAdded := false
-	
+
 	for i, arg := range args {
 		// Check if we need to add -- separator before this arg
 		// This happens when we've added the reporter, we have test files,
 		// and this arg is a test file (not a flag)
-		if reporterAdded && !separatorAdded && hasTestFiles && 
-		   !strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
-		   i > jestIndex && (strings.Contains(arg, ".") || strings.Contains(arg, "/")) {
+		if reporterAdded && !separatorAdded && hasTestFiles &&
+			!strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+			i > jestIndex && (strings.Contains(arg, ".") || strings.Contains(arg, "/")) {
 			result = append(result, "--")
 			separatorAdded = true
 		}
-		
+
 		result = append(result, arg)
-		
+
 		// Add reporter after jest command
 		if !reporterAdded && strings.Contains(arg, "jest") {
 			result = append(result, "--reporters", adapterPath)
 			reporterAdded = true
 		}
 	}
-	
+
 	// If jest wasn't found in args (fallback case), add reporter at the end
 	if !foundJest && !reporterAdded {
 		result = append(result, "--reporters", adapterPath)
 	}
-	
+
 	return result
 }
 
@@ -200,12 +200,12 @@ func (j *JestDefinition) isJestInPackageJSON() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	var pkg map[string]interface{}
 	if err := json.Unmarshal(data, &pkg); err != nil {
 		return false
 	}
-	
+
 	// Check test script
 	if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
 		if test, ok := scripts["test"].(string); ok {
@@ -214,7 +214,7 @@ func (j *JestDefinition) isJestInPackageJSON() bool {
 			}
 		}
 	}
-	
+
 	// Check dependencies
 	for _, depKey := range []string{"dependencies", "devDependencies"} {
 		if deps, ok := pkg[depKey].(map[string]interface{}); ok {
@@ -223,7 +223,7 @@ func (j *JestDefinition) isJestInPackageJSON() bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -254,15 +254,15 @@ func (v *VitestDefinition) GetTestFiles(args []string) ([]string, error) {
 	files := []string{}
 	for _, arg := range args {
 		if strings.HasSuffix(arg, ".js") || strings.HasSuffix(arg, ".ts") ||
-		   strings.HasSuffix(arg, ".jsx") || strings.HasSuffix(arg, ".tsx") {
+			strings.HasSuffix(arg, ".jsx") || strings.HasSuffix(arg, ".tsx") {
 			files = append(files, arg)
 		}
 	}
-	
+
 	if len(files) > 0 {
 		return files, nil
 	}
-	
+
 	// Otherwise use dynamic discovery
 	return []string{}, nil
 }
@@ -272,17 +272,17 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 	foundVitest := false
 	isPackageManagerCommand := false
 	isDirectVitestCall := false
-	
+
 	// Check if this is a package manager command
 	if len(args) > 0 {
 		cmd := args[0]
-		isPackageManagerCommand = strings.Contains(cmd, "npm") || 
-								 strings.Contains(cmd, "yarn") || 
-								 strings.Contains(cmd, "pnpm") || 
-								 strings.Contains(cmd, "bun") ||
-								 strings.Contains(cmd, "deno")
+		isPackageManagerCommand = strings.Contains(cmd, "npm") ||
+			strings.Contains(cmd, "yarn") ||
+			strings.Contains(cmd, "pnpm") ||
+			strings.Contains(cmd, "bun") ||
+			strings.Contains(cmd, "deno")
 	}
-	
+
 	// Check for vitest in the command
 	for _, arg := range args {
 		if strings.Contains(arg, "vitest") {
@@ -290,34 +290,34 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			break
 		}
 	}
-	
+
 	// Determine if this is a direct vitest invocation
 	// Direct invocations include: npx/bunx vitest, yarn vitest, pnpm exec vitest, etc.
 	if len(args) >= 2 && isPackageManagerCommand {
 		cmd := args[0]
 		secondArg := args[1]
-		
+
 		// These are direct vitest invocations (no -- separator needed)
 		if (cmd == "yarn" && secondArg == "vitest") ||
-		   (cmd == "yarn" && secondArg == "dlx" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
-		   (cmd == "pnpm" && secondArg == "exec" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
-		   (cmd == "pnpm" && secondArg == "dlx" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
-		   (cmd == "bun" && secondArg == "x" && len(args) > 2 && strings.Contains(args[2], "vitest")) {
+			(cmd == "yarn" && secondArg == "dlx" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
+			(cmd == "pnpm" && secondArg == "exec" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
+			(cmd == "pnpm" && secondArg == "dlx" && len(args) > 2 && strings.Contains(args[2], "vitest")) ||
+			(cmd == "bun" && secondArg == "x" && len(args) > 2 && strings.Contains(args[2], "vitest")) {
 			isDirectVitestCall = true
 		}
 	}
-	
+
 	// npx and bunx are always direct invocations
 	if len(args) > 0 && (strings.Contains(args[0], "npx") || strings.Contains(args[0], "bunx")) {
 		isDirectVitestCall = true
 		isPackageManagerCommand = false
 	}
-	
+
 	// Handle package manager commands that need -- separator
 	if isPackageManagerCommand && !isDirectVitestCall && !foundVitest {
 		// Commands like: npm test, yarn test, pnpm test, bun test, deno task test
 		result := make([]string, 0, len(args)+6)
-		
+
 		// Check if -- separator already exists
 		hasSeparator := false
 		for _, arg := range args {
@@ -326,7 +326,7 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 				break
 			}
 		}
-		
+
 		if hasSeparator {
 			// Append everything up to and including --, then add reporters
 			result = append(result, args...)
@@ -336,14 +336,14 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			result = append(result, args...)
 			result = append(result, "--", "--reporter", adapterPath, "--reporter", "default")
 		}
-		
+
 		return result
 	}
-	
+
 	// Handle direct vitest invocations
 	result := make([]string, 0, len(args)+4)
 	reporterAdded := false
-	
+
 	for _, arg := range args {
 		if !reporterAdded && strings.Contains(arg, "vitest") {
 			result = append(result, arg)
@@ -354,12 +354,12 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			result = append(result, arg)
 		}
 	}
-	
+
 	// Fallback: if vitest wasn't found and reporter not added, add at the end
 	if !foundVitest && !reporterAdded {
 		result = append(result, "--reporter", adapterPath, "--reporter", "default")
 	}
-	
+
 	return result
 }
 
@@ -369,12 +369,12 @@ func (v *VitestDefinition) isVitestInPackageJSON() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	var pkg map[string]interface{}
 	if err := json.Unmarshal(data, &pkg); err != nil {
 		return false
 	}
-	
+
 	// Check test script
 	if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
 		if test, ok := scripts["test"].(string); ok {
@@ -383,7 +383,7 @@ func (v *VitestDefinition) isVitestInPackageJSON() bool {
 			}
 		}
 	}
-	
+
 	// Check dependencies
 	for _, depKey := range []string{"dependencies", "devDependencies"} {
 		if deps, ok := pkg[depKey].(map[string]interface{}); ok {
@@ -392,7 +392,7 @@ func (v *VitestDefinition) isVitestInPackageJSON() bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -426,11 +426,11 @@ func (p *PytestDefinition) GetTestFiles(args []string) ([]string, error) {
 			files = append(files, arg)
 		}
 	}
-	
+
 	if len(files) > 0 {
 		return files, nil
 	}
-	
+
 	// Could run pytest --collect-only for static discovery
 	// For now, use dynamic discovery
 	return []string{}, nil
@@ -439,7 +439,7 @@ func (p *PytestDefinition) GetTestFiles(args []string) ([]string, error) {
 // BuildCommand builds pytest command with adapter
 func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []string {
 	result := make([]string, 0, len(args)+2)
-	
+
 	// Set Python path to include adapter directory
 	adapterDir := filepath.Dir(adapterPath)
 	pythonPath := os.Getenv("PYTHONPATH")
@@ -449,11 +449,11 @@ func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []str
 		pythonPath = adapterDir
 	}
 	_ = os.Setenv("PYTHONPATH", pythonPath)
-	
+
 	foundPytest := false
 	for _, arg := range args {
 		result = append(result, arg)
-		
+
 		// After pytest command, inject plugin immediately
 		if !foundPytest && (strings.Contains(arg, "pytest") || strings.Contains(arg, "py.test")) {
 			foundPytest = true
@@ -461,11 +461,11 @@ func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []str
 			result = append(result, "-p", "pytest_adapter")
 		}
 	}
-	
+
 	// If pytest wasn't found, add plugin at the end
 	if !foundPytest {
 		result = append(result, "-p", "pytest_adapter")
 	}
-	
+
 	return result
 }

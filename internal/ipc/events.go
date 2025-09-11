@@ -81,9 +81,9 @@ func (e TestCaseEvent) Type() EventType { return EventTypeTestCase }
 type TestFileResultEvent struct {
 	EventType EventType `json:"eventType"`
 	Payload   struct {
-		FilePath     string     `json:"filePath"`
-		Status       TestStatus `json:"status"`
-		FailedTests  []struct {
+		FilePath    string     `json:"filePath"`
+		Status      TestStatus `json:"status"`
+		FailedTests []struct {
 			Name     string `json:"name"`
 			Duration int    `json:"duration,omitempty"`
 		} `json:"failedTests,omitempty"`
@@ -102,19 +102,19 @@ func (e RunCompleteEvent) Type() EventType { return EventTypeRunComplete }
 
 // TestCase represents a test case in the test run state
 type TestCase struct {
-	Name     string        `json:"name"`
-	Suite    string        `json:"suite,omitempty"`
-	Status   TestStatus    `json:"status"`
-	Duration int           `json:"duration,omitempty"`
-	Error    string        `json:"error,omitempty"`
+	Name     string     `json:"name"`
+	Suite    string     `json:"suite,omitempty"`
+	Status   TestStatus `json:"status"`
+	Duration int        `json:"duration,omitempty"`
+	Error    string     `json:"error,omitempty"`
 }
 
 // TestFile represents a test file in the test run state
 type TestFile struct {
-	Status    TestStatus  `json:"status"`
-	File      string      `json:"file"`
-	LogFile   string      `json:"logFile,omitempty"`
-	TestCases []TestCase  `json:"testCases,omitempty"`
+	Status    TestStatus `json:"status"`
+	File      string     `json:"file"`
+	LogFile   string     `json:"logFile,omitempty"`
+	TestCases []TestCase `json:"testCases,omitempty"`
 }
 
 // TestRunState represents the complete state of a test run

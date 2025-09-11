@@ -18,13 +18,13 @@ type Manager struct {
 	state        *ipc.TestRunState
 	outputParser runner.OutputParser
 	logger       Logger
-	
+
 	// File handles for incremental writing
-	fileHandles  map[string]*os.File
-	fileBuffers  map[string][]string
-	debouncers   map[string]*time.Timer
-	outputFile   *os.File
-	
+	fileHandles map[string]*os.File
+	fileBuffers map[string][]string
+	debouncers  map[string]*time.Timer
+	outputFile  *os.File
+
 	mu           sync.RWMutex
 	debounceTime time.Duration
 	maxWaitTime  time.Duration
@@ -42,25 +42,25 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger) (*Mana
 	if logger == nil {
 		logger = &noopLogger{}
 	}
-	
+
 	// Create run directory
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create run directory: %w", err)
 	}
-	
+
 	// Create logs subdirectory
 	logsDir := filepath.Join(runDir, "logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create logs directory: %w", err)
 	}
-	
+
 	// Open output.log file
 	outputPath := filepath.Join(runDir, "output.log")
 	outputFile, err := os.Create(outputPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create output.log: %w", err)
 	}
-	
+
 	return &Manager{
 		runDir:       runDir,
 		outputParser: parser,
@@ -78,7 +78,7 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger) (*Mana
 func (m *Manager) Initialize(testFiles []string, args string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	now := time.Now()
 	m.state = &ipc.TestRunState{
 		Timestamp:      now,
@@ -92,17 +92,17 @@ func (m *Manager) Initialize(testFiles []string, args string) error {
 		FilesSkipped:   0,
 		TestFiles:      make([]ipc.TestFile, 0),
 	}
-	
+
 	// Register known test files (static discovery)
 	for _, file := range testFiles {
 		m.registerTestFileInternal(file)
 	}
-	
+
 	// Write output.log header
 	if err := m.writeOutputLogHeader(args); err != nil {
 		return fmt.Errorf("failed to write output log header: %w", err)
 	}
-	
+
 	// Write initial state
 	return m.writeState()
 }
@@ -111,37 +111,37 @@ func (m *Manager) Initialize(testFiles []string, args string) error {
 func (m *Manager) HandleEvent(event ipc.Event) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	switch e := event.(type) {
 	case ipc.TestFileStartEvent:
 		return m.handleTestFileStart(e)
-		
+
 	case ipc.TestCaseEvent:
 		return m.handleTestCase(e)
-		
+
 	case ipc.TestFileResultEvent:
 		return m.handleTestFileResult(e)
-		
+
 	case ipc.StdoutChunkEvent:
 		return m.handleStdoutChunk(e)
-		
+
 	case ipc.StderrChunkEvent:
 		return m.handleStderrChunk(e)
-		
+
 	default:
 		m.logger.Debug("Unknown event type: %T", event)
 	}
-	
+
 	return nil
 }
 
 // handleTestFileStart handles test file start events
 func (m *Manager) handleTestFileStart(event ipc.TestFileStartEvent) error {
 	filePath := event.Payload.FilePath
-	
+
 	// Ensure file is registered (dynamic discovery)
 	m.ensureTestFileRegisteredInternal(filePath)
-	
+
 	// Update status to RUNNING
 	for i := range m.state.TestFiles {
 		if m.state.TestFiles[i].File == filePath {
@@ -149,17 +149,17 @@ func (m *Manager) handleTestFileStart(event ipc.TestFileStartEvent) error {
 			break
 		}
 	}
-	
+
 	return m.scheduleWrite()
 }
 
 // handleTestCase handles individual test case events
 func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 	filePath := event.Payload.FilePath
-	
+
 	// Ensure file is registered
 	m.ensureTestFileRegisteredInternal(filePath)
-	
+
 	// Find the test file and add/update test case
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
@@ -168,7 +168,7 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 			if m.state.TestFiles[i].TestCases == nil {
 				m.state.TestFiles[i].TestCases = make([]ipc.TestCase, 0)
 			}
-			
+
 			// Check if test case already exists (update) or add new
 			found := false
 			for j := range m.state.TestFiles[i].TestCases {
@@ -182,7 +182,7 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 					break
 				}
 			}
-			
+
 			if !found {
 				// Add new test case
 				m.state.TestFiles[i].TestCases = append(m.state.TestFiles[i].TestCases, ipc.TestCase{
@@ -192,7 +192,7 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 					Duration: event.Payload.Duration,
 					Error:    event.Payload.Error,
 				})
-				
+
 				// Write test case boundary to log file
 				// For Jest: Write on RUNNING status (test starting)
 				// For Vitest: Write on first event (which is the completion event)
@@ -202,21 +202,21 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 			break
 		}
 	}
-	
+
 	return m.scheduleWrite()
 }
 
 // handleTestFileResult handles test file completion events
 func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
 	filePath := event.Payload.FilePath
-	
+
 	// Update file status and counters
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
 		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
 			m.state.TestFiles[i].Status = event.Payload.Status
 			m.state.FilesCompleted++
-			
+
 			switch event.Payload.Status {
 			case ipc.TestStatusPass:
 				m.state.FilesPassed++
@@ -225,14 +225,14 @@ func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
 			case ipc.TestStatusSkip:
 				m.state.FilesSkipped++
 			}
-			
+
 			break
 		}
 	}
-	
+
 	// Flush buffer for this file immediately
 	m.flushFileBuffer(filePath)
-	
+
 	return m.scheduleWrite()
 }
 
@@ -242,10 +242,10 @@ func (m *Manager) handleStdoutChunk(event ipc.StdoutChunkEvent) error {
 	if _, err := m.outputFile.WriteString(event.Payload.Chunk); err != nil {
 		m.logger.Error("Failed to write stdout to output.log: %v", err)
 	}
-	
+
 	// Append to file buffer
 	m.appendToFileBuffer(event.Payload.FilePath, event.Payload.Chunk)
-	
+
 	return nil
 }
 
@@ -255,10 +255,10 @@ func (m *Manager) handleStderrChunk(event ipc.StderrChunkEvent) error {
 	if _, err := m.outputFile.WriteString(event.Payload.Chunk); err != nil {
 		m.logger.Error("Failed to write stderr to output.log: %v", err)
 	}
-	
+
 	// Append to file buffer
 	m.appendToFileBuffer(event.Payload.FilePath, event.Payload.Chunk)
-	
+
 	return nil
 }
 
@@ -266,14 +266,14 @@ func (m *Manager) handleStderrChunk(event ipc.StderrChunkEvent) error {
 func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
 	// Normalize the incoming file path
 	normalizedPath := m.normalizePath(filePath)
-	
+
 	// Check if already registered (compare normalized paths)
 	for _, tf := range m.state.TestFiles {
 		if m.normalizePath(tf.File) == normalizedPath {
 			return
 		}
 	}
-	
+
 	// Register new file
 	m.registerTestFileInternal(filePath)
 	m.state.TotalFiles++
@@ -284,7 +284,7 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 	// Create log file
 	logFileName := sanitizeFileName(filePath) + ".log"
 	logPath := filepath.Join(m.runDir, "logs", logFileName)
-	
+
 	// Open file handle
 	file, err := os.Create(logPath)
 	if err != nil {
@@ -293,7 +293,7 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 		m.fileHandles[filePath] = file
 		m.fileBuffers[filePath] = make([]string, 0)
 	}
-	
+
 	// Add to state
 	m.state.TestFiles = append(m.state.TestFiles, ipc.TestFile{
 		Status:    ipc.TestStatusPending,
@@ -317,7 +317,7 @@ func (m *Manager) scheduleFileWrite(filePath string) {
 	if timer, ok := m.debouncers[filePath]; ok {
 		timer.Stop()
 	}
-	
+
 	// Create new debounced timer
 	m.debouncers[filePath] = time.AfterFunc(m.debounceTime, func() {
 		m.mu.Lock()
@@ -332,22 +332,22 @@ func (m *Manager) flushFileBuffer(filePath string) {
 	if !ok || len(buffer) == 0 {
 		return
 	}
-	
+
 	file, ok := m.fileHandles[filePath]
 	if !ok {
 		return
 	}
-	
+
 	// Write all buffered content
 	for _, content := range buffer {
 		if _, err := file.WriteString(content); err != nil {
 			m.logger.Error("Failed to write to log file %s: %v", filePath, err)
 		}
 	}
-	
+
 	// Clear buffer
 	m.fileBuffers[filePath] = make([]string, 0)
-	
+
 	// Sync to disk
 	_ = file.Sync()
 }
@@ -362,10 +362,10 @@ func (m *Manager) scheduleWrite() error {
 // writeState writes the current state to test-run.md
 func (m *Manager) writeState() error {
 	m.state.UpdatedAt = time.Now()
-	
+
 	// Generate markdown report
 	report := m.generateMarkdownReport()
-	
+
 	// Write to file
 	reportPath := filepath.Join(m.runDir, "test-run.md")
 	return os.WriteFile(reportPath, []byte(report), 0644)
@@ -380,7 +380,7 @@ func (m *Manager) writeOutputLogHeader(args string) error {
 # ---
 
 `, time.Now().Format(time.RFC3339), args)
-	
+
 	_, err := m.outputFile.WriteString(header)
 	return err
 }
@@ -388,13 +388,13 @@ func (m *Manager) writeOutputLogHeader(args string) error {
 // generateMarkdownReport generates the markdown report
 func (m *Manager) generateMarkdownReport() string {
 	var sb strings.Builder
-	
+
 	// Header
 	sb.WriteString("# 3pio Test Run\n\n")
 	sb.WriteString(fmt.Sprintf("**Started:** %s\n", m.state.Timestamp.Format(time.RFC3339)))
 	sb.WriteString(fmt.Sprintf("**Status:** %s\n", m.state.Status))
 	sb.WriteString(fmt.Sprintf("**Arguments:** `%s`\n\n", m.state.Arguments))
-	
+
 	// Summary
 	sb.WriteString("## Summary\n\n")
 	sb.WriteString(fmt.Sprintf("- Total Files: %d\n", m.state.TotalFiles))
@@ -402,20 +402,20 @@ func (m *Manager) generateMarkdownReport() string {
 	sb.WriteString(fmt.Sprintf("- Files Passed: %d\n", m.state.FilesPassed))
 	sb.WriteString(fmt.Sprintf("- Files Failed: %d\n", m.state.FilesFailed))
 	sb.WriteString(fmt.Sprintf("- Files Skipped: %d\n\n", m.state.FilesSkipped))
-	
+
 	// Test Files
 	for _, tf := range m.state.TestFiles {
 		sb.WriteString(fmt.Sprintf("## %s\n\n", tf.File))
-		
+
 		// Status
 		statusText := strings.ToUpper(string(tf.Status))
 		sb.WriteString(fmt.Sprintf("Status: **%s**\n\n", statusText))
-		
+
 		// Log file link
 		if tf.LogFile != "" {
 			sb.WriteString(fmt.Sprintf("[Log](./logs/%s)\n\n", tf.LogFile))
 		}
-		
+
 		// Test cases
 		if len(tf.TestCases) > 0 {
 			currentSuite := ""
@@ -429,31 +429,31 @@ func (m *Manager) generateMarkdownReport() string {
 					sb.WriteString(fmt.Sprintf("### %s\n\n", tc.Suite))
 					currentSuite = tc.Suite
 				}
-				
+
 				tcIcon := getTestCaseIcon(tc.Status)
 				sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
-				
+
 				if tc.Duration > 0 {
 					sb.WriteString(fmt.Sprintf(" (%dms)", tc.Duration))
 				}
 				sb.WriteString("\n")
-				
+
 				if tc.Error != "" {
 					sb.WriteString(fmt.Sprintf("```\n%s\n```\n", tc.Error))
 				}
-				
+
 				// Add newline after each test case for proper spacing
 				sb.WriteString("\n")
 			}
 		}
 	}
-	
+
 	// Output log link
 	sb.WriteString("[output.log](./output.log)\n\n")
-	
+
 	// Footer
 	sb.WriteString(fmt.Sprintf("---\n*Updated: %s*\n", m.state.UpdatedAt.Format(time.RFC3339)))
-	
+
 	return sb.String()
 }
 
@@ -461,29 +461,29 @@ func (m *Manager) generateMarkdownReport() string {
 func (m *Manager) Finalize(exitCode int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Flush all buffers
 	for filePath := range m.fileBuffers {
 		m.flushFileBuffer(filePath)
 	}
-	
+
 	// Close all file handles
 	for _, file := range m.fileHandles {
 		_ = file.Close()
 	}
-	
+
 	// Close output.log
 	if m.outputFile != nil {
 		_ = m.outputFile.Close()
 	}
-	
+
 	// Update final status
 	if exitCode == 0 {
 		m.state.Status = "COMPLETE"
 	} else {
 		m.state.Status = "ERROR"
 	}
-	
+
 	// Write final state
 	return m.writeState()
 }
@@ -503,13 +503,12 @@ func (m *Manager) normalizePath(filePath string) string {
 func sanitizeFileName(filePath string) string {
 	// Get just the filename from the path (no directories)
 	name := filepath.Base(filePath)
-	
+
 	// Replace any remaining dangerous characters
 	name = strings.ReplaceAll(name, "..", "")
-	
+
 	return name
 }
-
 
 // getTestCaseIcon returns an icon for individual test cases
 func getTestCaseIcon(status ipc.TestStatus) string {

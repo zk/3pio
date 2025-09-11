@@ -205,12 +205,12 @@ func TestManager_HandleTestCaseEvent(t *testing.T) {
 	event := ipc.TestCaseEvent{
 		EventType: ipc.EventTypeTestCase,
 		Payload: struct {
-			FilePath  string          `json:"filePath"`
-			TestName  string          `json:"testName"`
-			SuiteName string          `json:"suiteName,omitempty"`
-			Status    ipc.TestStatus  `json:"status"`
-			Duration  int             `json:"duration,omitempty"`
-			Error     string          `json:"error,omitempty"`
+			FilePath  string         `json:"filePath"`
+			TestName  string         `json:"testName"`
+			SuiteName string         `json:"suiteName,omitempty"`
+			Status    ipc.TestStatus `json:"status"`
+			Duration  int            `json:"duration,omitempty"`
+			Error     string         `json:"error,omitempty"`
 		}{
 			FilePath:  testFile,
 			TestName:  "should add numbers correctly",
@@ -268,9 +268,9 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 	event := ipc.TestFileResultEvent{
 		EventType: ipc.EventTypeTestFileResult,
 		Payload: struct {
-			FilePath     string          `json:"filePath"`
-			Status       ipc.TestStatus  `json:"status"`
-			FailedTests  []struct {
+			FilePath    string         `json:"filePath"`
+			Status      ipc.TestStatus `json:"status"`
+			FailedTests []struct {
 				Name     string `json:"name"`
 				Duration int    `json:"duration,omitempty"`
 			} `json:"failedTests,omitempty"`
@@ -306,18 +306,18 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 	tempDir := t.TempDir()
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
-	
+
 	manager, err := NewManager(tempDir, parser, logger)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
 	defer func() { _ = manager.Finalize(0) }()
-	
+
 	testFile := "test.js"
 	if err := manager.Initialize([]string{testFile}, "jest"); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
-	
+
 	// Add multiple test cases with different statuses
 	// First test case - passing
 	event1 := ipc.TestCaseEvent{
@@ -333,11 +333,11 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 			FilePath:  testFile,
 			TestName:  "should pass",
 			SuiteName: "Test Suite",
-			Status:   ipc.TestStatusPass,
-			Duration: 10,
+			Status:    ipc.TestStatusPass,
+			Duration:  10,
 		},
 	}
-	
+
 	// Second test case - failing with error
 	event2 := ipc.TestCaseEvent{
 		EventType: ipc.EventTypeTestCase,
@@ -352,12 +352,12 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 			FilePath:  testFile,
 			TestName:  "should fail",
 			SuiteName: "Test Suite",
-			Status:   ipc.TestStatusFail,
-			Duration: 5,
-			Error:    "Error: Expected true to be false\n    at line 10",
+			Status:    ipc.TestStatusFail,
+			Duration:  5,
+			Error:     "Error: Expected true to be false\n    at line 10",
 		},
 	}
-	
+
 	// Third test case - another passing test
 	event3 := ipc.TestCaseEvent{
 		EventType: ipc.EventTypeTestCase,
@@ -372,30 +372,30 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 			FilePath:  testFile,
 			TestName:  "should also pass",
 			SuiteName: "Test Suite",
-			Status:   ipc.TestStatusPass,
-			Duration: 8,
+			Status:    ipc.TestStatusPass,
+			Duration:  8,
 		},
 	}
-	
+
 	// Handle all events
 	_ = manager.HandleEvent(event1)
 	_ = manager.HandleEvent(event2)
 	_ = manager.HandleEvent(event3)
-	
+
 	// Wait for state updates
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Finalize and check report
 	_ = manager.Finalize(0)
-	
+
 	reportPath := filepath.Join(tempDir, "test-run.md")
 	content, err := os.ReadFile(reportPath)
 	if err != nil {
 		t.Fatalf("Failed to read test report: %v", err)
 	}
-	
+
 	reportContent := string(content)
-	
+
 	// Check that there's proper spacing after the error block
 	// The pattern should be: error block ending with ``` followed by TWO newlines before the next test
 	if !strings.Contains(reportContent, "```\n\n### Test Suite") {
@@ -403,15 +403,15 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 		lines := strings.Split(reportContent, "\n")
 		foundErrorBlock := false
 		properSpacing := false
-		
+
 		for i, line := range lines {
 			if strings.Contains(line, "```") && foundErrorBlock {
 				// This is the closing of an error block
 				// Check if there's an empty line after it before the next test case
 				if i+1 < len(lines) && lines[i+1] == "" {
-					if i+2 < len(lines) && (strings.HasPrefix(lines[i+2], "✓") || 
-					                         strings.HasPrefix(lines[i+2], "✕") || 
-					                         strings.HasPrefix(lines[i+2], "###")) {
+					if i+2 < len(lines) && (strings.HasPrefix(lines[i+2], "✓") ||
+						strings.HasPrefix(lines[i+2], "✕") ||
+						strings.HasPrefix(lines[i+2], "###")) {
 						properSpacing = true
 						break
 					}
@@ -421,12 +421,12 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 				foundErrorBlock = true
 			}
 		}
-		
+
 		if !properSpacing {
 			t.Errorf("Expected proper spacing after error blocks in report.\nGot:\n%s", reportContent)
 		}
 	}
-	
+
 	// Verify all test cases are present
 	if !strings.Contains(reportContent, "should pass") {
 		t.Errorf("Missing 'should pass' test case in report")
@@ -437,7 +437,7 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 	if !strings.Contains(reportContent, "should also pass") {
 		t.Errorf("Missing 'should also pass' test case in report")
 	}
-	
+
 	// Verify error is included
 	if !strings.Contains(reportContent, "Error: Expected true to be false") {
 		t.Errorf("Missing error message in report")
@@ -644,7 +644,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	defer func() { _ = manager.Finalize(0) }()
 
 	testFile := "example.test.js"
-	
+
 	// Initialize with the test file
 	_ = manager.Initialize([]string{testFile}, "test command")
 
@@ -654,7 +654,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	}
 	test1StartEvent.Payload.FilePath = testFile
 	test1StartEvent.Payload.TestName = "should foo correctly"
-	test1StartEvent.Payload.Status = "RUNNING"  // Jest sends RUNNING first
+	test1StartEvent.Payload.Status = "RUNNING" // Jest sends RUNNING first
 
 	if err := manager.HandleEvent(test1StartEvent); err != nil {
 		t.Fatalf("HandleEvent failed for test 1 start: %v", err)

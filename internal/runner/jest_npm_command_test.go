@@ -6,7 +6,7 @@ import (
 
 func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 	jest := NewJestDefinition()
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -43,7 +43,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"npm", "test", "--", "--watch", "--coverage", "--verbose"},
 			expected: []string{"npm", "test", "--", "--watch", "--coverage", "--verbose", "--reporters", "/fake/adapter/path"},
 		},
-		
+
 		// Yarn variations
 		{
 			name:     "yarn test command should use -- separator",
@@ -70,7 +70,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"yarn", "test", "--watchAll=false"},
 			expected: []string{"yarn", "test", "--watchAll=false", "--", "--reporters", "/fake/adapter/path"},
 		},
-		
+
 		// PNPM variations
 		{
 			name:     "pnpm test",
@@ -92,7 +92,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"pnpm", "test", "--", "src/**/*.test.js"},
 			expected: []string{"pnpm", "test", "--", "src/**/*.test.js", "--reporters", "/fake/adapter/path"},
 		},
-		
+
 		// Bun variations
 		{
 			name:     "bun test (might use bun's test runner)",
@@ -119,7 +119,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"bunx", "jest", "--config=jest.config.js"},
 			expected: []string{"bunx", "jest", "--reporters", "/fake/adapter/path", "--config=jest.config.js"},
 		},
-		
+
 		// Direct Jest invocations
 		{
 			name:     "direct jest command should not use -- separator",
@@ -161,7 +161,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"npx", "jest@29"},
 			expected: []string{"npx", "jest@29", "--reporters", "/fake/adapter/path"},
 		},
-		
+
 		// Node direct execution
 		{
 			name:     "node with jest from node_modules",
@@ -178,7 +178,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"node", "./node_modules/jest/bin/jest.js"},
 			expected: []string{"node", "./node_modules/jest/bin/jest.js", "--reporters", "/fake/adapter/path"},
 		},
-		
+
 		// Complex real-world scenarios
 		{
 			name:     "npm test with bail and coverage",
@@ -215,11 +215,11 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			args:     []string{"jest", "src/components"},
 			expected: []string{"jest", "--reporters", "/fake/adapter/path", "--", "src/components"},
 		},
-		
+
 		// Edge cases
 		{
 			name:     "npm test with no additional args",
-			args:     []string{"npm", "t"},  // npm t is alias for npm test
+			args:     []string{"npm", "t"}, // npm t is alias for npm test
 			expected: []string{"npm", "t", "--", "--reporters", "/fake/adapter/path"},
 		},
 		{
@@ -233,18 +233,18 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			expected: []string{"npm", "test", "--silent", "--", "--reporters", "/fake/adapter/path"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := jest.BuildCommand(tt.args, "/fake/adapter/path")
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("BuildCommand() length = %v, want %v", len(result), len(tt.expected))
 				t.Errorf("Got:      %v", result)
 				t.Errorf("Expected: %v", tt.expected)
 				return
 			}
-			
+
 			for i, v := range result {
 				if v != tt.expected[i] {
 					t.Errorf("BuildCommand() result[%d] = %v, want %v", i, v, tt.expected[i])
@@ -259,7 +259,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 
 func TestJestDefinition_BuildCommand_Existing_Args(t *testing.T) {
 	jest := NewJestDefinition()
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -276,18 +276,18 @@ func TestJestDefinition_BuildCommand_Existing_Args(t *testing.T) {
 			expected: []string{"npm", "test", "--", "--watchAll", "false", "--reporters", "/fake/adapter/path"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := jest.BuildCommand(tt.args, "/fake/adapter/path")
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("BuildCommand() length = %v, want %v", len(result), len(tt.expected))
 				t.Errorf("Got:      %v", result)
 				t.Errorf("Expected: %v", tt.expected)
 				return
 			}
-			
+
 			for i, v := range result {
 				if v != tt.expected[i] {
 					t.Errorf("BuildCommand() result[%d] = %v, want %v", i, v, tt.expected[i])

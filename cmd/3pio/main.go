@@ -65,7 +65,7 @@ Examples:
 
 	// Disable default completion command
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
-	
+
 	// Custom help template to put Usage before Examples
 	rootCmd.SetHelpTemplate(`{{.Long}}
 
@@ -111,7 +111,7 @@ func runTestsCore(args []string) (int, error) {
 			fmt.Fprintf(os.Stderr, "  3pio pytest\n")
 			return 1, err
 		}
-		
+
 		fmt.Fprintf(os.Stderr, "Test execution failed: %v\n", err)
 		return orch.GetExitCode(), err
 	}

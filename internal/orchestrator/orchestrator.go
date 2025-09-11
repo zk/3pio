@@ -26,18 +26,18 @@ type Orchestrator struct {
 	reportManager *report.Manager
 	ipcManager    *ipc.Manager
 	logger        Logger
-	
-	runID         string
-	runDir        string
-	ipcPath       string
-	command       []string
-	exitCode      int
-	
+
+	runID    string
+	runDir   string
+	ipcPath  string
+	command  []string
+	exitCode int
+
 	// Console output state
-	startTime     time.Time
-	passedFiles   int
-	failedFiles   int
-	totalFiles    int
+	startTime      time.Time
+	passedFiles    int
+	failedFiles    int
+	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
 }
 
@@ -59,7 +59,7 @@ func New(config Config) (*Orchestrator, error) {
 	if config.Logger == nil {
 		config.Logger = &consoleLogger{}
 	}
-	
+
 	return &Orchestrator{
 		runnerManager:  runner.NewManager(),
 		logger:         config.Logger,
@@ -73,94 +73,94 @@ func (o *Orchestrator) Run() error {
 	// Generate run ID
 	o.runID = generateRunID()
 	o.runDir = filepath.Join(".3pio", "runs", o.runID)
-	
+
 	// Print greeting and command
 	testCommand := strings.Join(o.command, " ")
 	fmt.Println()
 	fmt.Println("Greetings! I will now execute the test command:")
 	fmt.Printf("`%s`\n", testCommand)
 	fmt.Println()
-	
+
 	// Print report path
-	reportPath := filepath.Join(o.runDir, "test-run.md") 
+	reportPath := filepath.Join(o.runDir, "test-run.md")
 	fmt.Printf("Full report: %s\n", reportPath)
 	fmt.Println()
 	fmt.Println("Beginning test execution now...")
 	fmt.Println()
-	
+
 	// Detect test runner
 	runnerDef, err := o.runnerManager.Detect(o.command)
 	if err != nil {
 		return fmt.Errorf("failed to detect test runner: %w", err)
 	}
-	
+
 	// Get test files (may be empty for dynamic discovery)
 	testFiles, err := runnerDef.GetTestFiles(o.command)
 	if err != nil {
 		o.logger.Debug("Could not get test files upfront: %v", err)
 		testFiles = []string{} // Use dynamic discovery
 	}
-	
+
 	// Setup IPC
 	ipcDir, err := ipc.EnsureIPCDirectory()
 	if err != nil {
 		return fmt.Errorf("failed to setup IPC directory: %w", err)
 	}
 	o.ipcPath = filepath.Join(ipcDir, fmt.Sprintf("%s.jsonl", o.runID))
-	
+
 	// Create IPC manager
 	o.ipcManager, err = ipc.NewManager(o.ipcPath, o.logger)
 	if err != nil {
 		return fmt.Errorf("failed to create IPC manager: %w", err)
 	}
 	// Cleanup will be called explicitly later, not deferred
-	
+
 	// Start watching for events
 	if err := o.ipcManager.WatchEvents(); err != nil {
 		return fmt.Errorf("failed to start IPC watcher: %w", err)
 	}
-	
+
 	// Get output parser for the runner
 	parser := o.runnerManager.GetParser(runnerDef.GetAdapterFileName())
-	
+
 	// Create report manager
 	o.reportManager, err = report.NewManager(o.runDir, parser, o.logger)
 	if err != nil {
 		return fmt.Errorf("failed to create report manager: %w", err)
 	}
-	
+
 	// Initialize report
 	args := strings.Join(o.command, " ")
 	if err := o.reportManager.Initialize(testFiles, args); err != nil {
 		return fmt.Errorf("failed to initialize report: %w", err)
 	}
-	
+
 	// Extract adapter to temp directory
 	adapterPath, err := o.extractAdapter(runnerDef.GetAdapterFileName())
 	if err != nil {
 		return fmt.Errorf("failed to extract adapter: %w", err)
 	}
-	
+
 	// Build command with adapter injection
 	testCommandSlice := runnerDef.BuildCommand(o.command, adapterPath)
-	
+
 	o.logger.Debug("Executing command: %v", testCommandSlice)
 	o.logger.Debug("Adapter path: %s", adapterPath)
 	o.logger.Debug("IPC path: %s", o.ipcPath)
-	
+
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	// Create command
 	cmd := exec.Command(testCommandSlice[0], testCommandSlice[1:]...)
-	
+
 	// Set environment
 	cmd.Env = append(os.Environ(), fmt.Sprintf("THREEPIO_IPC_PATH=%s", o.ipcPath))
-	
+
 	// Connect stdin to allow interactive prompts
 	cmd.Stdin = os.Stdin
-	
+
 	// Capture output (append to existing file with header)
 	outputPath := filepath.Join(o.runDir, "output.log")
 	outputFile, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND, 0644)
@@ -168,31 +168,31 @@ func (o *Orchestrator) Run() error {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer func() { _ = outputFile.Close() }()
-	
+
 	// Create pipes for stdout and stderr
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-	
+
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
-	
+
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		o.exitCode = 1 // Set error exit code
 		return fmt.Errorf("failed to start test command: %w", err)
 	}
-	
+
 	// Record start time for duration calculation
 	o.startTime = time.Now()
-	
+
 	// Process events and output concurrently
 	var wg sync.WaitGroup
 	eventsDone := make(chan struct{})
-	
+
 	// Process IPC events in background
 	wg.Add(1)
 	go func() {
@@ -200,27 +200,27 @@ func (o *Orchestrator) Run() error {
 		defer close(eventsDone)
 		o.processEvents()
 	}()
-	
+
 	// Capture stdout (only to file, don't echo to console)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		o.captureOutput(stdoutPipe, outputFile)
 	}()
-	
+
 	// Capture stderr (only to file, don't echo to console)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		o.captureOutput(stderrPipe, outputFile)
 	}()
-	
+
 	// Wait for command completion or signal
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
 	}()
-	
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -235,29 +235,29 @@ func (o *Orchestrator) Run() error {
 		_ = cmd.Process.Kill()
 		o.exitCode = 130 // Standard exit code for SIGINT
 	}
-	
+
 	// Stop watching for events (this closes the Events channel and allows processEvents to exit)
 	_ = o.ipcManager.Cleanup()
-	
+
 	// Wait for event processing to complete (channel is closed, range will exit)
 	<-eventsDone
 	o.logger.Debug("Event processing completed")
-	
+
 	// Wait for output capture to complete
 	wg.Wait()
 	o.logger.Debug("Output capture completed")
-	
+
 	// All goroutines should be finished at this point
 	// (they were waited for via outputDone)
-	
+
 	// Finalize report
 	if err := o.reportManager.Finalize(o.exitCode); err != nil {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
-	
+
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
-	
+
 	// Add random failure exclamation if tests failed
 	if o.failedFiles > 0 {
 		exclamations := []string{
@@ -268,7 +268,7 @@ func (o *Orchestrator) Run() error {
 		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
 		fmt.Printf("Test failures! %s\n", randomExclamation)
 	}
-	
+
 	// Format results summary
 	var resultParts []string
 	if o.failedFiles > 0 {
@@ -280,15 +280,15 @@ func (o *Orchestrator) Run() error {
 	if o.totalFiles > 0 {
 		resultParts = append(resultParts, fmt.Sprintf(" %d total", o.totalFiles))
 	}
-	
+
 	if len(resultParts) > 0 {
 		fmt.Printf("Results: %s\n", strings.Join(resultParts, ","))
 	}
-	
+
 	// Calculate and display elapsed time
 	elapsed := time.Since(o.startTime).Seconds()
 	fmt.Printf("Time:        %.3fs\n", elapsed)
-	
+
 	return nil
 }
 
@@ -297,7 +297,7 @@ func (o *Orchestrator) processEvents() {
 	for event := range o.ipcManager.Events {
 		// Handle console output for different event types
 		o.handleConsoleOutput(event)
-		
+
 		// Pass event to report manager
 		if err := o.reportManager.HandleEvent(event); err != nil {
 			o.logger.Error("Failed to handle event: %v", err)
@@ -333,29 +333,28 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		// Normalize path for deduplication - use absolute path as key
 		normalizedPath := o.normalizePath(e.Payload.FilePath)
 		displayKey := normalizedPath + ":start"
-		
-		
+
 		// Skip if already displayed this start event for this file
 		if o.displayedFiles[displayKey] {
 			return
 		}
 		o.displayedFiles[displayKey] = true
-		
+
 		relativePath := o.getRelativePath(normalizedPath)
 		fmt.Printf("RUNNING  %s\n", relativePath)
-		
+
 	case ipc.TestFileResultEvent:
 		// Normalize path for deduplication - use absolute path as key
 		normalizedPath := o.normalizePath(e.Payload.FilePath)
-		
+
 		// Skip if already displayed this result event for this file
 		if o.displayedFiles[normalizedPath+":result"] {
 			return
 		}
 		o.displayedFiles[normalizedPath+":result"] = true
-		
+
 		relativePath := o.getRelativePath(normalizedPath)
-		
+
 		// Format status with proper spacing
 		var status string
 		switch e.Payload.Status {
@@ -368,9 +367,9 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		default:
 			status = "SKIP    "
 		}
-		
+
 		fmt.Printf("%s %s\n", status, relativePath)
-		
+
 		// Display failed test details (simplified for now)
 		if e.Payload.Status == ipc.TestStatusFail {
 			// This is a simplified version - we'd need to get the actual test case details
@@ -379,13 +378,13 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			fmt.Println("    ✕ should fail this test (3 ms)")
 			fmt.Println("  String operations")
 			fmt.Println("    ✕ should skip this test (0 ms)")
-			
-			// Use the actual file name for the log reference  
+
+			// Use the actual file name for the log reference
 			logFileName := filepath.Base(normalizedPath)
 			fmt.Printf("  See .3pio/runs/%s/logs/%s.log\n", o.runID, strings.TrimSuffix(logFileName, filepath.Ext(logFileName)))
 			fmt.Println("    ")
 		}
-		
+
 		o.totalFiles++
 	}
 }
@@ -399,7 +398,7 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 			_, _ = output.Write([]byte(line))
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		o.logger.Error("Error reading output: %v", err)
 	}
@@ -412,7 +411,7 @@ func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}
-	
+
 	o.logger.Debug("Using embedded adapter: %s", embeddedPath)
 	return embeddedPath, nil
 }
@@ -425,7 +424,7 @@ func (o *Orchestrator) GetExitCode() int {
 // generateRunID generates a unique run identifier
 func generateRunID() string {
 	timestamp := time.Now().Format("20060102T150405")
-	
+
 	// Character names from various sci-fi universes for memorable suffixes
 	characters := []string{
 		// Star Wars
@@ -447,7 +446,7 @@ func generateRunID() string {
 		"setzer", "strago", "relm", "mog", "gau", "umaro", "gogo",
 		"kefka", "leo", "banon", "gestahl", "rachel", "interceptor",
 	}
-	
+
 	// Funny adjectives for memorable run names
 	adjectives := []string{
 		"grumpy", "sneaky", "giggly", "wonky", "dizzy",
@@ -457,15 +456,15 @@ func generateRunID() string {
 		"fuzzy", "bubbly", "snappy", "zippy", "perky",
 		"cheeky", "spunky", "feisty", "frisky", "peppy",
 	}
-	
+
 	// Use proper cross-platform random number generation
 	// Seed with current time for different results each run
 	source := rand.NewSource(time.Now().UnixNano())
 	rng := rand.New(source)
-	
+
 	adjIdx := rng.Intn(len(adjectives))
 	charIdx := rng.Intn(len(characters))
-	
+
 	return fmt.Sprintf("%s-%s-%s", timestamp, adjectives[adjIdx], characters[charIdx])
 }
 
