@@ -120,9 +120,9 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 					hasForwardSlash := strings.Contains(content, ".3pio/ipc/")
 					hasBackslash := strings.Contains(content, ".3pio\\\\ipc\\\\") // Escaped backslashes in JSON
 					hasJsonl := strings.Contains(content, ".jsonl")
-					
+
 					if !hasJsonl || (!hasForwardSlash && !hasBackslash) {
-						t.Logf("Adapter path check failed. Has forward slash: %v, Has escaped backslash: %v, Has .jsonl: %v", 
+						t.Logf("Adapter path check failed. Has forward slash: %v, Has escaped backslash: %v, Has .jsonl: %v",
 							hasForwardSlash, hasBackslash, hasJsonl)
 						t.Logf("Sample of adapter content: %s", content[:min(500, len(content))])
 						t.Error("Adapter does not contain a valid injected IPC path")
