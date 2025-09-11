@@ -1,0 +1,4 @@
+#!/bin/sh
+# This file will be replaced by the actual binary during postinstall
+echo "3pio binary not properly installed. Please run 'npm install' again."
+exit 1
