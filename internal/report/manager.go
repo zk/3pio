@@ -444,7 +444,7 @@ func (m *Manager) generateMarkdownReport() string {
 				sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
 
 				if tc.Duration > 0 {
-					sb.WriteString(fmt.Sprintf(" (%dms)", tc.Duration))
+					sb.WriteString(fmt.Sprintf(" (%.0fms)", tc.Duration))
 				}
 				sb.WriteString("\n")
 

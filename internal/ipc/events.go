@@ -70,7 +70,7 @@ type TestCaseEvent struct {
 		TestName  string     `json:"testName"`
 		SuiteName string     `json:"suiteName,omitempty"`
 		Status    TestStatus `json:"status"`
-		Duration  int        `json:"duration,omitempty"`
+		Duration  float64    `json:"duration,omitempty"`
 		Error     string     `json:"error,omitempty"`
 	} `json:"payload"`
 }
@@ -85,7 +85,7 @@ type TestFileResultEvent struct {
 		Status      TestStatus `json:"status"`
 		FailedTests []struct {
 			Name     string `json:"name"`
-			Duration int    `json:"duration,omitempty"`
+			Duration float64 `json:"duration,omitempty"`
 		} `json:"failedTests,omitempty"`
 	} `json:"payload"`
 }
@@ -105,7 +105,7 @@ type TestCase struct {
 	Name     string     `json:"name"`
 	Suite    string     `json:"suite,omitempty"`
 	Status   TestStatus `json:"status"`
-	Duration int        `json:"duration,omitempty"`
+	Duration float64    `json:"duration,omitempty"`
 	Error    string     `json:"error,omitempty"`
 }
 

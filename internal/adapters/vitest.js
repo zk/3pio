@@ -317,13 +317,35 @@ var ThreePioVitestReporter = class {
       duration: file.result.duration || 0,
       state: file.result.state
     } : {};
-    this.logger.testFlow("Test file completed", file.filepath, { status, ...testStats });
-    this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status });
+    
+    // Collect failed tests for the payload (handle nested tasks)
+    const failedTests = [];
+    if (file.tasks) {
+      const collectFailedTests = (tasks) => {
+        for (const task of tasks) {
+          if (task.type === "test" && task.result?.state === "fail") {
+            failedTests.push({
+              name: task.name,
+              duration: task.result?.duration || 0
+            });
+          }
+          // Recursively check nested tasks (suites)
+          if (task.tasks && task.tasks.length > 0) {
+            collectFailedTests(task.tasks);
+          }
+        }
+      };
+      collectFailedTests(file.tasks);
+    }
+    
+    this.logger.testFlow("Test file completed", file.filepath, { status, ...testStats, failedTests: failedTests.length });
+    this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status, failedTests });
     IPCSender.sendEvent({
       eventType: "testFileResult",
       payload: {
         filePath: file.filepath,
-        status
+        status,
+        failedTests
       }
     }).catch((error) => {
       this.logger.error("Failed to send testFileResult", error);
@@ -402,14 +424,35 @@ var ThreePioVitestReporter = class {
         } else if (file.result?.state === "skip" || file.mode === "skip") {
           status = "SKIP";
         }
-        this.logger.debug("Sending deferred test result", { file: file.filepath, status });
+        // Collect failed tests for the payload (handle nested tasks)
+        const failedTests = [];
+        if (file.tasks) {
+          const collectFailedTests = (tasks) => {
+            for (const task of tasks) {
+              if (task.type === "test" && task.result?.state === "fail") {
+                failedTests.push({
+                  name: task.name,
+                  duration: task.result?.duration || 0
+                });
+              }
+              // Recursively check nested tasks (suites)
+              if (task.tasks && task.tasks.length > 0) {
+                collectFailedTests(task.tasks);
+              }
+            }
+          };
+          collectFailedTests(file.tasks);
+        }
+        
+        this.logger.debug("Sending deferred test result", { file: file.filepath, status, failedTests: failedTests.length });
         try {
-          this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status });
+          this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status, failedTests });
           await IPCSender.sendEvent({
             eventType: "testFileResult",
             payload: {
               filePath: file.filepath,
-              status
+              status,
+              failedTests
             }
           });
         } catch (error) {

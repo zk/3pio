@@ -400,14 +400,18 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 
 		fmt.Printf("%s %s\n", status, relativePath)
 
-		// Display failed test details (simplified for now)
+		// Display failed test details using actual data
 		if e.Payload.Status == ipc.TestStatusFail {
-			// This is a simplified version - we'd need to get the actual test case details
-			// from the report manager or track them separately
-			fmt.Println("  String operations")
-			fmt.Println("    ✕ should fail this test (3 ms)")
-			fmt.Println("  String operations")
-			fmt.Println("    ✕ should skip this test (0 ms)")
+			// Show actual failed tests if available
+			if len(e.Payload.FailedTests) > 0 {
+				for _, failedTest := range e.Payload.FailedTests {
+					duration := ""
+					if failedTest.Duration > 0 {
+						duration = fmt.Sprintf(" (%.0f ms)", failedTest.Duration)
+					}
+					fmt.Printf("    ✕ %s%s\n", failedTest.Name, duration)
+				}
+			}
 
 			// Use the actual file name for the log reference
 			logFileName := filepath.Base(normalizedPath)
