@@ -1,0 +1,5 @@
+# Temp files
+*.tar.gz
+*.zip
+temp/
+.DS_Store
