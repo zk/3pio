@@ -2,19 +2,14 @@
 
 import os
 import platform
-import subprocess
 import sys
 from pathlib import Path
 from setuptools import setup
 from setuptools.command.install import install
-import urllib.request
-import tarfile
-import zipfile
+import shutil
 import stat
 
-PACKAGE_VERSION = "0.0.1"
-GITHUB_OWNER = "zk"  
-GITHUB_REPO = "3pio"
+PACKAGE_VERSION = "0.0.2"
 
 # Platform and architecture mapping
 PLATFORM_MAPPING = {
@@ -44,29 +39,6 @@ def get_platform_info():
         
     return platform_name, arch_name
 
-def get_binary_url(version, platform_name, arch_name):
-    base_url = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/download"
-    extension = "zip" if platform_name == "windows" else "tar.gz"
-    filename = f"3pio-{platform_name}-{arch_name}.{extension}"
-    return f"{base_url}/v{version}/{filename}"
-
-def download_file(url, destination):
-    """Download file with progress indication."""
-    print(f"Downloading from: {url}")
-    urllib.request.urlretrieve(url, destination)
-    print("Download completed")
-
-def extract_archive(source_path, dest_dir):
-    """Extract tar.gz or zip archive."""
-    if source_path.suffix == '.gz':
-        with tarfile.open(source_path, 'r:gz') as tar:
-            tar.extractall(dest_dir)
-    elif source_path.suffix == '.zip':
-        with zipfile.ZipFile(source_path, 'r') as zip_file:
-            zip_file.extractall(dest_dir)
-    else:
-        raise ValueError(f"Unsupported archive format: {source_path.suffix}")
-
 def make_executable(file_path):
     """Make file executable on Unix systems."""
     if platform.system() != "Windows":
@@ -74,53 +46,60 @@ def make_executable(file_path):
         os.chmod(file_path, current_permissions | stat.S_IEXEC)
 
 class PostInstallCommand(install):
-    """Custom install command to download binary after package installation."""
+    """Custom install command to set up the correct binary after package installation."""
     
     def run(self):
         install.run(self)
-        self.download_binary()
+        self.setup_binary()
         
-    def download_binary(self):
+    def setup_binary(self):
         try:
-            print("Installing 3pio binary...")
+            print("Setting up 3pio binary...")
             
             platform_name, arch_name = get_platform_info()
             print(f"Platform: {platform_name}, Architecture: {arch_name}")
             
-            # Create bin directory in package location
+            # Get package directory where binaries are installed
             package_dir = Path(self.install_lib) / "threepio"
             bin_dir = package_dir / "bin"
+            binaries_dir = package_dir / "binaries"
+            
+            # Create bin directory if it doesn't exist
             bin_dir.mkdir(parents=True, exist_ok=True)
             
-            url = get_binary_url(PACKAGE_VERSION, platform_name, arch_name)
+            # Source binary name
+            source_binary_name = f"3pio-{platform_name}-{arch_name}"
+            if platform_name == "windows":
+                source_binary_name += ".exe"
             
-            # Download archive
-            extension = "zip" if platform_name == "windows" else "tar.gz"
-            archive_name = f"3pio-{platform_name}-{arch_name}.{extension}"
-            archive_path = bin_dir / archive_name
+            source_path = binaries_dir / source_binary_name
             
-            download_file(url, archive_path)
+            if not source_path.exists():
+                raise FileNotFoundError(f"Binary not found for your platform: {source_binary_name}")
             
-            # Extract binary
-            print("Extracting binary...")
-            extract_archive(archive_path, bin_dir)
+            # Destination binary name (always "3pio" or "3pio.exe")
+            dest_binary_name = "3pio.exe" if platform_name == "windows" else "3pio"
+            dest_path = bin_dir / dest_binary_name
             
-            # Find and setup the binary
-            binary_name = "3pio.exe" if platform_name == "windows" else "3pio"
-            binary_path = bin_dir / binary_name
+            # Copy the appropriate binary to bin/3pio
+            print(f"Copying {source_binary_name} to bin/{dest_binary_name}")
+            shutil.copy2(source_path, dest_path)
             
-            if not binary_path.exists():
-                raise FileNotFoundError(f"Binary not found after extraction: {binary_path}")
-                
-            make_executable(binary_path)
+            # Make it executable
+            make_executable(dest_path)
             
-            # Clean up archive
-            archive_path.unlink()
-            
-            print("✅ 3pio binary installed successfully")
+            print("3pio binary set up successfully")
+            print("")
+            print("Installation complete! You can now use the '3pio' command:")
+            print("  3pio pytest           # Run pytest tests")
+            print("  3pio pytest -v        # Run with verbose output")
+            print("  3pio --help           # Show help")
+            print("")
+            print("Note: Package installed as 'threepio-test-runner', command is '3pio'")
             
         except Exception as e:
-            print(f"❌ Failed to install 3pio binary: {e}")
+            print(f"Failed to set up 3pio binary: {e}")
+            print("Please report this issue at https://github.com/zk/3pio/issues")
             sys.exit(1)
 
 # Read README file
@@ -132,9 +111,9 @@ def read_readme():
     return ""
 
 setup(
-    name="3pio",
+    name="threepio-test-runner",
     version=PACKAGE_VERSION,
-    description="A context-competent test runner for coding agents",
+    description="Context-optimized test runner for coding agents",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     author="Zachary Kim",
@@ -146,6 +125,15 @@ setup(
     },
     packages=["threepio"],
     package_dir={"threepio": "threepio"},
+    package_data={
+        "threepio": [
+            "binaries/3pio-darwin-amd64",
+            "binaries/3pio-darwin-arm64",
+            "binaries/3pio-linux-amd64",
+            "binaries/3pio-linux-arm64",
+            "binaries/3pio-windows-amd64.exe",
+        ]
+    },
     entry_points={
         "console_scripts": [
             "3pio=threepio:main",
@@ -169,6 +157,6 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[],
-    keywords="test testing jest vitest pytest ai adapter reporter go binary",
+    keywords="test testing pytest ai adapter reporter",
     license="MIT",
 )
