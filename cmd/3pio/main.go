@@ -20,7 +20,18 @@ func main() {
 		Use:   "3pio",
 		Short: "AI-first test runner adapter",
 		Long: `3pio translates traditional test runner output into a format optimized for AI agents,
-providing persistent, structured, file-based records that are context-efficient and searchable.`,
+providing persistent, structured, file-based records that are context-efficient and searchable.
+
+3pio generates structured reports in .3pio/runs/[timestamp]-[memorable-name]/:
+  • test-run.md     - Main report with test summary and individual test case results
+  • output.log      - Complete stdout/stderr output from the entire test run  
+  • logs/*.log      - stdout/stderr output for specific test files with test case demarcation
+
+Usage examples:
+  3pio npm test
+  3pio npx jest
+  3pio npx vitest run
+  3pio pytest`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
