@@ -19,8 +19,8 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "3pio [your test command] | [flags]",
 		Short: "Context-optimized test runner adapter",
-		Long: `3pio translates test runner console output into a format optimized for AI
-agents, providing file-based records that are context-optimized and searchable.
+		Long: `3pio translates test runs into a format optimized for AI agents, providing
+context-optimized console output and file-based records.
 
 Examples:
   3pio npm test         # Run npm test script
