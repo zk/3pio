@@ -277,8 +277,8 @@ func (o *Orchestrator) Run() error {
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
 
-	// Print error details if command failed
-	if commandErr != nil {
+	// Print error details if command failed and we have error details
+	if commandErr != nil && errorDetails != "" {
 		fmt.Printf("Error: %s\n", errorDetails)
 		fmt.Println()
 	}
