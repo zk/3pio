@@ -3,6 +3,7 @@ package adapters
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -256,8 +257,11 @@ func TestGetAdapterPath_PythonExecutable(t *testing.T) {
 		t.Fatalf("Failed to stat Python adapter: %v", err)
 	}
 
-	// Check if executable bit is set (Unix-like systems)
-	if info.Mode()&0111 == 0 {
-		t.Errorf("Python adapter is not executable")
+	// Check if executable bit is set (Unix-like systems only)
+	// On Windows, executable permissions work differently
+	if runtime.GOOS != "windows" {
+		if info.Mode()&0111 == 0 {
+			t.Errorf("Python adapter is not executable")
+		}
 	}
 }
