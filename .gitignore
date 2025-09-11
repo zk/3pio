@@ -32,7 +32,8 @@ __pycache__/
 
 # Node.js (for test fixtures only)
 node_modules/
-package-lock.json
+# Don't ignore test fixture lock files - they're needed for CI
+!tests/fixtures/*/package-lock.json
 
 # IDE
 .vscode/
