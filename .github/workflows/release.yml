@@ -74,13 +74,87 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           COSIGN_EXPERIMENTAL: 1
 
-  update-homebrew:
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-packages:
     needs: release
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
-      - name: Update Homebrew tap
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python build tools
         run: |
-          # This will be implemented when we create the homebrew tap repository
-          echo "Homebrew tap update will be automated here"
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update package versions
+        run: |
+          # Update npm package version
+          cd packaging/npm
+          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version
+          cd ../..
+          
+          # Update pip package version
+          sed -i "s/PACKAGE_VERSION = .*/PACKAGE_VERSION = \"${{ steps.version.outputs.VERSION }}\"/" packaging/pip/setup.py
+          sed -i "s/__version__ = .*/__version__ = \"${{ steps.version.outputs.VERSION }}\"/" packaging/pip/threepio/__init__.py
+
+      - name: Copy binaries to packages
+        run: |
+          # Copy binaries from goreleaser dist to npm package
+          mkdir -p packaging/npm/binaries
+          cp dist/3pio_darwin_amd64*/3pio packaging/npm/binaries/3pio-darwin-amd64 || true
+          cp dist/3pio_darwin_arm64*/3pio packaging/npm/binaries/3pio-darwin-arm64 || true
+          cp dist/3pio_linux_amd64*/3pio packaging/npm/binaries/3pio-linux-amd64 || true
+          cp dist/3pio_linux_arm64*/3pio packaging/npm/binaries/3pio-linux-arm64 || true
+          cp dist/3pio_windows_amd64*/3pio.exe packaging/npm/binaries/3pio-windows-amd64.exe || true
+          
+          # Copy binaries to pip package
+          mkdir -p packaging/pip/threepio/binaries
+          cp packaging/npm/binaries/* packaging/pip/threepio/binaries/
+
+      - name: Publish to npm
+        run: |
+          cd packaging/npm
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build and publish to PyPI
+        run: |
+          cd packaging/pip
+          python -m build
+          python -m twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
