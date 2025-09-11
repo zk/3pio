@@ -129,4 +129,5 @@ type TestRunState struct {
 	FilesFailed    int        `json:"filesFailed"`
 	FilesSkipped   int        `json:"filesSkipped"`
 	TestFiles      []TestFile `json:"testFiles"`
+	ErrorDetails   string     `json:"errorDetails,omitempty"` // Error details when status is ERROR
 }

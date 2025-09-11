@@ -39,6 +39,9 @@ type Orchestrator struct {
 	failedFiles    int
 	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
+	
+	// Error capture
+	stderrCapture strings.Builder
 }
 
 // Logger interface for logging
@@ -208,11 +211,11 @@ func (o *Orchestrator) Run() error {
 		o.captureOutput(stdoutPipe, outputFile)
 	}()
 
-	// Capture stderr (only to file, don't echo to console)
+	// Capture stderr (to file and error capture buffer)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		o.captureOutput(stderrPipe, outputFile)
+		o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
 	}()
 
 	// Wait for command completion or signal
@@ -221,8 +224,10 @@ func (o *Orchestrator) Run() error {
 		done <- cmd.Wait()
 	}()
 
+	var commandErr error
 	select {
 	case err := <-done:
+		commandErr = err
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				o.exitCode = exitErr.ExitCode()
@@ -251,12 +256,32 @@ func (o *Orchestrator) Run() error {
 	// (they were waited for via outputDone)
 
 	// Finalize report
-	if err := o.reportManager.Finalize(o.exitCode); err != nil {
+	var errorDetails string
+	if commandErr != nil {
+		// Only include error details for actual command errors (not test failures)
+		// If tests were processed, this is just a test failure, not a command error
+		if o.totalFiles == 0 {
+			errorDetails = commandErr.Error()
+			
+			// Include stderr content if available for command errors
+			stderrContent := strings.TrimSpace(o.stderrCapture.String())
+			if stderrContent != "" {
+				errorDetails = stderrContent
+			}
+		}
+	}
+	if err := o.reportManager.Finalize(o.exitCode, errorDetails); err != nil {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
 
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
+
+	// Print error details if command failed
+	if commandErr != nil {
+		fmt.Printf("Error: %s\n", errorDetails)
+		fmt.Println()
+	}
 
 	// Add random failure exclamation if tests failed
 	if o.failedFiles > 0 {
@@ -288,6 +313,11 @@ func (o *Orchestrator) Run() error {
 	// Calculate and display elapsed time
 	elapsed := time.Since(o.startTime).Seconds()
 	fmt.Printf("Time:        %.3fs\n", elapsed)
+
+	// Return command error if there was one
+	if commandErr != nil {
+		return fmt.Errorf("test command failed: %w", commandErr)
+	}
 
 	return nil
 }
