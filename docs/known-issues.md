@@ -134,6 +134,32 @@ Run tests without coverage during development:
 
 ## File System Limitations
 
+### Write Permissions Required
+
+3pio requires write access to the project directory to function properly:
+
+- **Required directories**: `.3pio/runs/`, `.3pio/ipc/`, `.3pio/adapters/` (or future `.3pio/runs/[runID]/adapter/`)
+- **Files created**: Test adapters, IPC communication files, test reports, and log files
+- **Common failure scenarios**:
+  - Running in read-only containers
+  - CI/CD environments with restricted permissions
+  - Network-mounted filesystems with limited access
+  - Docker containers without volume mounts
+
+#### Symptoms of Permission Issues
+- Error: `failed to create adapter directory: permission denied`
+- Error: `cannot write IPC file: read-only file system`
+- Tests run but no reports are generated
+- Adapter injection fails silently
+
+#### Workarounds
+- Ensure the working directory has write permissions before running 3pio
+- In containers, mount a writable volume for the project directory
+- Consider using `TMPDIR` environment variable to redirect `.3pio` to a writable location (future feature)
+- For CI/CD, ensure the build agent has appropriate filesystem permissions
+
+### Other File System Considerations
+
 - IPC files are written to `.3pio/ipc/` which must be writable
 - Large test suites may generate significant disk I/O for IPC communication
 - Report files use debounced writes to minimize file system operations

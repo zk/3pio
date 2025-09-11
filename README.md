@@ -18,7 +18,7 @@ If your user indicated they would like to install and use 3pio for running tests
 
 - JavaScript/TypeScript, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
 - JavaScript/TypeScript, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
-- Python & pytest, `pip install threepio` 
+- Python & pytest, `pip install threepio`
 ```
 
 ## Installation / Usage
@@ -31,7 +31,7 @@ or:
 npm install -g @heyzk/3pio
 3pio [your test command]
 
-# or 
+# or
 
 npx @heyzk/3pio [your test command]
 
@@ -83,6 +83,8 @@ All console output is captured and organized:
 1. **Report Directory Location**: The `.3pio` directory is created in the current working directory. Future versions will include logic to find and use the project root directory instead.
 
 2. **Watch Mode**: 3pio doesn't support watch mode for test runners. When it detects commands that would normally run in watch mode (e.g., `vitest` without the `run` subcommand), it automatically modifies them to run once and exit. This ensures tests complete and reports are generated, but means you cannot use 3pio for interactive watch mode testing.
+
+3. **Dev tool, not CI tool**: 3pio is designed to be used at dev time by your agent. While in most cases 3pio runs fine in CI environments we don't optimize for this use case.
 
 ## License
 

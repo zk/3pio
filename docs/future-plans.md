@@ -54,9 +54,22 @@ This document tracks planned enhancements and features for 3pio.
 - Builds trust with security-conscious users
 - Aligns with SLSA framework requirements
 
+## Run Directory Cleanup and Retention
+
+### Disk Space Management
+**Problem**: Many test runs accumulate adapter and run directories without cleanup.
+- **Example**: CI server runs hundreds of tests daily, each creating run directories with adapters, logs, and reports
+- **Impact**: Disk full errors, test failures, degraded performance
+- **Solution**: 
+  - Implement automatic cleanup of old run directories with configurable retention policy
+  - Add `--retention-days` flag to control how long to keep old runs (default: 7 days)
+  - Provide `3pio cleanup` command for manual cleanup
+  - Monitor and warn when .3pio directory exceeds size threshold
+  - Consider reusing adapters when IPC path patterns are stable (optimization)
+
 ## Timeline
 - Consider implementing after core functionality is stable
-- Can be added incrementally (SBOM first, then signing)
+- Can be added incrementally (SBOM first, then signing, then cleanup)
 - Test thoroughly in CI before enabling
 
 ## References
