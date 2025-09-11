@@ -69,7 +69,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "direct vitest command",
 			args:     []string{"vitest"},
-			expected: []string{"vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default", "run"},
 		},
 		{
 			name:     "vitest run",
@@ -79,7 +79,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "npx vitest",
 			args:     []string{"npx", "vitest"},
-			expected: []string{"npx", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"npx", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default", "run"},
 		},
 		{
 			name:     "npx vitest run",
@@ -131,7 +131,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "yarn vitest",
 			args:     []string{"yarn", "vitest"},
-			expected: []string{"yarn", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"yarn", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default", "run"},
 		},
 		{
 			name:     "yarn vitest run",
@@ -188,7 +188,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "pnpm exec vitest",
 			args:     []string{"pnpm", "exec", "vitest"},
-			expected: []string{"pnpm", "exec", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "exec", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default", "run"},
 		},
 		{
 			name:     "pnpm exec vitest run",
@@ -235,7 +235,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "bunx vitest",
 			args:     []string{"bunx", "vitest"},
-			expected: []string{"bunx", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"bunx", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default", "run"},
 		},
 		{
 			name:     "bunx vitest run",
@@ -255,7 +255,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "bun x vitest",
 			args:     []string{"bun", "x", "vitest"},
-			expected: []string{"bun", "x", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"bun", "x", "vitest", "--reporter", "/tmp/adapter.js", "--reporter", "default", "run"},
 		},
 		{
 			name:     "bun test with existing --",
