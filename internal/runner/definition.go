@@ -318,53 +318,16 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 		isPackageManagerCommand = false
 	}
 
-	// Handle package manager commands that need -- separator
+	// Handle package manager commands that need special handling
 	if isPackageManagerCommand && !isDirectVitestCall && !foundVitest {
 		// Commands like: npm test, yarn test, pnpm test, bun test, deno task test
 		result := make([]string, 0, len(args)+6)
-
-		// Check if -- separator already exists
-		hasSeparator := false
-		for _, arg := range args {
-			if arg == "--" {
-				hasSeparator = true
-				break
-			}
-		}
-
-		if hasSeparator {
-			// Find position of -- separator
-			separatorIdx := -1
-			for i, arg := range args {
-				if arg == "--" {
-					separatorIdx = i
-					break
-				}
-			}
-
-			// Check if there are already user-provided flags after --
-			hasUserFlags := separatorIdx != -1 && separatorIdx < len(args)-1
-
-			// Append everything up to and including --, then add reporters
-			result = append(result, args...)
-
-			// Only add 'run' if package.json needs it AND user hasn't provided flags
-			if !hasUserFlags && v.shouldAddRunForPackageScript() {
-				result = append(result, "run")
-			}
-			result = append(result, "--reporter", adapterPath, "--reporter", "default")
-		} else {
-			// Add all args, then -- separator, then reporter flags
-			result = append(result, args...)
-			result = append(result, "--")
-
-			// Check if we need to add 'run' command for vitest
-			if v.shouldAddRunForPackageScript() {
-				result = append(result, "run")
-			}
-			result = append(result, "--reporter", adapterPath, "--reporter", "default")
-		}
-
+		
+		// For pnpm, npm, yarn: they can pass --reporter flags directly without --
+		// These package managers understand flag-like arguments and pass them through
+		result = append(result, args...)
+		result = append(result, "--reporter", adapterPath, "--reporter", "default")
+		
 		return result
 	}
 

@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **pytest**: Uses custom plugin that integrates with pytest's hook system
 - All console output from tests is captured at the CLI process level by monitoring stdout/stderr streams
 - The captured output is stored in `.3pio/runs/*/output.log` as a complete record
-- Individual test log files may be empty if the output parser cannot attribute console logs to specific test files
+- Individual test log files contain headers with file path and timestamp information
 
 ## Development Commands
 

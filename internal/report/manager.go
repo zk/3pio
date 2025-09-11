@@ -292,6 +292,18 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 	} else {
 		m.fileHandles[filePath] = file
 		m.fileBuffers[filePath] = make([]string, 0)
+		
+		// Write header to the log file
+		header := fmt.Sprintf(`# File: %s
+# Timestamp: %s
+# This file contains all stdout/stderr output from the test file execution.
+# ---
+
+`, filePath, time.Now().Format(time.RFC3339))
+		if _, err := file.WriteString(header); err != nil {
+			m.logger.Error("Failed to write header to log file %s: %v", filePath, err)
+		}
+		_ = file.Sync()
 	}
 
 	// Add to state

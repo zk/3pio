@@ -88,11 +88,34 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	// Check that individual log files were created
+	// Check that individual log files were created with headers
 	for _, file := range testFiles {
 		logPath := filepath.Join(tempDir, "logs", file+".log")
 		if _, err := os.Stat(logPath); os.IsNotExist(err) {
 			t.Errorf("Log file for %s was not created at %s", file, logPath)
+			continue
+		}
+		
+		// Read the log file to check for header
+		content, err := os.ReadFile(logPath)
+		if err != nil {
+			t.Errorf("Failed to read log file %s: %v", logPath, err)
+			continue
+		}
+		
+		contentStr := string(content)
+		// Check for header components
+		if !strings.Contains(contentStr, "# File: "+file) {
+			t.Errorf("Log file %s missing file header", logPath)
+		}
+		if !strings.Contains(contentStr, "# Timestamp:") {
+			t.Errorf("Log file %s missing timestamp header", logPath)
+		}
+		if !strings.Contains(contentStr, "# This file contains all stdout/stderr output from the test file execution.") {
+			t.Errorf("Log file %s missing description header", logPath)
+		}
+		if !strings.Contains(contentStr, "# ---") {
+			t.Errorf("Log file %s missing separator", logPath)
 		}
 	}
 }
