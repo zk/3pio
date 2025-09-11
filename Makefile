@@ -117,6 +117,104 @@ run-vitest: build
 run-npm-test: build
 	./$(BUILD_DIR)/3pio npm test
 
+# Package for distribution
+package: clean adapters
+	@echo "Building and packaging for distribution..."
+	@# Build binaries using goreleaser
+	@if [ -f .goreleaser.local.yml ]; then \
+		goreleaser build --config .goreleaser.local.yml --clean --snapshot; \
+	else \
+		@echo "Creating local goreleaser config..."; \
+		@cat > .goreleaser.local.yml <<EOF; \
+version: 2\n\
+project_name: 3pio\n\
+before:\n\
+  hooks:\n\
+    - make adapters\n\
+builds:\n\
+  - id: 3pio\n\
+    main: ./cmd/3pio/main.go\n\
+    binary: 3pio\n\
+    goos:\n\
+      - linux\n\
+      - darwin\n\
+      - windows\n\
+    goarch:\n\
+      - amd64\n\
+      - arm64\n\
+    ignore:\n\
+      - goos: windows\n\
+        goarch: arm64\n\
+    ldflags:\n\
+      - -s -w\n\
+      - -X main.version={{.Version}}\n\
+      - -X main.commit={{.Commit}}\n\
+      - -X main.date={{.Date}}\n\
+    env:\n\
+      - CGO_ENABLED=0\n\
+archives:\n\
+  - id: default\n\
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'\n\
+    format: tar.gz\n\
+    format_overrides:\n\
+      - goos: windows\n\
+        format: zip\n\
+checksum:\n\
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'\n\
+snapshot:\n\
+  version_template: "{{ .Tag }}-next"\n\
+release:\n\
+  disable: true\n\
+EOF; \
+		goreleaser build --config .goreleaser.local.yml --clean --snapshot; \
+	fi
+	
+	@echo "Copying binaries to npm package..."
+	@mkdir -p packaging/npm/binaries
+	@cp dist/3pio_darwin_amd64*/3pio packaging/npm/binaries/3pio-darwin-amd64
+	@cp dist/3pio_darwin_arm64*/3pio packaging/npm/binaries/3pio-darwin-arm64
+	@cp dist/3pio_linux_amd64*/3pio packaging/npm/binaries/3pio-linux-amd64
+	@cp dist/3pio_linux_arm64*/3pio packaging/npm/binaries/3pio-linux-arm64
+	@cp dist/3pio_windows_amd64*/3pio.exe packaging/npm/binaries/3pio-windows-amd64.exe
+	
+	@echo "Copying binaries to pip package..."
+	@mkdir -p packaging/pip/threepio/binaries
+	@cp dist/3pio_darwin_amd64*/3pio packaging/pip/threepio/binaries/3pio-darwin-amd64
+	@cp dist/3pio_darwin_arm64*/3pio packaging/pip/threepio/binaries/3pio-darwin-arm64
+	@cp dist/3pio_linux_amd64*/3pio packaging/pip/threepio/binaries/3pio-linux-amd64
+	@cp dist/3pio_linux_arm64*/3pio packaging/pip/threepio/binaries/3pio-linux-arm64
+	@cp dist/3pio_windows_amd64*/3pio.exe packaging/pip/threepio/binaries/3pio-windows-amd64.exe
+	
+	@echo "✅ Packaging complete!"
+	@echo ""
+	@echo "To publish npm package:"
+	@echo "  cd packaging/npm && npm publish"
+	@echo ""
+	@echo "To publish pip package:"
+	@echo "  cd packaging/pip && python -m build && twine upload dist/*"
+
+# Publish npm package
+publish-npm: package
+	@echo "Publishing npm package..."
+	cd packaging/npm && npm publish
+	@echo "✅ npm package published"
+
+# Publish pip package
+publish-pip: package
+	@echo "Building and publishing pip package..."
+	cd packaging/pip && \
+		rm -rf dist build *.egg-info && \
+		python -m build && \
+		twine upload dist/*
+	@echo "✅ pip package published"
+
+# Publish both packages
+publish: package
+	@echo "Publishing to npm and pip..."
+	@$(MAKE) publish-npm
+	@$(MAKE) publish-pip
+	@echo "✅ All packages published"
+
 # Help
 help:
 	@echo "3pio Makefile targets:"
@@ -132,4 +230,8 @@ help:
 	@echo "  make install         - Install 3pio locally"
 	@echo "  make clean           - Remove build artifacts"
 	@echo "  make build-all       - Build for all platforms"
+	@echo "  make package         - Build and prepare packages for npm and pip"
+	@echo "  make publish-npm     - Build and publish npm package"
+	@echo "  make publish-pip     - Build and publish pip package"
+	@echo "  make publish         - Build and publish both npm and pip packages"
 	@echo "  make help            - Show this help message"

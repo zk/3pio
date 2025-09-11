@@ -1,6 +1,6 @@
 # 3pio
 
-A context-competent test runner for coding agents. This package provides the 3pio CLI as a native Go binary with zero runtime dependencies.
+A context-friendly test runner for JavaScript and TypeScript projects. 3pio enhances your existing test workflow by generating structured, AI-optimized reports without changing how your tests run.
 
 ## Installation
 
@@ -17,40 +17,51 @@ npm install -g @heyzk/3pio
 # Run Vitest tests  
 3pio npx vitest run
 
-# Run pytest tests
-3pio pytest
-
-# Run any npm script
+# Run your existing test script
 3pio npm test
+
+# Run with specific test files
+3pio npx jest src/utils.test.js
+3pio npx vitest run components/**/*.test.ts
 ```
 
-## What's Different
+## Why 3pio?
 
-This package installs a native Go binary that provides:
+When working with AI coding assistants, test output often gets lost or truncated. 3pio solves this by:
 
-- **Zero runtime dependencies** - No Node.js required at runtime
-- **Fast startup** - ~50ms vs ~200ms for Node.js version
-- **Lower memory usage** - ~10MB vs ~50MB for Node.js version
-- **Cross-platform** - Single binary works on macOS, Linux, and Windows
+- **Preserving all test output** - Never lose console.log statements or error traces
+- **Structured reports** - Each test file gets its own organized log
+- **AI-friendly format** - Reports optimized for LLM context windows
+- **Zero config** - Works with your existing Jest/Vitest setup
+- **Non-intrusive** - Your tests run exactly as before, 3pio just captures better reports
 
 ## Supported Test Frameworks
 
-- **Jest** - JavaScript testing framework
-- **Vitest** - Fast Vite-native unit testing framework  
-- **pytest** - Python testing framework
+- **Jest** - Works with all Jest configurations (CRA, Next.js, custom setups)
+- **Vitest** - Full support for Vite-powered testing
+- **npm/yarn/pnpm scripts** - Automatically detects test runner from your package.json
 
 ## How It Works
 
-During installation, this package automatically downloads the appropriate native binary for your platform from GitHub releases. The binary includes embedded adapters for each supported test framework.
+3pio acts as a transparent wrapper around your test runner:
 
-## Architecture
+1. Runs your tests with a silent reporter to capture structured data
+2. Preserves all console output and test results
+3. Generates organized reports in `.3pio/runs/[timestamp]-[name]/`
+4. Maintains full compatibility with your existing test configuration
 
-The 3pio binary acts as a "protocol droid" that translates test runner output into structured, AI-friendly reports. It:
+## Report Structure
 
-1. Spawns your test runner with a silent reporter/adapter
-2. Captures all output via IPC (Inter-Process Communication)
-3. Generates structured reports in `.3pio/runs/[timestamp]-[name]/`
-4. Maintains compatibility with existing test runner behavior
+After running tests, find your reports in:
+```
+.3pio/runs/
+└── 20240110-143022-clever-penguin/
+    ├── test-run.md          # Summary report
+    ├── output.log           # Complete console output
+    └── logs/
+        ├── utils.test.js.log     # Per-file test results
+        └── api.test.js.log       # Organized by test file
+```
 
 ## Repository
 

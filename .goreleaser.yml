@@ -113,25 +113,25 @@ brews:
   - name: 3pio
     repository:
       owner: zk
-      name: homebrew-tap
+      name: homebrew-3pio
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
     homepage: "https://github.com/zk/3pio"
-    description: "Context-competent test runner for coding agents"
+    description: "Context-optimized test runner adapter for AI agents"
     license: "MIT"
     test: |
       system "#{bin}/3pio --help"
       system "#{bin}/3pio --version"
     caveats: |
-      3pio is a test runner adapter that works with Jest, Vitest, and pytest.
+      3pio translates test runs into a format optimized for AI agents.
       
       Usage examples:
-        3pio npx jest          # Run Jest tests
-        3pio npx vitest run    # Run Vitest tests  
-        3pio pytest           # Run pytest tests
-        3pio npm test          # Run npm test script
+        3pio npm test                    # Run npm test script
+        3pio npm test -- tests/unit      # Pass arguments to npm test
+        3pio npx jest                    # Run Jest directly
+        3pio npx vitest run              # Run Vitest
+        3pio pytest                      # Run pytest
 
-      Reports are generated in .3pio/runs/ directory.
+      Reports are written to .3pio/runs/[timestamp]-[memorable-name]/
       
       For more information: https://github.com/zk/3pio
 

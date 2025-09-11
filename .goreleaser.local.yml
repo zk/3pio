@@ -1,0 +1,51 @@
+# .goreleaser.local.yml
+# Simplified configuration for local builds
+
+version: 2
+
+project_name: 3pio
+
+before:
+  hooks:
+    # Build adapters before creating releases
+    - make adapters
+
+builds:
+  - id: 3pio
+    main: ./cmd/3pio/main.go
+    binary: 3pio
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Skip unsupported combinations
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - id: default
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+release:
+  disable: true

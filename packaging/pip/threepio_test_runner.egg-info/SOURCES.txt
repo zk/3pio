@@ -1,0 +1,14 @@
+MANIFEST.in
+README.md
+setup.py
+threepio/__init__.py
+threepio/binaries/3pio-darwin-amd64
+threepio/binaries/3pio-darwin-arm64
+threepio/binaries/3pio-linux-amd64
+threepio/binaries/3pio-linux-arm64
+threepio/binaries/3pio-windows-amd64.exe
+threepio_test_runner.egg-info/PKG-INFO
+threepio_test_runner.egg-info/SOURCES.txt
+threepio_test_runner.egg-info/dependency_links.txt
+threepio_test_runner.egg-info/entry_points.txt
+threepio_test_runner.egg-info/top_level.txt

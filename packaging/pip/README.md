@@ -1,11 +1,11 @@
 # 3pio
 
-A context-competent test runner for coding agents. This package provides the 3pio CLI as a native Go binary with zero runtime dependencies.
+A context-friendly test runner for Python projects. 3pio enhances your existing test workflow by generating structured, AI-optimized reports without changing how your tests run.
 
 ## Installation
 
 ```bash
-pip install 3pio
+pip install threepio-test-runner
 ```
 
 ## Usage
@@ -14,65 +14,57 @@ pip install 3pio
 # Run pytest tests
 3pio pytest
 
-# Run Jest tests (if Node.js is available)
-3pio npx jest
+# Run specific test file
+3pio pytest tests/test_utils.py
 
-# Run Vitest tests (if Node.js is available)
-3pio npx vitest run
+# Run with pytest options
+3pio pytest -v -s tests/
 
-# Run any command with structured output capture
+# Run unittest tests
 3pio python -m unittest
+
+# Run with coverage
+3pio pytest --cov=myproject tests/
 ```
 
-## What's Different
+## Why 3pio?
 
-This package installs a native Go binary that provides:
+When working with AI coding assistants, test output often gets lost or truncated. 3pio solves this by:
 
-- **Zero runtime dependencies** - No Python runtime dependencies beyond installation
-- **Fast startup** - ~50ms vs ~200ms for pure Python implementations
-- **Lower memory usage** - ~10MB vs typical Python process overhead
-- **Cross-platform** - Single binary works on macOS, Linux, and Windows
+- **Preserving all test output** - Never lose print statements or error traces
+- **Structured reports** - Each test file gets its own organized log
+- **AI-friendly format** - Reports optimized for LLM context windows
+- **Zero config** - Works with your existing pytest/unittest setup
+- **Non-intrusive** - Your tests run exactly as before, 3pio just captures better reports
 
 ## Supported Test Frameworks
 
-- **pytest** - Python testing framework (primary use case)
-- **Jest** - JavaScript testing framework (requires Node.js)
-- **Vitest** - Fast Vite-native unit testing framework (requires Node.js)
-- **unittest** - Built-in Python testing framework
+- **pytest** - Full support for pytest and its plugins
+- **unittest** - Python's built-in testing framework
+- **nose2** - Works with nose2 test runner
+- **Any Python test runner** - Captures output from any test command
 
 ## How It Works
 
-During installation, this package automatically downloads the appropriate native binary for your platform from GitHub releases. The binary includes embedded adapters for each supported test framework.
+3pio acts as a transparent wrapper around your test runner:
 
-## Architecture
+1. Runs your tests with a custom plugin to capture structured data
+2. Preserves all console output and test results
+3. Generates organized reports in `.3pio/runs/[timestamp]-[name]/`
+4. Maintains full compatibility with your existing test configuration
 
-The 3pio binary acts as a "protocol droid" that translates test runner output into structured, AI-friendly reports. It:
+## Report Structure
 
-1. Spawns your test runner with a silent reporter/adapter
-2. Captures all output via IPC (Inter-Process Communication)
-3. Generates structured reports in `.3pio/runs/[timestamp]-[name]/`
-4. Maintains compatibility with existing test runner behavior
-
-## Python Integration
-
-When used with pytest, 3pio provides enhanced output capture and structured reporting:
-
-```bash
-# Standard pytest run with structured output
-3pio pytest tests/
-
-# Run with specific markers
-3pio pytest -m "integration"
-
-# Run with coverage (pytest-cov required)
-3pio pytest --cov=src tests/
+After running tests, find your reports in:
 ```
-
-The generated reports in `.3pio/runs/` contain:
-- Individual test case results with timing
-- Console output per test file
-- Failure details and stack traces
-- Summary statistics
+.3pio/runs/
+└── 20240110-143022-clever-penguin/
+    ├── test-run.md              # Summary report
+    ├── output.log               # Complete console output
+    └── logs/
+        ├── test_utils.py.log    # Per-file test results
+        └── test_api.py.log      # Organized by test file
+```
 
 ## Repository
 

@@ -3,11 +3,29 @@
 </p>
 
 
-# 3pio - Your agent's context-concious test runner 
+# 3pio - A context-optimized test runner for coding agents
 
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
+Usage is simple, prefix your normal test command with `3pio`.
+
+``` markdown
+**Note To Agents:**
+
+Welcome!
+
+If your user indicated they would like to install and use 3pio for running tests choose the package manager that best fits with their project or use case:
+
+- JavaScript/TypeScript, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
+- JavaScript/TypeScript, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
+- Python & pytest, `pip install threepio` 
+```
+
 ## Installation / Usage
+
+Point your coding agent at this README ([raw link](https://raw.githubusercontent.com/zk/3pio/refs/heads/main/README.md)).
+
+or:
 
 ```bash
 npm install -g @heyzk/3pio
@@ -59,6 +77,10 @@ All console output is captured and organized:
 - Complete output in `output.log`
 - Per-file output with test case boundaries
 - Preserves the original test runner's console format
+
+## Limitations
+
+1. **Report Directory Location**: The `.3pio` directory is created in the current working directory. Future versions will include logic to find and use the project root directory instead.
 
 ## License
 

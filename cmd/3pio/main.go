@@ -17,39 +17,26 @@ var (
 
 func main() {
 	var rootCmd = &cobra.Command{
-		Use:   "3pio",
-		Short: "AI-first test runner adapter",
-		Long: `3pio translates traditional test runner output into a format optimized for AI agents,
-providing persistent, structured, file-based records that are context-efficient and searchable.`,
+		Use:   "3pio [your test command] | [flags]",
+		Short: "Context-optimized test runner adapter",
+		Long: `3pio translates test runs into a format optimized for AI agents, providing
+context-optimized console output and file-based records.
+
+Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
+• test-run.md  - Main report with test summary and individual test results
+• output.log   - Complete stdout/stderr output from the entire test run  
+• logs/*.log   - Per-file output with test case demarcation
+
+Examples:
+  3pio npm test                    # Run npm test script
+  3pio npm test -- tests/unit      # Pass arguments to npm test
+  3pio npx jest                    # Run Jest directly
+  3pio npx vitest run              # Run Vitest
+  3pio pytest                      # Run pytest`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
-	// Version command
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("3pio version %s\n", version)
-			fmt.Printf("Commit: %s\n", commit)
-			fmt.Printf("Built: %s\n", date)
-		},
-	})
-
-	// Run command (explicit subcommand)
-	var runCmd = &cobra.Command{
-		Use:                "run [test command]",
-		Short:              "Run tests with 3pio instrumentation",
-		Args:               cobra.MinimumNArgs(1),
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTests(args)
-		},
-		Example: `  3pio run npm test
-  3pio run npx jest
-  3pio run npx vitest run
-  3pio run pytest`,
-	}
-	rootCmd.AddCommand(runCmd)
+	// No subcommands - 3pio works as a direct wrapper
 
 	// Allow running without "run" subcommand
 	rootCmd.DisableFlagParsing = true
@@ -69,10 +56,6 @@ providing persistent, structured, file-based records that are context-efficient 
 				fmt.Printf("Built: %s\n", date)
 				return nil
 			}
-			// Check if it's the "run" subcommand
-			if firstArg == "run" {
-				return runTests(args[1:])
-			}
 			// Otherwise, assume it's a test command
 			return runTests(args)
 		}
@@ -82,6 +65,16 @@ providing persistent, structured, file-based records that are context-efficient 
 
 	// Disable default completion command
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	
+	// Custom help template to put Usage before Examples
+	rootCmd.SetHelpTemplate(`{{.Long}}
+
+Usage:
+  {{.UseLine}}
+
+Flags:
+{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+`)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

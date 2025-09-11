@@ -1,9 +1,9 @@
 {
   "name": "@heyzk/3pio",
-  "version": "0.0.1",
-  "description": "A context-competent test runner for coding agents",
+  "version": "0.0.2",
+  "description": "A context-optimized test runner for coding agents",
   "bin": {
-    "3pio": "./bin/3pio"
+    "3pio": "bin/3pio"
   },
   "scripts": {
     "postinstall": "node postinstall.js"
@@ -43,12 +43,13 @@
   ],
   "files": [
     "postinstall.js",
+    "binaries/",
     "bin/",
     "README.md"
   ],
   "peerDependencies": {
     "jest": ">=27.0.0",
-    "vitest": ">=0.34.0"
+    "vitest": ">=3.0.0"
   },
   "peerDependenciesMeta": {
     "jest": {

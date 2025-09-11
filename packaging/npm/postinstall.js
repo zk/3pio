@@ -1,22 +1,7 @@
 #!/usr/bin/env node
 
-const https = require('https');
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { pipeline } = require('stream');
-const { promisify } = require('util');
-const zlib = require('zlib');
-const { execSync } = require('child_process');
-
-const pipelineAsync = promisify(pipeline);
-
-// Package version (should match the npm package version)
-const PACKAGE_VERSION = require('./package.json').version;
-
-// GitHub repository details
-const GITHUB_OWNER = 'zk';
-const GITHUB_REPO = '3pio';
 
 // Platform and architecture mapping
 const PLATFORM_MAPPING = {
@@ -45,118 +30,36 @@ function getPlatformInfo() {
   return { platform, arch };
 }
 
-function getBinaryUrl(version, platform, arch) {
-  const baseUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download`;
-  const extension = platform === 'windows' ? 'zip' : 'tar.gz';
-  const filename = `3pio-${platform}-${arch}.${extension}`;
-  return `${baseUrl}/v${version}/${filename}`;
-}
-
-async function downloadFile(url, destination) {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https:') ? https : http;
-    
-    protocol.get(url, (response) => {
-      if (response.statusCode === 302 || response.statusCode === 301) {
-        // Follow redirects
-        return downloadFile(response.headers.location, destination).then(resolve, reject);
-      }
-      
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
-        return;
-      }
-      
-      const fileStream = fs.createWriteStream(destination);
-      response.pipe(fileStream);
-      
-      fileStream.on('finish', () => {
-        fileStream.close();
-        resolve();
-      });
-      
-      fileStream.on('error', reject);
-    }).on('error', reject);
-  });
-}
-
-async function extractTarGz(source, destination) {
-  try {
-    // Use system tar command for reliable extraction
-    execSync(`tar -xzf "${source}" -C "${destination}"`, { stdio: 'pipe' });
-  } catch (error) {
-    throw new Error(`Failed to extract tar.gz: ${error.message}`);
-  }
-}
-
-async function extractZip(source, destination) {
-  try {
-    if (process.platform === 'win32') {
-      // Use PowerShell on Windows
-      execSync(`powershell -command "Expand-Archive -Path '${source}' -DestinationPath '${destination}' -Force"`, { stdio: 'pipe' });
-    } else {
-      // Use unzip on Unix systems
-      execSync(`unzip -o "${source}" -d "${destination}"`, { stdio: 'pipe' });
-    }
-  } catch (error) {
-    throw new Error(`Failed to extract zip: ${error.message}`);
-  }
-}
-
-async function makeExecutable(filePath) {
+function makeExecutable(filePath) {
   if (process.platform !== 'win32') {
     fs.chmodSync(filePath, '755');
   }
 }
 
-async function install() {
+function install() {
   try {
-    console.log('Installing 3pio binary...');
-    
     const { platform, arch } = getPlatformInfo();
-    console.log(`Platform: ${platform}, Architecture: ${arch}`);
     
-    // Create bin directory
-    const binDir = path.join(__dirname, 'bin');
-    if (!fs.existsSync(binDir)) {
-      fs.mkdirSync(binDir, { recursive: true });
+    // Source binary in the binaries directory
+    const sourceBinaryName = `3pio-${platform}-${arch}${platform === 'windows' ? '.exe' : ''}`;
+    const sourcePath = path.join(__dirname, 'binaries', sourceBinaryName);
+    
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Binary not found for your platform: ${sourceBinaryName}`);
     }
     
-    const url = getBinaryUrl(PACKAGE_VERSION, platform, arch);
-    console.log(`Downloading from: ${url}`);
+    // Destination - replace the placeholder file with actual binary
+    const destPath = path.join(__dirname, 'bin', '3pio');
     
-    const extension = platform === 'windows' ? 'zip' : 'tar.gz';
-    const downloadPath = path.join(__dirname, `3pio-${platform}-${arch}.${extension}`);
+    // Copy the appropriate binary to bin/3pio
+    fs.copyFileSync(sourcePath, destPath);
     
-    // Download the archive
-    await downloadFile(url, downloadPath);
-    console.log('Download completed');
-    
-    // Extract the archive
-    console.log('Extracting binary...');
-    if (extension === 'tar.gz') {
-      await extractTarGz(downloadPath, binDir);
-    } else {
-      await extractZip(downloadPath, binDir);
-    }
-    
-    // Make the binary executable
-    const binaryName = platform === 'windows' ? '3pio.exe' : '3pio';
-    const binaryPath = path.join(binDir, binaryName);
-    
-    if (!fs.existsSync(binaryPath)) {
-      throw new Error(`Binary not found after extraction: ${binaryPath}`);
-    }
-    
-    await makeExecutable(binaryPath);
-    
-    // Clean up downloaded archive
-    fs.unlinkSync(downloadPath);
-    
-    console.log('✅ 3pio binary installed successfully');
+    // Make it executable
+    makeExecutable(destPath);
     
   } catch (error) {
-    console.error('❌ Failed to install 3pio binary:', error.message);
+    console.error('Failed to set up 3pio binary:', error.message);
+    console.error('Please report this issue at https://github.com/zk/3pio/issues');
     process.exit(1);
   }
 }
