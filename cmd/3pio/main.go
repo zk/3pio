@@ -22,16 +22,16 @@ func main() {
 		Long: `3pio translates test runner console output into a format optimized for AI
 agents, providing file-based records that are context-optimized and searchable.
 
-Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
-  • test-run.md  - Main report with test summary and individual test results
-  • output.log   - Complete stdout/stderr output from the entire test run  
-  • logs/*.log   - Per-file output with test case demarcation
-
 Examples:
   3pio npm test         # Run npm test script
   3pio npx jest         # Run Jest directly
   3pio npx vitest run   # Run Vitest
-  3pio pytest           # Run pytest`,
+  3pio pytest           # Run pytest
+
+Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
+  • test-run.md  - Main report with test summary and individual test results
+  • output.log   - Complete stdout/stderr output from the entire test run  
+  • logs/*.log   - Per-file output with test case demarcation`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
