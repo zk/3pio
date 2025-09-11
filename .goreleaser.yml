@@ -135,15 +135,15 @@ brews:
       
       For more information: https://github.com/zk/3pio
 
-# Signature generation for security
-signs:
-  - cmd: cosign
-    env:
-    - COSIGN_EXPERIMENTAL=1
-    args:
-      - sign-blob
-      - '--output-certificate={{ .ArtifactPath }}.pem'
-      - '--output-signature={{ .ArtifactPath }}.sig'
-      - '{{ .ArtifactPath }}'
-      - --yes
-    artifacts: checksum
+# Signature generation for security (disabled for now)
+# signs:
+#   - cmd: cosign
+#     env:
+#     - COSIGN_EXPERIMENTAL=1
+#     args:
+#       - sign-blob
+#       - '--output-certificate=${artifact}.pem'
+#       - '--output-signature=${artifact}.sig'
+#       - '${artifact}'
+#       - --yes
+#     artifacts: checksum
