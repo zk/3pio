@@ -76,6 +76,10 @@ All console output is captured and organized:
 - Per-file output with test case boundaries
 - Preserves the original test runner's console format
 
+## Limitations
+
+1. **Report Directory Location**: The `.3pio` directory is created in the current working directory. Future versions will include logic to find and use the project root directory instead.
+
 ## License
 
 MIT
