@@ -395,13 +395,23 @@ func (m *Manager) generateMarkdownReport() string {
 	sb.WriteString(fmt.Sprintf("**Status:** %s\n", m.state.Status))
 	sb.WriteString(fmt.Sprintf("**Arguments:** `%s`\n\n", m.state.Arguments))
 
-	// Summary
-	sb.WriteString("## Summary\n\n")
-	sb.WriteString(fmt.Sprintf("- Total Files: %d\n", m.state.TotalFiles))
-	sb.WriteString(fmt.Sprintf("- Files Completed: %d\n", m.state.FilesCompleted))
-	sb.WriteString(fmt.Sprintf("- Files Passed: %d\n", m.state.FilesPassed))
-	sb.WriteString(fmt.Sprintf("- Files Failed: %d\n", m.state.FilesFailed))
-	sb.WriteString(fmt.Sprintf("- Files Skipped: %d\n\n", m.state.FilesSkipped))
+	// Summary (only show for successful runs, hide for command errors)
+	if m.state.Status == "COMPLETE" {
+		sb.WriteString("## Summary\n\n")
+		sb.WriteString(fmt.Sprintf("- Total Files: %d\n", m.state.TotalFiles))
+		sb.WriteString(fmt.Sprintf("- Files Completed: %d\n", m.state.FilesCompleted))
+		sb.WriteString(fmt.Sprintf("- Files Passed: %d\n", m.state.FilesPassed))
+		sb.WriteString(fmt.Sprintf("- Files Failed: %d\n", m.state.FilesFailed))
+		sb.WriteString(fmt.Sprintf("- Files Skipped: %d\n\n", m.state.FilesSkipped))
+	}
+
+	// Error details if status is ERROR
+	if m.state.Status == "ERROR" && m.state.ErrorDetails != "" {
+		sb.WriteString("## Error Details\n\n")
+		sb.WriteString("```\n")
+		sb.WriteString(m.state.ErrorDetails)
+		sb.WriteString("\n```\n\n")
+	}
 
 	// Test Files
 	for _, tf := range m.state.TestFiles {
@@ -434,7 +444,7 @@ func (m *Manager) generateMarkdownReport() string {
 				sb.WriteString(fmt.Sprintf("%s %s", tcIcon, tc.Name))
 
 				if tc.Duration > 0 {
-					sb.WriteString(fmt.Sprintf(" (%dms)", tc.Duration))
+					sb.WriteString(fmt.Sprintf(" (%.0fms)", tc.Duration))
 				}
 				sb.WriteString("\n")
 
@@ -458,7 +468,7 @@ func (m *Manager) generateMarkdownReport() string {
 }
 
 // Finalize completes the test run and closes all resources
-func (m *Manager) Finalize(exitCode int) error {
+func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -478,10 +488,12 @@ func (m *Manager) Finalize(exitCode int) error {
 	}
 
 	// Update final status
-	if exitCode == 0 {
-		m.state.Status = "COMPLETE"
-	} else {
+	// Only set ERROR status for actual command errors, not test failures
+	if len(errorDetails) > 0 && errorDetails[0] != "" {
 		m.state.Status = "ERROR"
+		m.state.ErrorDetails = errorDetails[0]
+	} else {
+		m.state.Status = "COMPLETE"
 	}
 
 	// Write final state

@@ -5,17 +5,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
 )
 
-const (
+var (
 	// Path to the Go binary we're testing
-	threePioBinary = "../../build/3pio"
+	threePioBinary = getBinaryPath()
 	// Fixtures directory
 	fixturesDir = "../fixtures"
 )
+
+func getBinaryPath() string {
+	if runtime.GOOS == "windows" {
+		return "../../build/3pio.exe"
+	}
+	return "../../build/3pio"
+}
 
 // Helper function to get the latest run directory
 func getLatestRunDir(t *testing.T, projectPath string) string {

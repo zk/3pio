@@ -138,11 +138,7 @@ var IPCSender = class {
    * Synchronous version of sendEvent
    */
   static sendEventSync(event) {
-    const ipcPath = process.env.THREEPIO_IPC_PATH;
-    if (!ipcPath) {
-      console.error("THREEPIO_IPC_PATH not set");
-      return;
-    }
+    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     try {
       const dir = path.dirname(ipcPath);
       if (!fs.existsSync(dir)) {
@@ -282,18 +278,14 @@ var ThreePioJestReporter = class {
       "==================================",
       `3pio Jest Adapter v${packageJson.version}`,
       "Configuration:",
-      `  - IPC Path: ${process.env.THREEPIO_IPC_PATH || "not set"}`,
+      `  - IPC Path: ${/*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/}`,
       `  - Process ID: ${process.pid}`,
       "=================================="
     ]);
   }
   onRunStart() {
     this.logger.lifecycle("Test run starting");
-    const ipcPath = process.env.THREEPIO_IPC_PATH;
-    if (!ipcPath) {
-      this.logger.error("THREEPIO_IPC_PATH not set - adapter cannot function");
-      return;
-    }
+    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     this.logger.info("IPC communication channel ready", { path: ipcPath });
     this.logger.initComplete({ ipcPath });
   }
@@ -447,8 +439,8 @@ var ThreePioJestReporter = class {
     });
     this.stopCapture();
     const syncFs = require("fs");
-    const ipcPath = process.env.THREEPIO_IPC_PATH;
-    if (ipcPath) {
+    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+    {
       try {
         this.logger.ipc("send", "runComplete", {});
         syncFs.appendFileSync(ipcPath, JSON.stringify({

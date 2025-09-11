@@ -39,6 +39,9 @@ type Orchestrator struct {
 	failedFiles    int
 	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
+
+	// Error capture
+	stderrCapture strings.Builder
 }
 
 // Logger interface for logging
@@ -208,11 +211,11 @@ func (o *Orchestrator) Run() error {
 		o.captureOutput(stdoutPipe, outputFile)
 	}()
 
-	// Capture stderr (only to file, don't echo to console)
+	// Capture stderr (to file and error capture buffer)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		o.captureOutput(stderrPipe, outputFile)
+		o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
 	}()
 
 	// Wait for command completion or signal
@@ -221,8 +224,10 @@ func (o *Orchestrator) Run() error {
 		done <- cmd.Wait()
 	}()
 
+	var commandErr error
 	select {
 	case err := <-done:
+		commandErr = err
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				o.exitCode = exitErr.ExitCode()
@@ -251,12 +256,32 @@ func (o *Orchestrator) Run() error {
 	// (they were waited for via outputDone)
 
 	// Finalize report
-	if err := o.reportManager.Finalize(o.exitCode); err != nil {
+	var errorDetails string
+	if commandErr != nil {
+		// Only include error details for actual command errors (not test failures)
+		// If tests were processed, this is just a test failure, not a command error
+		if o.totalFiles == 0 {
+			errorDetails = commandErr.Error()
+
+			// Include stderr content if available for command errors
+			stderrContent := strings.TrimSpace(o.stderrCapture.String())
+			if stderrContent != "" {
+				errorDetails = stderrContent
+			}
+		}
+	}
+	if err := o.reportManager.Finalize(o.exitCode, errorDetails); err != nil {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
 
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
+
+	// Print error details if command failed and we have error details
+	if commandErr != nil && errorDetails != "" {
+		fmt.Printf("Error: %s\n", errorDetails)
+		fmt.Println()
+	}
 
 	// Add random failure exclamation if tests failed
 	if o.failedFiles > 0 {
@@ -288,6 +313,11 @@ func (o *Orchestrator) Run() error {
 	// Calculate and display elapsed time
 	elapsed := time.Since(o.startTime).Seconds()
 	fmt.Printf("Time:        %.3fs\n", elapsed)
+
+	// Return command error if there was one
+	if commandErr != nil {
+		return fmt.Errorf("test command failed: %w", commandErr)
+	}
 
 	return nil
 }
@@ -370,14 +400,18 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 
 		fmt.Printf("%s %s\n", status, relativePath)
 
-		// Display failed test details (simplified for now)
+		// Display failed test details using actual data
 		if e.Payload.Status == ipc.TestStatusFail {
-			// This is a simplified version - we'd need to get the actual test case details
-			// from the report manager or track them separately
-			fmt.Println("  String operations")
-			fmt.Println("    ✕ should fail this test (3 ms)")
-			fmt.Println("  String operations")
-			fmt.Println("    ✕ should skip this test (0 ms)")
+			// Show actual failed tests if available
+			if len(e.Payload.FailedTests) > 0 {
+				for _, failedTest := range e.Payload.FailedTests {
+					duration := ""
+					if failedTest.Duration > 0 {
+						duration = fmt.Sprintf(" (%.0f ms)", failedTest.Duration)
+					}
+					fmt.Printf("    ✕ %s%s\n", failedTest.Name, duration)
+				}
+			}
 
 			// Use the actual file name for the log reference
 			logFileName := filepath.Base(normalizedPath)
@@ -407,7 +441,8 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 	// Always use embedded adapters in production
-	embeddedPath, err := adapters.GetAdapterPath(adapterName)
+	// Pass IPC path and run ID for injection
+	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runID)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}

@@ -209,14 +209,14 @@ func TestManager_HandleTestCaseEvent(t *testing.T) {
 			TestName  string         `json:"testName"`
 			SuiteName string         `json:"suiteName,omitempty"`
 			Status    ipc.TestStatus `json:"status"`
-			Duration  int            `json:"duration,omitempty"`
+			Duration  float64        `json:"duration,omitempty"`
 			Error     string         `json:"error,omitempty"`
 		}{
 			FilePath:  testFile,
 			TestName:  "should add numbers correctly",
 			SuiteName: "Math operations",
 			Status:    ipc.TestStatusPass,
-			Duration:  10,
+			Duration:  10.0,
 		},
 	}
 
@@ -271,8 +271,8 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 			FilePath    string         `json:"filePath"`
 			Status      ipc.TestStatus `json:"status"`
 			FailedTests []struct {
-				Name     string `json:"name"`
-				Duration int    `json:"duration,omitempty"`
+				Name     string  `json:"name"`
+				Duration float64 `json:"duration,omitempty"`
 			} `json:"failedTests,omitempty"`
 		}{
 			FilePath: testFile,
@@ -327,14 +327,14 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 			TestName  string         `json:"testName"`
 			SuiteName string         `json:"suiteName,omitempty"`
 			Status    ipc.TestStatus `json:"status"`
-			Duration  int            `json:"duration,omitempty"`
+			Duration  float64        `json:"duration,omitempty"`
 			Error     string         `json:"error,omitempty"`
 		}{
 			FilePath:  testFile,
 			TestName:  "should pass",
 			SuiteName: "Test Suite",
 			Status:    ipc.TestStatusPass,
-			Duration:  10,
+			Duration:  10.0,
 		},
 	}
 
@@ -346,14 +346,14 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 			TestName  string         `json:"testName"`
 			SuiteName string         `json:"suiteName,omitempty"`
 			Status    ipc.TestStatus `json:"status"`
-			Duration  int            `json:"duration,omitempty"`
+			Duration  float64        `json:"duration,omitempty"`
 			Error     string         `json:"error,omitempty"`
 		}{
 			FilePath:  testFile,
 			TestName:  "should fail",
 			SuiteName: "Test Suite",
 			Status:    ipc.TestStatusFail,
-			Duration:  5,
+			Duration:  5.0,
 			Error:     "Error: Expected true to be false\n    at line 10",
 		},
 	}
@@ -366,14 +366,14 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 			TestName  string         `json:"testName"`
 			SuiteName string         `json:"suiteName,omitempty"`
 			Status    ipc.TestStatus `json:"status"`
-			Duration  int            `json:"duration,omitempty"`
+			Duration  float64        `json:"duration,omitempty"`
 			Error     string         `json:"error,omitempty"`
 		}{
 			FilePath:  testFile,
 			TestName:  "should also pass",
 			SuiteName: "Test Suite",
 			Status:    ipc.TestStatusPass,
-			Duration:  8,
+			Duration:  8.0,
 		},
 	}
 
@@ -573,7 +573,7 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 	passEvent1.Payload.TestName = testName
 	passEvent1.Payload.SuiteName = suiteName
 	passEvent1.Payload.Status = ipc.TestStatusPass
-	passEvent1.Payload.Duration = 10
+	passEvent1.Payload.Duration = 10.0
 
 	if err := manager.HandleEvent(passEvent1); err != nil {
 		t.Fatalf("HandleEvent failed for first PASS: %v", err)
@@ -587,7 +587,7 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 	passEvent2.Payload.TestName = testName
 	passEvent2.Payload.SuiteName = suiteName
 	passEvent2.Payload.Status = ipc.TestStatusPass
-	passEvent2.Payload.Duration = 10
+	passEvent2.Payload.Duration = 10.0
 
 	if err := manager.HandleEvent(passEvent2); err != nil {
 		t.Fatalf("HandleEvent failed for second PASS: %v", err)
@@ -678,7 +678,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	test1CompleteEvent.Payload.FilePath = testFile
 	test1CompleteEvent.Payload.TestName = "should foo correctly"
 	test1CompleteEvent.Payload.Status = ipc.TestStatusPass
-	test1CompleteEvent.Payload.Duration = 10
+	test1CompleteEvent.Payload.Duration = 10.0
 
 	if err := manager.HandleEvent(test1CompleteEvent); err != nil {
 		t.Fatalf("HandleEvent failed for test 1 complete: %v", err)
@@ -714,7 +714,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	test2CompleteEvent.Payload.FilePath = testFile
 	test2CompleteEvent.Payload.TestName = "should bar correctly"
 	test2CompleteEvent.Payload.Status = ipc.TestStatusPass
-	test2CompleteEvent.Payload.Duration = 15
+	test2CompleteEvent.Payload.Duration = 15.0
 
 	if err := manager.HandleEvent(test2CompleteEvent); err != nil {
 		t.Fatalf("HandleEvent failed for test 2 complete: %v", err)
@@ -750,7 +750,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	test3CompleteEvent.Payload.FilePath = testFile
 	test3CompleteEvent.Payload.TestName = "should baz correctly"
 	test3CompleteEvent.Payload.Status = ipc.TestStatusFail
-	test3CompleteEvent.Payload.Duration = 5
+	test3CompleteEvent.Payload.Duration = 5.0
 	test3CompleteEvent.Payload.Error = "Expected true to be false"
 
 	if err := manager.HandleEvent(test3CompleteEvent); err != nil {

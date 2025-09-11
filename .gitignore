@@ -66,4 +66,4 @@ releases/
 
 # Embedded adapters are committed
 !internal/adapters/*.js
-!internal/adapters/*.py
+!internal/adapters/*.pyopen-source/

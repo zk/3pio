@@ -46,6 +46,47 @@ This document captures key architectural and design decisions made during the de
 - ensureTestFileRegistered() method dynamically adds files as discovered
 - System automatically chooses mode based on test runner capabilities
 
+## Runtime Adapter Generation with Embedded IPC Path (2025-09-11)
+
+**Decision**: Inject IPC paths directly into adapter code at runtime instead of using environment variables.
+
+**Previous Behavior**:
+- Adapters extracted to `.3pio/adapters/[hash]/` directory with content-based hash
+- Adapters relied on `THREEPIO_IPC_PATH` environment variable
+- Same adapter could be reused across multiple test runs
+- Adapter extraction was cached based on content hash
+
+**New Behavior**:
+- Adapters extracted to `.3pio/adapters/[runID]/` directory  
+- IPC path is hardcoded directly into adapter code using template replacement
+- Each test run gets its own unique adapter instance
+- No caching, fresh adapter for each run
+
+**Rationale**:
+1. **Monorepo Compatibility**: Environment variables don't propagate reliably when test runners spawn child processes in monorepos (e.g., pnpm workspaces). Each package's tests may run in a separate process that doesn't inherit the environment.
+
+2. **100% Reliability**: Hardcoded paths eliminate all environment variable discovery issues, fallback mechanisms, and error handling complexity.
+
+3. **Process Isolation**: Each run gets its own adapter with the correct IPC path baked in, preventing any cross-run contamination.
+
+4. **Simplicity**: No need for complex environment variable propagation logic or fallback mechanisms.
+
+**Implementation Details**:
+- Template markers in adapter source: `/*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/` for JavaScript
+- Template markers in adapter source: `#__IPC_PATH__#"WILL_BE_REPLACED"#__IPC_PATH__#` for Python
+- `strconv.Quote()` used for proper path escaping (handles quotes, backslashes, Unicode)
+- Adapters stored in `.3pio/adapters/[runID]/` for easy debugging
+
+**Trade-offs**:
+- Slightly more disk usage (one adapter per run instead of shared)
+- Cannot reuse adapters across runs (acceptable for dev tool)
+- Must regenerate adapter even if nothing changed (negligible performance impact)
+
+**Testing**:
+- Unit tests verify path injection with special characters, Unicode, Windows paths
+- Integration tests confirm monorepo scenarios work correctly
+- Each package in a monorepo uses the same adapter with same IPC path
+
 ## IPC Communication via File System
 
 **Decision**: Use file-based IPC instead of sockets or other mechanisms.

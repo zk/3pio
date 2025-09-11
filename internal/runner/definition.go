@@ -283,9 +283,14 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			strings.Contains(cmd, "deno")
 	}
 
-	// Check for vitest in the command
+	// Check for vitest executable in the command (not in config file names)
 	for _, arg := range args {
-		if strings.Contains(arg, "vitest") {
+		// Check if this is actually the vitest command or its CLI entry point
+		if arg == "vitest" ||
+			strings.HasSuffix(arg, "/vitest") ||
+			strings.HasSuffix(arg, ".bin/vitest") ||
+			strings.Contains(arg, "vitest@") ||
+			strings.Contains(arg, "vitest/dist/cli") { // Handle node execution of vitest CLI
 			foundVitest = true
 			break
 		}
@@ -328,28 +333,83 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 		}
 
 		if hasSeparator {
+			// Find position of -- separator
+			separatorIdx := -1
+			for i, arg := range args {
+				if arg == "--" {
+					separatorIdx = i
+					break
+				}
+			}
+
+			// Check if there are already user-provided flags after --
+			hasUserFlags := separatorIdx != -1 && separatorIdx < len(args)-1
+
 			// Append everything up to and including --, then add reporters
 			result = append(result, args...)
+
+			// Only add 'run' if package.json needs it AND user hasn't provided flags
+			if !hasUserFlags && v.shouldAddRunForPackageScript() {
+				result = append(result, "run")
+			}
 			result = append(result, "--reporter", adapterPath, "--reporter", "default")
 		} else {
 			// Add all args, then -- separator, then reporter flags
 			result = append(result, args...)
-			result = append(result, "--", "--reporter", adapterPath, "--reporter", "default")
+			result = append(result, "--")
+
+			// Check if we need to add 'run' command for vitest
+			if v.shouldAddRunForPackageScript() {
+				result = append(result, "run")
+			}
+			result = append(result, "--reporter", adapterPath, "--reporter", "default")
 		}
 
 		return result
 	}
 
 	// Handle direct vitest invocations
-	result := make([]string, 0, len(args)+4)
+	result := make([]string, 0, len(args)+5) // Extra space for potential 'run' command
 	reporterAdded := false
+	needsRunCommand := false
 
-	for _, arg := range args {
-		if !reporterAdded && strings.Contains(arg, "vitest") {
+	for i, arg := range args {
+		// Only check for vitest command or its CLI entry point
+		if !reporterAdded && (arg == "vitest" ||
+			strings.HasSuffix(arg, "/vitest") ||
+			strings.HasSuffix(arg, ".bin/vitest") ||
+			strings.Contains(arg, "vitest@") ||
+			strings.Contains(arg, "vitest/dist/cli")) {
 			result = append(result, arg)
 			// Add reporter flags immediately after vitest command
 			result = append(result, "--reporter", adapterPath, "--reporter", "default")
 			reporterAdded = true
+
+			// Check if next argument is a vitest subcommand
+			// If not, we need to add 'run' to prevent watch mode
+			if i+1 < len(args) {
+				nextArg := args[i+1]
+				// Check if next arg is a known vitest subcommand
+				isSubcommand := nextArg == "run" || nextArg == "watch" ||
+					nextArg == "bench" || nextArg == "typecheck" ||
+					nextArg == "list" || nextArg == "related" ||
+					nextArg == "init"
+
+				if !isSubcommand && !strings.HasPrefix(nextArg, "-") {
+					// Next arg is not a subcommand or flag, so we need to add 'run'
+					needsRunCommand = true
+				} else if strings.HasPrefix(nextArg, "-") {
+					// Next arg is a flag, we need 'run' before it
+					needsRunCommand = true
+				}
+			} else {
+				// No more args after vitest, need to add 'run'
+				needsRunCommand = true
+			}
+
+			if needsRunCommand {
+				result = append(result, "run")
+			}
 		} else {
 			result = append(result, arg)
 		}
@@ -388,6 +448,54 @@ func (v *VitestDefinition) isVitestInPackageJSON() bool {
 	for _, depKey := range []string{"dependencies", "devDependencies"} {
 		if deps, ok := pkg[depKey].(map[string]interface{}); ok {
 			if _, hasVitest := deps["vitest"]; hasVitest {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// shouldAddRunForPackageScript checks if we need to add 'run' subcommand
+// This is needed when package.json has "test": "vitest" without the run flag
+func (v *VitestDefinition) shouldAddRunForPackageScript() bool {
+	data, err := os.ReadFile("package.json")
+	if err != nil {
+		return false
+	}
+
+	var pkg map[string]interface{}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return false
+	}
+
+	// Check test script
+	if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
+		if test, ok := scripts["test"].(string); ok {
+			// Check if the script is just "vitest" without any subcommand
+			// We need to be careful not to add 'run' if it already has a subcommand
+			test = strings.TrimSpace(test)
+			if test == "vitest" {
+				// Script is exactly "vitest", needs 'run'
+				return true
+			}
+			// Check if it starts with "vitest " followed by flags (not subcommands)
+			if strings.HasPrefix(test, "vitest ") {
+				remainder := strings.TrimSpace(test[7:]) // Remove "vitest "
+				// Check if remainder starts with a flag (--) or is empty
+				if strings.HasPrefix(remainder, "--") || strings.HasPrefix(remainder, "-") {
+					// It's "vitest --some-flag", needs 'run' before the flag
+					return true
+				}
+				// Check if it's a known subcommand
+				knownSubcommands := []string{"run", "watch", "bench", "typecheck", "list", "related", "init"}
+				for _, cmd := range knownSubcommands {
+					if strings.HasPrefix(remainder, cmd) {
+						// Already has a subcommand, don't add 'run'
+						return false
+					}
+				}
+				// Not a known subcommand, might be test files, needs 'run'
 				return true
 			}
 		}
