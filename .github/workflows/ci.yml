@@ -94,19 +94,23 @@ jobs:
         run: |
           # Test Jest integration (exit code 1 expected due to failing test fixtures)
           cd tests/fixtures/basic-jest
-          ../../../build/3pio.exe npx jest math.test.js string.test.js
+          & ../../../build/3pio.exe npx jest math.test.js string.test.js
+          # Ignore exit code, just check if output was created
           if (-not (Test-Path ".3pio/runs")) {
             Write-Error "ERROR: 3pio did not create expected output directory"
             exit 1
           }
+          Write-Host "Jest integration test completed successfully"
           
           # Test Vitest integration (exit code 1 expected due to failing test fixtures)
           cd ../basic-vitest
-          ../../../build/3pio.exe npx vitest run math.test.js string.test.js
+          & ../../../build/3pio.exe npx vitest run math.test.js string.test.js
+          # Ignore exit code, just check if output was created
           if (-not (Test-Path ".3pio/runs")) {
             Write-Error "ERROR: 3pio did not create expected output directory"
             exit 1
           }
+          Write-Host "Vitest integration test completed successfully"
         shell: pwsh
 
   lint:
