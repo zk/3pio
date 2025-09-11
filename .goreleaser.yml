@@ -140,8 +140,6 @@ signs:
   - cmd: cosign
     env:
     - COSIGN_EXPERIMENTAL=1
-    certificate_identity: 'https://github.com/{{ .Env.GITHUB_REPOSITORY }}/.github/workflows/release.yml@refs/tags/{{ .Tag }}'
-    certificate_oidc_issuer: 'https://token.actions.githubusercontent.com'
     args:
       - sign-blob
       - '--output-certificate={{ .ArtifactPath }}.pem'
