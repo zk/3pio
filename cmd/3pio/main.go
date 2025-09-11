@@ -23,10 +23,11 @@ func main() {
 context-optimized console output and file-based records.
 
 Examples:
-  3pio npm test         # Run npm test script
-  3pio npx jest         # Run Jest directly
-  3pio npx vitest run   # Run Vitest
-  3pio pytest           # Run pytest
+  3pio npm test                    # Run npm test script
+  3pio npm test -- tests/unit      # Pass arguments to npm test
+  3pio npx jest                    # Run Jest directly
+  3pio npx vitest run              # Run Vitest
+  3pio pytest                      # Run pytest
 
 Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
 • test-run.md  - Main report with test summary and individual test results
