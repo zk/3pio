@@ -33,6 +33,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # Node.js is needed for adapters but no root package.json exists
+      
+      - name: Install test fixture dependencies
+        run: |
+          cd tests/fixtures/basic-jest && npm ci
+          cd ../basic-vitest && npm ci
 
       - name: Run Go tests
         run: go test -v ./...
