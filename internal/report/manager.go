@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -216,9 +217,30 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 				if event.Payload.Status != "RUNNING" {
 					m.writeTestResultToLog(filePath, event.Payload)
 				}
-			} else if event.Payload.Status != "RUNNING" {
-				// Test case was updated with final status, write the result
-				m.writeTestResultToLog(filePath, event.Payload)
+			} else {
+				// Update existing test case with new information
+				for j := range m.state.TestFiles[i].TestCases {
+					if m.state.TestFiles[i].TestCases[j].Name == event.Payload.TestName &&
+						(m.state.TestFiles[i].TestCases[j].Suite == event.Payload.SuiteName ||
+							m.state.TestFiles[i].TestCases[j].Suite == "" && event.Payload.SuiteName == "") {
+						// Update test case fields
+						if event.Payload.Status != "" {
+							m.state.TestFiles[i].TestCases[j].Status = event.Payload.Status
+						}
+						if event.Payload.Duration > 0 {
+							m.state.TestFiles[i].TestCases[j].Duration = event.Payload.Duration
+						}
+						if event.Payload.Error != "" {
+							m.state.TestFiles[i].TestCases[j].Error = event.Payload.Error
+						}
+						break
+					}
+				}
+				
+				if event.Payload.Status != "RUNNING" {
+					// Test case was updated with final status, write the result
+					m.writeTestResultToLog(filePath, event.Payload)
+				}
 			}
 			break
 		}
@@ -374,6 +396,9 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 		m.logger.Error("Failed to create log directory for %s: %v", filePath, err)
 	}
 
+	// Add to state first (so we have timestamps available)
+	now := time.Now()
+
 	// Open file handle
 	file, err := os.Create(logPath)
 	if err != nil {
@@ -384,21 +409,25 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 		m.stdoutBuffers[filePath] = make([]string, 0)
 		m.stderrBuffers[filePath] = make([]string, 0)
 
-		// Write header to the log file
-		header := fmt.Sprintf(`# File: %s
-# Timestamp: %s
-# This file contains all stdout/stderr output from the test file execution.
-# ---
+		// Write structured YAML header to the log file
+		filename := filepath.Base(filePath)
+		header := fmt.Sprintf(`---
+test_file: %s
+created: %s
+updated: %s
+status: RUNNING
+---
 
-`, filePath, time.Now().Format(time.RFC3339))
+# Test results for `+"`%s`"+`
+
+## Test case results
+
+`, filePath, now.UTC().Format("2006-01-02T15:04:05.000Z"), now.UTC().Format("2006-01-02T15:04:05.000Z"), filename)
 		if _, err := file.WriteString(header); err != nil {
 			m.logger.Error("Failed to write header to log file %s: %v", filePath, err)
 		}
 		_ = file.Sync()
 	}
-
-	// Add to state
-	now := time.Now()
 	m.state.TestFiles = append(m.state.TestFiles, ipc.TestFile{
 		Status:    ipc.TestStatusPending,
 		File:      filePath,
@@ -624,8 +653,11 @@ func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
 			icon := getTestCaseIcon(tc.Status)
 			sb.WriteString(fmt.Sprintf("%s %s", icon, tc.Name))
 
-			if tc.Duration > 0 {
-				sb.WriteString(fmt.Sprintf(" (%.0fms)", tc.Duration))
+			// Always show duration, even if 0ms
+			// Round to nearest millisecond for display
+			if tc.Duration >= 0 {
+				roundedDuration := math.Round(tc.Duration)
+				sb.WriteString(fmt.Sprintf(" (%.0fms)", roundedDuration))
 			}
 			sb.WriteString("\n")
 

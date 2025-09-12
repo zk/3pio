@@ -341,17 +341,23 @@ var ThreePioVitestReporter = class {
   }
   
   onTestCaseResult(testCase) {
+    const result = testCase?.result?.();
+    const diagnostic = testCase?.diagnostic?.();
+    const filePath = testCase?.module?.moduleId || testCase?.filepath;
+    
     this.logger.info("[V3] onTestCaseResult called", { 
       name: testCase?.name,
       fullName: testCase?.fullName,
-      result: testCase?.result?.(),
-      state: testCase?.result?.()?.state,
-      filepath: testCase?.filepath 
+      result: result,
+      state: result?.state,
+      filepath: testCase?.filepath,
+      moduleId: testCase?.module?.moduleId,
+      diagnostic: diagnostic,
+      duration: diagnostic?.duration
     });
     
-    // Send IPC event for test case result
-    const result = testCase?.result?.();
-    if (result && testCase?.filepath) {
+    // Send IPC event for test case result with duration from diagnostic
+    if (result && filePath) {
       const status = result.state === 'passed' ? 'PASS' : 
                      result.state === 'failed' ? 'FAIL' : 
                      result.state === 'skipped' ? 'SKIP' : 'UNKNOWN';
@@ -359,11 +365,11 @@ var ThreePioVitestReporter = class {
       IPCSender.sendEvent({
         eventType: "testCase",
         payload: {
-          filePath: testCase.filepath,
+          filePath: filePath,
           testName: testCase.name,
           suiteName: testCase.suite?.name,
           status,
-          duration: result.duration,
+          duration: diagnostic?.duration,  // Get duration from diagnostic()
           error: result.errors?.map(e => e.message || String(e)).join('\n')
         }
       }).catch((error) => {
@@ -382,10 +388,26 @@ var ThreePioVitestReporter = class {
   }
   
   onTestModuleEnd(testModule) {
-    this.logger.info("[V3] onTestModuleEnd called", { 
+    // Log ALL data in testModule to see what's available
+    this.logger.info("[V3] onTestModuleEnd - Full module data", {
+      hasModule: !!testModule,
+      moduleKeys: testModule ? Object.keys(testModule) : [],
       moduleId: testModule?.moduleId,
       filepath: testModule?.filepath,
-      name: testModule?.name 
+      name: testModule?.name,
+      hasChildren: !!testModule?.children,
+      childrenType: typeof testModule?.children,
+      childrenIsArray: Array.isArray(testModule?.children),
+      childrenKeys: testModule?.children && typeof testModule?.children === 'object' ? Object.keys(testModule?.children).slice(0, 10) : [],
+      hasTests: !!testModule?.tests,
+      testsLength: testModule?.tests?.length,
+      hasTasks: !!testModule?.tasks,
+      tasksLength: testModule?.tasks?.length,
+      // Check task field
+      hasTask: !!testModule?.task,
+      taskKeys: testModule?.task ? Object.keys(testModule.task).slice(0, 20) : [],
+      taskHasTasks: !!testModule?.task?.tasks,
+      taskTasksLength: testModule?.task?.tasks?.length
     });
     
     // Send testFileResult event when module completes
@@ -395,16 +417,39 @@ var ThreePioVitestReporter = class {
       let status = "PASS";
       const failedTests = [];
       
-      // Check if module has test results and send individual test case events
-      if (testModule.children) {
-        this.sendTestCasesFromModule(filePath, testModule.children);
+      // Try to get test data from various possible locations
+      // testModule.children is a Set<Task> according to Vitest API, but sometimes it's an empty object
+      let testData = null;
+      if (testModule.children && testModule.children instanceof Set && testModule.children.size > 0) {
+        testData = Array.from(testModule.children);
+      } else if (testModule.task?.tasks && testModule.task.tasks.length > 0) {
+        testData = testModule.task.tasks;
+      } else if (testModule.tasks && testModule.tasks.length > 0) {
+        testData = testModule.tasks;
+      }
+      
+      if (testData && Array.isArray(testData)) {
+        this.logger.debug("Found test data array", { length: testData.length });
+        // Debug: Log first child to see what data is available
+        if (testData.length > 0) {
+          const firstChild = testData[0];
+          this.logger.debug("First child in module", {
+            type: firstChild.type,
+            name: firstChild.name,
+            hasResult: !!firstChild.result,
+            resultKeys: firstChild.result ? Object.keys(firstChild.result) : [],
+            resultState: firstChild.result?.state,
+            resultDuration: firstChild.result?.duration
+          });
+        }
+        this.sendTestCasesFromModule(filePath, testData);
         
-        for (const child of testModule.children) {
+        for (const child of testData) {
           if (child.type === 'test' && child.result?.state === 'failed') {
             status = "FAIL";
             failedTests.push({
               name: child.name,
-              duration: child.result?.duration || 0
+              duration: child.result?.duration
             });
           }
         }
@@ -438,7 +483,7 @@ var ThreePioVitestReporter = class {
             testName: child.name,
             suiteName: suiteName,
             status: testStatus,
-            duration: child.result?.duration || 0,
+            duration: child.result?.duration,
             error: child.result?.errors?.[0]?.message || null
           }
         };
@@ -581,6 +626,17 @@ var ThreePioVitestReporter = class {
         const error = test.result?.errors?.map(
           (e) => typeof e === "string" ? e : e.message || String(e)
         ).join("\n\n");
+        
+        // Debug: Log the full test result object
+        this.logger.debug("Test result details", {
+          name: test.name,
+          hasResult: !!test.result,
+          resultKeys: test.result ? Object.keys(test.result) : [],
+          duration: test.result?.duration,
+          state: test.result?.state,
+          fullResult: JSON.stringify(test.result)
+        });
+        
         this.logger.testFlow("Sending test case event", test.name, {
           suite: suiteName,
           status,
@@ -647,7 +703,7 @@ var ThreePioVitestReporter = class {
               if (task.type === "test" && task.result?.state === "fail") {
                 failedTests.push({
                   name: task.name,
-                  duration: task.result?.duration || 0
+                  duration: task.result?.duration
                 });
               }
               // Recursively check nested tasks (suites)

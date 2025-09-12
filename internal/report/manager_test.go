@@ -104,18 +104,27 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 		}
 
 		contentStr := string(content)
-		// Check for header components
-		if !strings.Contains(contentStr, "# File: "+file) {
-			t.Errorf("Log file %s missing file header", logPath)
+		// Check for YAML frontmatter structure
+		if !strings.Contains(contentStr, "---") {
+			t.Errorf("Log file %s missing YAML frontmatter start", logPath)
 		}
-		if !strings.Contains(contentStr, "# Timestamp:") {
-			t.Errorf("Log file %s missing timestamp header", logPath)
+		if !strings.Contains(contentStr, "test_file: "+file) {
+			t.Errorf("Log file %s missing test_file field", logPath)
 		}
-		if !strings.Contains(contentStr, "# This file contains all stdout/stderr output from the test file execution.") {
-			t.Errorf("Log file %s missing description header", logPath)
+		if !strings.Contains(contentStr, "created:") {
+			t.Errorf("Log file %s missing created timestamp", logPath)
 		}
-		if !strings.Contains(contentStr, "# ---") {
-			t.Errorf("Log file %s missing separator", logPath)
+		if !strings.Contains(contentStr, "updated:") {
+			t.Errorf("Log file %s missing updated timestamp", logPath)
+		}
+		if !strings.Contains(contentStr, "status: RUNNING") {
+			t.Errorf("Log file %s missing status field", logPath)
+		}
+		if !strings.Contains(contentStr, "# Test results for") {
+			t.Errorf("Log file %s missing test results header", logPath)
+		}
+		if !strings.Contains(contentStr, "## Test case results") {
+			t.Errorf("Log file %s missing test case results section", logPath)
 		}
 	}
 }
