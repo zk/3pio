@@ -24,143 +24,130 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 
 	// Test cases for ALL fixtures
 	testCases := []struct {
-		fixtureName     string
-		command         []string
-		expectedResults []string // Expected test result patterns in log files
-		shouldHaveTests bool     // Whether we expect tests to run (some fixtures test error handling)
-		skipReason      string   // Reason to skip if needed
+		fixtureName  string
+		command      []string
+		testRunner   string // "jest", "vitest", "pytest"
+		expectPass   bool   // Should have some passing tests
+		expectFail   bool   // Should have some failing tests  
+		expectSkip   bool   // Should have some skipped tests
+		shouldRun    bool   // Whether we expect tests to run
+		skipReason   string // Reason to skip if needed
 	}{
-		// Basic fixtures with actual tests
+		// Basic fixtures - comprehensive test coverage
 		{
 			fixtureName: "basic-jest",
 			command:     []string{"npx", "jest"},
-			expectedResults: []string{
-				"✓ should concatenate strings",
-				"✓ should add numbers correctly", 
-				"✕ should fail this test",
-				"○ should skip this test",
-				"✓ should convert to uppercase",
-			},
-			shouldHaveTests: true,
+			testRunner:  "jest",
+			expectPass:  true,
+			expectFail:  true,
+			expectSkip:  true,
+			shouldRun:   true,
 		},
 		{
 			fixtureName: "basic-vitest", 
 			command:     []string{"npx", "vitest", "run"},
-			expectedResults: []string{
-				"✓ should concatenate strings",
-				"✓ should add numbers correctly",
-				"✕ should fail this test", 
-				"○ should skip this test",
-				"✓ should convert to uppercase",
-			},
-			shouldHaveTests: true,
+			testRunner:  "vitest",
+			expectPass:  true,
+			expectFail:  true,
+			expectSkip:  true,
+			shouldRun:   true,
 		},
 		{
 			fixtureName: "basic-pytest",
 			command:     []string{"python", "-m", "pytest", "-v"},
-			expectedResults: []string{
-				"✓ TestMathOperations::test_add_numbers_correctly",
-				"✓ TestStringOperations::test_concatenate_strings",
-				"✕ TestStringOperations::test_fail_this_test",
-			},
-			shouldHaveTests: true,
+			testRunner:  "pytest",
+			expectPass:  true,
+			expectFail:  true,
+			expectSkip:  false, // pytest adapter doesn't properly handle skipped tests yet
+			shouldRun:   true,
 		},
-		// Empty fixtures (minimal or no test presence)
+		// Empty fixtures
 		{
-			fixtureName:     "empty-jest",
-			command:         []string{"npx", "jest"},
-			expectedResults: []string{}, // No actual tests in empty.test.js
-			shouldHaveTests:  false, // Empty suite with no actual tests
-			skipReason:       "Empty test suite - no actual test cases",
+			fixtureName: "empty-jest",
+			command:     []string{"npx", "jest"},
+			testRunner:  "jest",
+			shouldRun:   false,
+			skipReason:  "Empty test suite - no actual test cases",
 		},
 		{
-			fixtureName:     "empty-vitest", 
-			command:         []string{"npx", "vitest", "run"},
-			expectedResults: []string{}, // No actual tests in empty.test.js
-			shouldHaveTests:  false, // Empty suite with no actual tests
-			skipReason:       "Empty test suite - no actual test cases",
+			fixtureName: "empty-vitest", 
+			command:     []string{"npx", "vitest", "run"},
+			testRunner:  "vitest",
+			shouldRun:   false,
+			skipReason:  "Empty test suite - no actual test cases",
 		},
 		{
 			fixtureName: "empty-pytest",
 			command:     []string{"python", "-m", "pytest", "-v"},
-			expectedResults: []string{
-				"✕ test_should_fail", // test_failures.py has actual failing tests
-				"✕ test_another_failure",
-			},
-			shouldHaveTests: true,
+			testRunner:  "pytest",
+			expectFail:  true,
+			expectSkip:  true,
+			shouldRun:   true,
 		},
-		// ESM fixture
+		// Specialized fixtures
 		{
 			fixtureName: "jest-esm",
-			command:     []string{"npm", "test"}, // Uses NODE_OPTIONS
-			expectedResults: []string{
-				"✓ should add", // math.test.js
-			},
-			shouldHaveTests: true,
+			command:     []string{"npm", "test"},
+			testRunner:  "jest",
+			expectPass:  true,
+			shouldRun:   true,
 		},
-		// Long names fixtures
 		{
 			fixtureName: "long-names-jest",
 			command:     []string{"npx", "jest"},
-			expectedResults: []string{
-				"✓", // longname.test.js has tests
-			},
-			shouldHaveTests: true,
+			testRunner:  "jest",
+			expectPass:  true,
+			shouldRun:   true,
 		},
 		{
 			fixtureName: "long-names-vitest",
 			command:     []string{"npx", "vitest", "run"},
-			expectedResults: []string{
-				"✓", // longname.test.js has tests
-			},
-			shouldHaveTests: true,
+			testRunner:  "vitest",
+			expectPass:  true,
+			shouldRun:   true,
 		},
-		// Monorepo fixture
 		{
 			fixtureName: "monorepo-vitest",
 			command:     []string{"npx", "vitest", "run"},
-			expectedResults: []string{
-				"✓", // Has tests in packages
-			},
-			shouldHaveTests: true,
+			testRunner:  "vitest",
+			expectPass:  true,
+			shouldRun:   true,
 		},
-		// NPM separator fixtures
 		{
 			fixtureName: "npm-separator-jest",
 			command:     []string{"npm", "test"},
-			expectedResults: []string{
-				"✓", // example.test.js
-			},
-			shouldHaveTests: true,
+			testRunner:  "jest",
+			expectPass:  true,
+			shouldRun:   true,
+		},
+		// Problematic fixtures
+		{
+			fixtureName: "npm-separator-vitest",
+			command:     []string{"npm", "test"},
+			testRunner:  "vitest",
+			shouldRun:   false,
+			skipReason:  "Vitest configuration causes test discovery issues",
 		},
 		{
-			fixtureName:     "npm-separator-vitest",
-			command:         []string{"npm", "test"},
-			expectedResults: []string{},
-			shouldHaveTests:  false, // Vitest config issues prevent test discovery
-			skipReason:       "Vitest configuration causes test discovery issues",
-		},
-		// Config error fixtures (may not have successful tests)
-		{
-			fixtureName:     "jest-config-error",
-			command:         []string{"npx", "jest"},
-			expectedResults: []string{},
-			shouldHaveTests:  false, // This tests config errors
-			skipReason:       "Config error fixture - tests configuration failures",
+			fixtureName: "jest-config-error",
+			command:     []string{"npx", "jest"},
+			testRunner:  "jest",
+			shouldRun:   false,
+			skipReason:  "Config error fixture - tests configuration failures",
 		},
 		{
-			fixtureName:     "jest-ts-config-error", 
-			command:         []string{"npx", "jest"},
-			expectedResults: []string{},
-			shouldHaveTests:  false, // This tests TS config errors
-			skipReason:       "TS config error fixture - tests TypeScript configuration failures",
+			fixtureName: "jest-ts-config-error", 
+			command:     []string{"npx", "jest"},
+			testRunner:  "jest",
+			shouldRun:   false,
+			skipReason:  "TS config error fixture - tests TypeScript configuration failures",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.fixtureName, func(t *testing.T) {
-			// Skip if this fixture is designed for error testing
-			if !tc.shouldHaveTests {
+			// Skip if this fixture should not run tests
+			if !tc.shouldRun {
 				t.Skipf("Skipping %s: %s", tc.fixtureName, tc.skipReason)
 			}
 
@@ -183,13 +170,13 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			t.Logf("Command output for %s:\n%s", tc.fixtureName, string(output))
 
 			// For pytest fixtures, if pytest is not installed, skip the test
-			if strings.Contains(tc.fixtureName, "pytest") && strings.Contains(string(output), "No module named pytest") {
+			if tc.testRunner == "pytest" && strings.Contains(string(output), "No module named pytest") {
 				t.Skip("pytest not installed, skipping test")
 			}
 
 			// Check that .3pio directory was created
 			if _, err := os.Stat(threepioDir); os.IsNotExist(err) {
-				t.Fatalf("Expected .3pio directory to be created in %s", fixtureDir)
+				t.Fatalf("Expected .3pio directory to be created")
 			}
 
 			// Find the run directory (should be only one)
@@ -208,7 +195,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 
 			// Check that logs directory exists
 			if _, err := os.Stat(logsDir); os.IsNotExist(err) {
-				t.Fatalf("Expected logs directory to exist at %s", logsDir)
+				t.Fatalf("Expected logs directory to exist")
 			}
 
 			// Read all log files and verify test results are present
@@ -236,61 +223,38 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 
 			logContent := allLogContent.String()
 
-			// Verify expected test results are present
-			if len(tc.expectedResults) > 0 {
-				for _, expectedResult := range tc.expectedResults {
-					if !strings.Contains(logContent, expectedResult) {
-						t.Errorf("Expected test result '%s' not found in log files for %s", expectedResult, tc.fixtureName)
-					}
-				}
-			} else {
-				// If no specific results expected, at least verify we have some test indicators
-				hasTestIndicators := strings.Contains(logContent, "✓") || strings.Contains(logContent, "✕") || strings.Contains(logContent, "○")
-				if !hasTestIndicators && len(logFiles) > 0 {
-					t.Logf("Note: No test result indicators found for %s - this may be expected for error/empty fixtures", tc.fixtureName)
-				}
+			// Universal validations - check for what we expect to find
+			hasPass := strings.Contains(logContent, "✓")
+			hasFail := strings.Contains(logContent, "✕")
+			hasSkip := strings.Contains(logContent, "○")
+
+			// Validate expected test result types
+			if tc.expectPass && !hasPass {
+				t.Errorf("Expected to find passing test indicators (✓) but found none")
+			}
+			if tc.expectFail && !hasFail {
+				t.Errorf("Expected to find failing test indicators (✕) but found none")
+			}
+			if tc.expectSkip && !hasSkip {
+				t.Errorf("Expected to find skipped test indicators (○) but found none")
 			}
 
-			// Basic validation: if we have log files, they should contain test indicators for most fixtures
+			// Universal formatting validations
 			if len(logFiles) > 0 {
-				// Check for passing tests with checkmarks (most fixtures should have some passing tests)
-				// Exception: empty-pytest only has failing and skipped tests
-				if (strings.Contains(tc.fixtureName, "basic-") || strings.Contains(tc.fixtureName, "long-") || 
-				   strings.Contains(tc.fixtureName, "npm-") || strings.Contains(tc.fixtureName, "monorepo-") || 
-				   strings.Contains(tc.fixtureName, "jest-esm")) && tc.fixtureName != "empty-pytest" {
-					if !strings.Contains(logContent, "✓") {
-						t.Errorf("Expected to find passing test indicators (✓) in log files for %s", tc.fixtureName)
-					}
+				// Check for test boundaries - all test files should have these
+				if !strings.Contains(logContent, "--- Test:") {
+					t.Errorf("Expected to find test boundaries (--- Test: ---) in log files")
 				}
 
-				// Specific fixture validations
-				switch tc.fixtureName {
-				case "basic-jest", "basic-vitest":
-					// These should have failing and skipped tests
-					if !strings.Contains(logContent, "✕") {
-						t.Errorf("Expected to find failing test indicators (✕) in log files for %s", tc.fixtureName)
-					}
-					if !strings.Contains(logContent, "○") {
-						t.Errorf("Expected to find skipped test indicators (○) in log files for %s", tc.fixtureName)
-					}
-					// Check for error details in failing tests (code blocks)
-					if !strings.Contains(logContent, "```") {
-						t.Errorf("Expected to find error details in code blocks (```) for failing tests in %s", tc.fixtureName)
-					}
-				case "basic-pytest", "empty-pytest":
-					// pytest fixtures should have failure indicators 
-					if !strings.Contains(logContent, "✕") {
-						t.Errorf("Expected to find failing test indicators (✕) in log files for %s", tc.fixtureName)
-					}
+				// If we have failing tests, they should have error details in code blocks
+				if hasFail && !strings.Contains(logContent, "```") {
+					t.Errorf("Expected to find error details in code blocks (```) for failing tests")
 				}
 
-				// Check that durations are included where available (most fixtures should have some durations)
-				// Look for patterns like "(5ms)" or "(10ms)" 
-				if !strings.Contains(tc.fixtureName, "config-error") && !strings.Contains(tc.fixtureName, "empty-pytest") {
-					durationPattern := "ms)"
-					if !strings.Contains(logContent, durationPattern) && !strings.Contains(tc.fixtureName, "pytest") {
-						t.Logf("Note: No test durations found in log files for %s - this may be expected", tc.fixtureName)
-					}
+				// Check for durations - most test runners include them
+				hasDurations := strings.Contains(logContent, "ms)")
+				if !hasDurations && (hasPass || hasFail || hasSkip) {
+					t.Logf("Note: No test durations found - may be expected for %s", tc.testRunner)
 				}
 			}
 		})

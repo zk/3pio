@@ -84,10 +84,10 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 	// Check if this is a package manager command that needs -- separator
 	if len(args) > 0 {
 		cmd := args[0]
-		isPackageManagerCommand = strings.Contains(cmd, "npm") ||
-			strings.Contains(cmd, "yarn") ||
-			strings.Contains(cmd, "pnpm") ||
-			strings.Contains(cmd, "bun")
+		isPackageManagerCommand = (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "pnpm" || strings.HasPrefix(cmd, "pnpm ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun "))
 	}
 
 	// Special handling for package manager commands that directly call jest
@@ -276,11 +276,11 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 	// Check if this is a package manager command
 	if len(args) > 0 {
 		cmd := args[0]
-		isPackageManagerCommand = strings.Contains(cmd, "npm") ||
-			strings.Contains(cmd, "yarn") ||
-			strings.Contains(cmd, "pnpm") ||
-			strings.Contains(cmd, "bun") ||
-			strings.Contains(cmd, "deno")
+		isPackageManagerCommand = (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "pnpm" || strings.HasPrefix(cmd, "pnpm ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun ")) ||
+			(cmd == "deno" || strings.HasPrefix(cmd, "deno "))
 	}
 
 	// Check for vitest executable in the command (not in config file names)
@@ -323,9 +323,30 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 		// Commands like: npm test, yarn test, pnpm test, bun test, deno task test
 		result := make([]string, 0, len(args)+6)
 		
-		// For pnpm, npm, yarn: they can pass --reporter flags directly without --
-		// These package managers understand flag-like arguments and pass them through
+		// Different package managers handle flags differently:
+		// - pnpm: passes unknown flags directly to the script (no -- needed)
+		// - npm/yarn/bun/deno: need -- separator to pass flags to the script
+		cmd := args[0]
+		needsSeparator := (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun ")) ||
+			(cmd == "deno" || strings.HasPrefix(cmd, "deno "))
+		
+		// Check if -- separator already exists
+		hasSeparator := false
+		for _, arg := range args {
+			if arg == "--" {
+				hasSeparator = true
+				break
+			}
+		}
+		
 		result = append(result, args...)
+		
+		if needsSeparator && !hasSeparator {
+			result = append(result, "--")
+		}
+		
 		result = append(result, "--reporter", adapterPath, "--reporter", "default")
 		
 		return result
