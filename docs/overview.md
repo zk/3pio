@@ -1,6 +1,6 @@
 # 3pio Documentation Overview
 
-3pio is a context-friendly test runner for frameworks like Jest and Vitest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+3pio is a context-friendly test runner for frameworks like Jest, Vitest, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
 
 ## Key Features
 
@@ -11,14 +11,24 @@
 
 ## Quick Start
 
+### Installation
+
 ```bash
-# Install globally
+# Install via npm (JavaScript projects)
 npm install -g @heyzk/3pio
 
+# Install via pip (Python projects)
+pip install threepio_test_runner
+```
+
+### Usage
+
+```bash
 # Run with your existing test commands
 3pio npm test
 3pio npx jest
 3pio npx vitest run
+3pio pytest
 
 # Find your reports in .3pio/runs/
 cat .3pio/runs/*/test-run.md
@@ -45,12 +55,13 @@ Data flows from test runners → adapters → IPC files → CLI → reports.
 - **[CLI Orchestrator](./architecture/cli-orchestrator.md)** - Main entry point, argument parsing, test runner detection
 - **[Report Manager](./architecture/report-manager.md)** - File I/O, debounced writes, dynamic test discovery
 - **[IPC Manager](./architecture/ipc-manager.md)** - File-based event communication between processes
-- **[Test Runner Adapters](./architecture/test-runner-adapter.md)** - Jest and Vitest reporter implementations
+- **[Test Runner Adapters](./architecture/test-runner-adapter.md)** - Jest, Vitest, and pytest reporter implementations
 - **[Test Runner Abstraction](./architecture/test-runner-abstraction.md)** - Runner detection and command building
 
 ### Implementation Details (`implementation-details/`)
 
 - **[Jest Console Handling](./implementation-details/jest-console-handling.md)** - Special considerations for Jest output capture
+- **[pytest Plugin API](./implementation-details/pytest-plugin-api.md)** - pytest adapter implementation details
 
 ### Operations & Troubleshooting
 

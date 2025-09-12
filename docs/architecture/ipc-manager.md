@@ -2,146 +2,265 @@
 
 ## 1. Core Purpose
 
-The IPC (Inter-Process Communication) Manager provides a reliable file-based event communication channel between Test Runner Adapters (running inside test processes) and the CLI Orchestrator (main process). It uses JSONL (JSON Lines) format for structured event transmission.
+The IPC Manager provides file-based inter-process communication between 3pio's orchestrator and test runner adapters. Implemented in Go, it uses a JSON Lines format for structured event passing, with file watching capabilities for real-time event processing. This design ensures reliable, debuggable communication across different test runner processes.
 
-## 2. Architecture
+## 2. Key Features
 
-### Class Design
-- **IPCManager class**: Instance methods for CLI-side operations
-- **Static methods**: For adapter-side event sending
-- **File-based communication**: Uses `.3pio/ipc/[runId].jsonl` files
+### File-Based Communication
+- Simple, reliable mechanism that works everywhere
+- Easy to debug and inspect (just text files)
+- No network dependencies or permissions issues
+- Atomic writes prevent partial message corruption
 
-### Communication Flow
-1. Adapters write events to IPC file using static methods
-2. CLI watches file for changes using instance methods
-3. Events processed sequentially to maintain order
-4. File acts as persistent audit log of all events
+### JSON Lines Format
+- One JSON object per line
+- Human-readable and machine-parseable
+- Streaming-friendly for real-time processing
+- Standard format with wide tooling support
 
-## 3. Public API
+### Real-Time Event Processing
+- File watching using fsnotify library
+- Immediate event detection and processing
+- Non-blocking channel-based communication
+- Graceful handling of rapid event sequences
 
-### For Adapters (Static Methods)
-- **sendEvent**: Writes events to IPC file specified in THREEPIO_IPC_PATH environment variable
-- **Synchronous writes**: Uses fs.appendFileSync for reliability in test runner context
-- **Error resilience**: Catches errors to prevent test runner crashes
+## 3. Implementation Details
 
-### For CLI (Instance Methods)
-- **watchEvents**: Monitors IPC file for new events using chokidar
-- **Event callback**: Invokes callback for each parsed event
-- **Position tracking**: Maintains read position to process only new events
-- **cleanup**: Stops file watching and releases resources
+### Structure
 
-### Directory Management
-- **ensureIPCDirectory**: Creates `.3pio/ipc/` directory structure
-- **Returns absolute path**: For IPC file creation
+The IPC Manager maintains:
 
-## 4. Event Schema
+- **IPC Path**: Path to the JSON Lines communication file
+- **File Watcher**: fsnotify watcher for file changes
+- **File Handle**: Open file for reading events
+- **Events Channel**: Channel for sending parsed events
+- **Error Channel**: Channel for error reporting
+- **Done Channel**: Signal for shutdown coordination
+- **Logger**: Debug logging interface
+- **Last Position**: Track read position in file
+- **Mutex**: Synchronization for thread safety
 
-All events follow a consistent structure with eventType and payload:
+### Event Types
 
-### Test Execution Events
-- **testCase**: Individual test case results with suite, status, duration, and errors
-- **testFileStart**: Signals beginning of test file execution
-- **testFileResult**: Final status for a test file (PASS/FAIL/SKIP)
+**Base Event Structure:**
+- EventType: String identifying the event type
+- Payload: JSON payload with event-specific data
 
-### Output Capture Events
-- **stdoutChunk**: Console output from stdout with associated file path
-- **stderrChunk**: Console output from stderr with associated file path
+**Specific Event Types:**
 
-### Event Format
-JSONL format (one JSON object per line):
-- Each event on separate line
-- Newline character as delimiter
-- Enables streaming and partial reads
+- **TestFileStartEvent**: Signals test file execution beginning
+  - FilePath: Path to the test file
 
-## 5. Implementation Details
+- **TestCaseEvent**: Individual test case result
+  - FilePath: Test file path
+  - TestName: Name of the test
+  - SuiteName: Optional suite grouping
+  - Status: PASS, FAIL, or SKIP
+  - Duration: Optional execution time
+  - Error: Optional error message
 
-### File Watching Strategy
-- Uses chokidar for cross-platform file monitoring
-- Configurable polling and stability thresholds
-- Handles rapid file changes efficiently
+- **TestFileResultEvent**: Test file completion
+  - FilePath: Test file path
+  - Status: Overall file status
 
-### Read Position Management
-- Tracks last read line number
-- Processes only new lines on file change
-- Prevents duplicate event processing
+- **StdoutChunkEvent**: Console output chunk
+  - FilePath: Associated test file
+  - Chunk: Output content
 
-### Error Handling
-- Malformed JSON lines logged but don't stop processing
-- File permission errors handled gracefully
-- Partial writes detected and logged
+- **StderrChunkEvent**: Error output chunk
+  - FilePath: Associated test file
+  - Chunk: Error content
 
-## 6. Performance Considerations
+## 4. Public API
 
-### Write Performance
-- Synchronous writes in adapters for reliability
-- Minimal overhead to avoid affecting test execution
-- No buffering to ensure real-time event delivery
+### NewManager
 
-### Read Performance
-- Efficient file watching without polling when possible
-- Batch processing of multiple events
-- Minimal memory footprint with streaming reads
+Creates a new IPC Manager:
+- Creates IPC directory structure
+- Initializes IPC file for writing
+- Sets up fsnotify watcher
+- Creates event and error channels
 
-## 7. Logging Integration
+### WatchEvents
 
-### Debug Logging
-- Event transmission logged when THREEPIO_DEBUG=1
-- File operations tracked for troubleshooting
-- Error conditions logged with context
+Starts event monitoring:
+- Launches file watching goroutine
+- Monitors for file changes
+- Reads new lines as they're written
+- Parses and sends events to channel
 
-### Event Flow Tracking
-- Incoming events logged with type
-- Processing errors captured with details
-- Lifecycle events (start, stop) recorded
+### Cleanup
 
-## 8. Failure Modes
+Shuts down the IPC system:
+- Stops file watching
+- Closes channels
+- Releases file handles
+- Ensures graceful shutdown
 
-### File System Issues
-- **Permission denied**: Cannot create or write to IPC file
-- **Disk full**: Write operations fail
-- **File deleted**: IPC file removed during execution
+### Static Helper Functions
 
-### Data Integrity Issues
-- **Malformed JSON**: Invalid event data
-- **Partial writes**: Incomplete event at file end
-- **Encoding issues**: Non-UTF8 characters
+For adapter usage (writing events):
 
-### Process Issues
-- **Adapter crash**: Events stop arriving
-- **CLI crash**: Events not processed
-- **Race conditions**: Multiple writers (prevented by design)
+**SendEvent**: Writes an event to the IPC file
+- Reads THREEPIO_IPC_PATH from environment
+- Serializes event to JSON
+- Appends to IPC file with newline
+- Thread-safe with file locking
 
-## 9. Testing Strategy
+## 5. Communication Protocol
 
-### Unit Tests
-- Event serialization and deserialization
-- File watching with mock file changes
-- Read position tracking accuracy
-- Error handling for malformed data
+### IPC File Format
+
+JSON Lines format with one event per line:
+- testFileStart: Test file beginning execution
+- testCase: Individual test result with status and duration
+- stdoutChunk: Console output from test
+- testFileResult: Test file completion status
+
+Each line is a complete JSON object that can be parsed independently.
+
+### Event Flow
+
+1. **Adapter writes event** → IPC file
+2. **File system notifies** → fsnotify watcher
+3. **Manager reads new lines** → From last position
+4. **Parse JSON** → Validate structure
+5. **Determine event type** → Based on eventType field
+6. **Unmarshal payload** → Into specific event struct
+7. **Send to channel** → For orchestrator processing
+
+## 6. File Watching Implementation
+
+### Reading Strategy
+
+The manager reads new events efficiently:
+1. Seek to last read position in file
+2. Scan for new lines using buffered reader
+3. Parse each line as JSON event
+4. Send parsed event to channel
+5. Update position for next read
+
+### File Watching Loop
+
+The watch loop handles:
+- **Write events**: Trigger reading of new content
+- **Error events**: Forward to error channel
+- **Done signal**: Exit gracefully
+
+This approach ensures only new content is processed, avoiding re-reading the entire file.
+
+## 7. Error Handling
+
+### File System Errors
+- Directory creation failure → Return error to caller
+- File permission issues → Log error and exit
+- Watcher creation failure → Fallback to polling
+
+### Parsing Errors
+- Invalid JSON → Log warning, skip line
+- Unknown event type → Create UnknownEvent
+- Malformed payload → Use partial data
+
+### Communication Errors
+- Channel blocked → Drop events with warning
+- File locked → Retry with backoff
+- Watcher stopped → Attempt restart
+
+## 8. Performance Considerations
+
+### Efficient File Reading
+- Track last read position
+- Only read new content
+- Use buffered scanner
+- Minimize file seeks
+
+### Channel Management
+- Buffered event channel (size 1000)
+- Non-blocking sends where possible
+- Graceful handling of slow consumers
+
+### Memory Usage
+- Stream processing (no full file load)
+- Bounded channel buffers
+- Efficient JSON parsing
+
+## 9. Thread Safety
+
+### Concurrent Access
+- Mutex protection for file position
+- Thread-safe channel operations
+- Atomic file writes from adapters
+
+### Multiple Writers
+- File system handles concurrent appends
+- Each adapter process writes independently
+- No coordination required between writers
+
+## 10. Testing Strategy
+
+### Unit Tests (`manager_test.go`)
+- Event parsing and validation
+- File watching simulation
+- Channel communication
+- Error handling scenarios
 
 ### Integration Tests
-- Multi-process communication scenarios
-- High-volume event streams
-- Concurrent reads and writes
-- File system error simulation
+- Multi-process writing
+- Large event volumes
+- Rapid event sequences
+- File system edge cases
 
-### Performance Tests
-- Event throughput measurement
-- File size limits
-- Memory usage under load
-- Latency measurements
+### Test Utilities
 
-## 10. Security Considerations
+Provides helper functions for testing:
+- Create test manager with temporary directory
+- Generate test IPC path
+- Initialize with test logger
+- Return manager and path for test assertions
 
-- File permissions restricted to user
-- No sensitive data in IPC events
-- Temporary files cleaned up after use
-- Input validation on all events
+## 11. Debugging Support
 
-## 11. Future Enhancements
+### IPC File Inspection
+- Human-readable JSON format
+- Can tail -f during execution
+- Use jq for pretty printing
+- Timestamps in event data
 
-- Event compression for large payloads
-- Binary protocol for efficiency
-- Socket-based IPC option
+### Debug Logging
+- Event reception logging
+- Parse error details
+- File position tracking
+- Performance metrics
+
+### Common Issues
+- **Events not received**: Check THREEPIO_IPC_PATH
+- **Parsing errors**: Validate JSON format
+- **Missing events**: Check file permissions
+- **Delayed events**: Monitor file system latency
+
+## 12. Platform Considerations
+
+### File System Differences
+- Windows: Different path separators
+- Linux: inotify for file watching
+- macOS: FSEvents/kqueue support
+- All: Atomic append operations
+
+### Path Handling
+
+Uses platform-agnostic path construction:
+- Join path segments with proper separators
+- Create IPC directory under .3pio
+- Generate unique IPC file names with run ID
+- Handle different path conventions across OS
+
+## 13. Future Enhancements
+
+- WebSocket transport option
+- Binary protocol for performance
+- Event compression for large outputs
+- Bi-directional communication
 - Event replay capabilities
-- Real-time event streaming to external consumers
+- Real-time streaming to web UI
+- Message acknowledgments
+- Event filtering and routing

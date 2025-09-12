@@ -34,9 +34,8 @@ Future work includes packaging 3pio as a **statically linked binary** with zero 
 - Works on any machine out of the box
 
 **Distribution Channels:**
-- Direct download from GitHub releases
 - OS package managers: `brew install 3pio`, `apt install 3pio`, `choco install 3pio`
-- Language package managers remain as convenience options
+- Language package managers: npm and pip as primary distribution
 
 ## Implementation Approaches for Static Binary
 

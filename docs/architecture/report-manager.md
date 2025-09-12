@@ -2,184 +2,268 @@
 
 ## 1. Core Purpose
 
-The Report Manager encapsulates all file system logic for creating and updating persistent test reports. It manages test state at both file and individual test case levels, supporting dynamic test discovery and providing context-efficient output for AI agents.
+The Report Manager handles all file I/O operations for test reports in 3pio. Implemented in Go, it provides incremental writing capabilities, thread-safe state management, and generates both summary reports and individual test logs. The design prioritizes reliability, ensuring partial results are available even if the process is interrupted.
 
 ## 2. Key Features
 
-### Test Case Tracking
-- Individual test case results with suite organization
-- Status tracking: PASS, FAIL, SKIP, PENDING, RUNNING
-- Duration and error message capture
-- Hierarchical organization by suite
+### Incremental Writing
+- Individual log files created immediately upon test file registration
+- Output written as events arrive, not batched until completion
+- Partial results available if process interrupted (Ctrl+C)
+- All file handles properly managed and flushed
 
-### Dynamic Test Discovery
-- Optional test file list during initialization
-- Runtime registration of discovered test files
-- Seamless handling of both static and dynamic modes
-
-### Performance Optimization
+### Thread-Safe State Management
+- sync.RWMutex for concurrent access protection
+- In-memory state tracking for performance
 - Debounced writes to reduce I/O overhead
-- In-memory state management
-- Parallel output collection strategies
 
-### Output Management
-- Unified output.log for complete test run
-- Per-file output Maps for individual test logs
-- Test case boundary tracking
+### Comprehensive Reporting
+- Main test-run.md report with test case details
+- Individual log files per test file
+- Complete output.log with all stdout/stderr
+- Test case level tracking with suite organization
 
-## 3. Internal State
+## 3. Implementation Details
 
-### TestRunState
-Maintains the complete state of the test run in memory:
-- Timestamp and status tracking (RUNNING, COMPLETE, ERROR)
-- Test command arguments
-- File-level counters (total, completed, passed, failed, skipped)
-- Individual test file states with their test cases
-- Links to generated log files
+### Structure
 
-### TestCase Tracking
-Each test case maintains:
-- Test name and optional suite grouping
-- Status (PASS, FAIL, SKIP, PENDING, RUNNING)
-- Execution duration when available
-- Error messages and stack traces for failures
+The Report Manager maintains:
 
-### Output Collection Strategy
-Three-tier Map structure for organizing output:
-- File-level output collection for general console logs
-- Test-case-level output for specific test boundaries
-- Active test tracking to associate output with running tests
+- **Run Directory**: Path to the run-specific output directory
+- **Test Run State**: Complete in-memory state of the test run
+- **Output Parser**: Runner-specific output parsing logic
+- **Logger**: Interface for debug logging
+- **File Handles**: Map of open file handles for incremental writing
+- **File Buffers**: Map of output buffers per test file
+- **Debouncers**: Timers for debounced write operations
+- **Output File**: Handle to the main output.log file
+- **Synchronization**: Read/write mutex for thread safety
+- **Timing Configuration**: Debounce and max wait durations
+
+### TestRunState Structure
+
+The test run state tracks:
+
+- **Metadata**: Timestamp, status (RUNNING/COMPLETE/ERROR), last update time
+- **Command**: Test command arguments
+- **File Counters**: Total, completed, passed, failed, skipped
+- **Test Files**: Array of individual test file states
+
+Each test file contains:
+
+- **Path**: File path
+- **Status**: PENDING, RUNNING, PASS, FAIL, or SKIP
+- **Timing**: Start time and duration
+- **Test Cases**: Array of individual test results
+
+Each test case includes:
+
+- **Name**: Test name
+- **Suite**: Optional suite grouping
+- **Status**: Test result
+- **Duration**: Execution time
+- **Error**: Optional error message
 
 ## 4. Public API
 
-### Constructor
-Initializes the Report Manager with:
-- Unique run ID for directory naming
-- Test command for documentation
-- OutputParser instance for runner-specific parsing
-- Debounced write configuration for performance
+### NewManager
 
-### Initialization
-Creates the report infrastructure:
-- Establishes run directory structure
+Creates a new Report Manager instance:
+- Creates run directory structure
 - Opens output.log for streaming writes
-- Supports both static mode (with predefined test files) and dynamic mode (files discovered during execution)
-- Generates initial test-run.md report
+- Initializes file handle maps
+- Sets debounce timings
 
-### Event Handling
-Central method for processing IPC events from adapters:
-- **testCase events**: Track individual test results with suite, status, duration, and errors
-- **testFileStart events**: Mark files as currently running
-- **testFileResult events**: Update file completion status and aggregate counters
-- **stdout/stderr chunks**: Collect and organize output by file and test case
+### Initialize
 
-### Dynamic Registration
-Handles test files discovered during execution:
-- Automatically adds new files to tracking state
-- Maintains accurate file counts
-- Preserves all test case information
+Sets up the initial test run:
+- Creates initial test run state
+- Registers known test files (static discovery)
+- Writes initial test-run.md report
+- Supports empty file list for dynamic discovery
 
-### Finalization
-Completes the report generation:
+### HandleEvent
+
+Central event processing for IPC events:
+- **TestFileStartEvent**: Mark file as RUNNING
+- **TestCaseEvent**: Update test case status, duration, errors
+- **TestFileResultEvent**: Update file completion and counters
+- **StdoutChunkEvent**: Buffer output for file logs
+- **StderrChunkEvent**: Buffer error output for file logs
+
+### Finalize
+
+Completes report generation:
+- Flushes all pending writes
+- Writes individual test log files
+- Updates final status (COMPLETE/ERROR)
 - Closes all file handles
-- Writes individual test log files from collected output
-- Performs final state write with completion status
-- Ensures all data is persisted to disk
+- Ensures data persistence
 
-### Helper Methods
-Utility functions for:
-- Direct output log appending
-- Report path retrieval
-- Summary statistics generation
+## 5. File Management
 
-## 5. Report Generation
+### Directory Structure
 
-### Test Run Report (test-run.md)
-Primary report in Markdown format containing:
-- Header section with timestamp (including memorable Star Wars name), status, and executed command
-- Summary statistics for the entire test run
-- Per-file sections showing individual test cases organized by suite
-- Status indicators (✓ for pass, ✕ for fail, ○ for skip)
-- Test execution durations when available
+Each run creates:
+- **test-run.md**: Main report file
+- **output.log**: Complete stdout/stderr capture
+- **logs/**: Directory containing individual test file logs with sanitized names
+
+### File Handle Lifecycle
+
+1. **Creation**
+   - output.log opened in NewManager
+   - Individual logs created on first write
+
+2. **Writing**
+   - Incremental writes as events arrive
+   - Buffering for efficiency
+   - Debounced report updates
+
+3. **Cleanup**
+   - All handles closed in Finalize
+   - Buffers flushed before closing
+   - Temporary files cleaned up
+
+## 6. Event Processing
+
+### Dynamic Test File Registration
+
+Automatically registers newly discovered test files:
+- Adds files discovered during execution
+- Updates total file count
+- Creates TestFile entry in state
+- Thread-safe with mutex protection
+
+### Test Case Management
+
+Handles individual test case events:
+- Ensures test file is registered
+- Adds/updates test case in file's cases
+- Tracks suite organization
+- Updates file status based on results
+
+### Output Buffering
+
+Manages per-file output collection:
+- Maintains output buffers for each file
+- Appends chunks as they arrive
+- Flushes to disk during finalization
+- Memory-efficient for large outputs
+
+## 7. Report Generation
+
+### test-run.md Format
+
+The main report includes:
+
+**Header Section:**
+- Run ID with timestamp and memorable name
+- Overall status (COMPLETE/ERROR)
+- Test command executed
+- Total duration
+
+**Summary Section:**
+- Total file count
+- Passed/failed/skipped counts
+
+**Test Files Section:**
+- File path with status indicator
+- Execution duration
+- Test cases organized by suite
+- Pass/fail indicators (✓/✕/○)
+- Individual test durations
 - Error messages and stack traces for failures
-- Links to individual test log files
 
-### Individual Test Logs
-Separate log files for each test file:
-- Generated from output collected during test execution
-- Contains only output specific to that test file
-- Organized by test case boundaries when possible
-- Stored in the logs/ subdirectory with sanitized filenames
+### Individual Log Files
 
-## 6. Performance Considerations
+Each test file gets its own log with:
+- Header showing file path and timestamp
+- Console output from that file's tests
+- Test case boundaries when identifiable
+- Error stack traces
+
+## 8. Performance Optimizations
 
 ### Debounced Writes
-- Batches multiple state updates into single writes
-- Reduces I/O overhead during rapid test execution
-- Configurable delay and max wait times
+
+Configured with:
+- **Debounce time**: 100ms default
+- **Max wait time**: 500ms default
+
+Benefits:
+- Batches rapid state updates
+- Reduces file system operations
+- Configurable timing parameters
 
 ### Memory Management
-- Bounded Maps for output collection
-- Periodic cleanup of completed test data
-- Efficient string concatenation for large outputs
+- Bounded buffers with periodic flushes
+- Stream processing for large outputs
+- Efficient string concatenation
 
-### File Handle Management
-- Single output.log handle kept open during execution
-- Atomic writes for test-run.md updates
-- Proper cleanup in finalization
+### Concurrent Safety
+- Read/write mutex for state access
+- Goroutine-safe event handling
+- Lock-free reads where possible
 
-## 7. Error Handling
+## 9. Error Handling
 
 ### File System Errors
-- Permission issues: Log error and attempt alternate location
-- Disk full: Gracefully degrade to essential reports only
-- Path conflicts: Use unique identifiers to avoid collisions
+- Directory creation failures → Return error
+- Permission issues → Log and attempt recovery
+- Disk full → Degrade gracefully
 
 ### Event Processing Errors
-- Invalid event data: Log warning and continue
-- Missing file paths: Use dynamic registration
-- Malformed test cases: Skip with warning
+- Invalid event data → Log warning, continue
+- Missing file paths → Auto-register file
+- Malformed test cases → Skip with warning
 
-### Crash Recovery
-- Periodic state persistence via debounced writes
-- Graceful degradation if finalization fails
-- Partial reports better than no reports
+### Recovery Mechanisms
+- Partial writes preserved on crash
+- State persistence via incremental updates
+- Cleanup attempted even on error
 
-## 8. Integration with OutputParser
+## 10. Testing Strategy
 
-The ReportManager uses OutputParser for runner-specific logic:
-- Parse test boundaries from console output
-- Associate output chunks with test files
-- Extract error messages and stack traces
-- Handle runner-specific output formats
-
-## 9. Testing Strategy
-
-### Unit Tests
-- State management with various event sequences
-- Dynamic test file registration
-- Debounced write mechanism with mock timers
-- Test case hierarchical organization
-- Error handling scenarios
+### Unit Tests (`manager_test.go`)
+- Event handling sequences
+- Dynamic file registration
+- State management consistency
+- Debounce mechanism timing
 
 ### Integration Tests
-- Real file system operations in temp directories
-- Stream of IPC events with expected outputs
+- Real file system operations
 - Concurrent event processing
 - Large output handling
-- Crash recovery scenarios
+- Error recovery scenarios
 
-### Performance Tests
-- Large test suite handling (1000+ files)
-- Memory usage under load
-- I/O throughput optimization
-- Debounce effectiveness
+### Edge Cases
+- Empty test runs
+- Interrupted processes
+- Malformed events
+- File system limitations
 
-## 10. Future Enhancements
+## 11. Thread Safety
 
-- Streaming report updates for real-time viewing
-- Compressed output storage for large test runs
-- Incremental report updates for watch mode
-- Custom report formats (JSON, XML, HTML)
-- Test result caching and comparison
+### Mutex Usage
+
+The system uses read/write mutexes to:
+- Protect state modifications
+- Ensure consistent reads
+- Prevent race conditions
+- Allow concurrent read operations
+
+### Concurrent Operations
+- Multiple goroutines can send events
+- Output capture runs in parallel
+- Report writes are synchronized
+
+## 12. Future Enhancements
+
+- Streaming updates for real-time viewing
+- Compressed storage for large outputs
+- Differential reports for re-runs
+- Custom report formats (JSON, XML)
+- Test result caching
 - Failure pattern analysis
+- Performance metrics tracking

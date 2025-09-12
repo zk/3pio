@@ -1,159 +1,286 @@
-# 3pio: System Architecture Design
+# 3pio: System Architecture
 
 ## 1. Introduction
 
-This document outlines the system architecture for 3pio, an AI-first test runner adapter. The architecture prioritizes context efficiency, performance, reliability, and minimal context overhead for you.
+3pio is a context-friendly test runner adapter that translates traditional test runner output (Jest, Vitest, pytest) into structured, persistent reports optimized for AI agents and developers. This document describes the Go-based architecture that prioritizes reliability, performance, and minimal context overhead.
 
 ## 2. High-Level Architecture
 
-The system is composed of five primary components that work together to execute a test run, capture results, and generate persistent, structured reports.
+The system consists of five primary components implemented in Go:
 
-1. **CLI Orchestrator:** The main entry point that manages the entire lifecycle of a test run.
-2. **Test Runner Manager:** Strategy pattern implementation for test runner detection and configuration.
-3. **Report Manager:** Handles all file I/O for report generation with debounced writes and dynamic test discovery.
-4. **IPC Manager:** File-based communication channel between test runner adapters and the CLI.
-5. **Test Runner Adapters:** Silent reporters running inside test processes (Jest/Vitest) to capture and transmit data.
+1. **CLI Entry Point** (`cmd/3pio/main.go`) - Command-line interface and initialization
+2. **Orchestrator** (`internal/orchestrator/`) - Central controller managing test execution lifecycle
+3. **Runner Manager** (`internal/runner/`) - Test runner detection and command building
+4. **Report Manager** (`internal/report/`) - Incremental report generation and file I/O
+5. **IPC Manager** (`internal/ipc/`) - File-based communication with test adapters
+6. **Embedded Adapters** (`internal/adapters/`) - JavaScript and Python reporters embedded in binary
 
-## 3. Component Breakdown
+## 3. Component Architecture
 
-### 3.1. CLI Orchestrator (src/cli.ts)
+### 3.1. CLI Entry Point (`cmd/3pio/main.go`)
 
-The orchestrator manages the high-level flow of the 3pio command.
+The main entry point that handles command-line parsing and orchestrator initialization.
 
-* **Responsibilities:**
-  * **Argument Parsing:** Uses commander.js to parse the run command and capture the underlying test command.
-  * **Test Runner Detection:** Delegates to TestRunnerManager to identify the test runner from command and package.json.
-  * **Test File Discovery:** Uses TestRunnerDefinition.getTestFiles() for static discovery or supports dynamic discovery.
-  * **Run ID Generation:** Creates unique identifiers with ISO8601 timestamps plus memorable Star Wars character names.
-  * **Setup:** Creates run directory (.3pio/runs/[timestamp]-[name]) and IPC file (.3pio/ipc/[timestamp]-[name].jsonl).
-  * **Simplified Preamble:** Outputs only report path and "Beginning test execution now..." message.
-  * **Report Initialization:** Creates ReportManager with OutputParser and initializes with optional test file list.
-  * **Process Spawning:** Uses zx to execute command with adapter injection, capturing stdout/stderr to output.log.
-  * **IPC Listening:** Monitors IPC file for events, delegating to ReportManager for state updates.
-  * **Cleanup:** Finalizes reports, cleans up IPC resources, and exits with mirrored exit code.
+**Responsibilities:**
+- Parse command-line arguments using Go's flag package
+- Initialize file-based logger for debug output
+- Create and configure the Orchestrator
+- Handle version and help commands
+- Pass control to Orchestrator for test execution
 
-### 3.2. Report Manager (src/ReportManager.ts)
+### 3.2. Orchestrator (`internal/orchestrator/orchestrator.go`)
 
-This component manages all report-related file I/O with performance optimizations.
+The central controller that manages the entire test execution lifecycle.
 
-* **Responsibilities:**
-  * **State Management:** Maintains TestRunState in memory with file statuses and test case results.
-  * **Dynamic Initialization:** `initialize(testFiles?: string[])` supports both static and dynamic test discovery modes.
-  * **Event Handling:** Central `handleEvent(event)` processes IPC events:
-    * **testCase:** Updates individual test case status, duration, and error details
-    * **testFileStart:** Updates file status to RUNNING
-    * **testFileResult:** Updates file status and counters with debounced write
-    * **stdoutChunk/stderrChunk:** Appends to output.log and collects in per-file Maps
-  * **Dynamic Test Discovery:** `ensureTestFileRegistered(filePath)` adds files discovered during execution
-  * **Test Case Tracking:** Maintains test cases per file with suite organization and individual results
-  * **Output Collection:**
-    * Unified output.log for complete test run capture
-    * Per-file output Maps for individual test logs
-    * Test case boundary tracking for organized output
-  * **Debounced Writes:** Uses lodash.debounce for performance optimization
-  * **Finalization:** Writes individual test logs, updates final status, and ensures all data is persisted
+**Responsibilities:**
+- Generate unique run IDs (timestamp + memorable Star Wars names)
+- Detect test runner using Runner Manager
+- Create run directory structure (`.3pio/runs/[runID]/`)
+- Initialize IPC and Report managers
+- Extract and prepare embedded adapters
+- Spawn test process with adapter injection
+- Capture stdout/stderr through pipes
+- Process IPC events concurrently
+- Handle signals (SIGINT/SIGTERM) gracefully
+- Mirror test runner exit codes
 
-### 3.3. IPC Manager (src/ipc.ts)
+**Key Features:**
+- Concurrent goroutines for event processing and output capture
+- Real-time console output display with progress tracking
+- Signal handling for graceful shutdown
+- Comprehensive error capture and reporting
 
-Manages file-based communication between adapters and CLI.
+### 3.3. Runner Manager (`internal/runner/manager.go`)
 
-* **Responsibilities:**
-  * **Class-based Design:** IPCManager class with instance methods for CLI, static methods for adapters
-  * **Writer (for Adapters):** Static `IPCManager.sendEvent(event)` reads THREEPIO_IPC_PATH environment variable
-  * **Reader (for CLI):** Instance `watchEvents(callback)` uses chokidar for file monitoring
-  * **Event Types:** Supports testCase, testFileStart, testFileResult, stdoutChunk, stderrChunk events
-  * **Directory Management:** Static `ensureIPCDirectory()` creates .3pio/ipc directory structure
-  * **Cleanup:** `cleanup()` method stops file watching and releases resources
-  * **Logging:** Integrated Logger for debugging IPC communication
+Manages test runner detection and configuration through a registry pattern.
 
-### 3.4. Test Runner Adapters (src/adapters/)
+**Components:**
+- **Manager**: Registry of supported test runners
+- **Definition Interface**: Contract for test runner implementations
+- **Implementations**: JestDefinition, VitestDefinition, PytestDefinition
 
-Silent reporters that run inside Jest or Vitest processes.
+**Responsibilities:**
+- Detect test runner from command arguments
+- Parse package.json for npm/yarn/pnpm commands
+- Build modified commands with adapter injection
+- Extract test files from arguments
+- Handle various invocation patterns (direct, npm scripts, npx)
 
-* **Structure:**
-  * **Jest:** ThreePioJestReporter class implementing Jest reporter interface
-  * **Vitest:** ThreePioVitestReporter class implementing Vitest reporter interface
-* **Responsibilities:**
-  * **Silent Operation:** No console output - all communication via IPC
-  * **Test Case Reporting:** Send individual test case results with suite, status, duration, and errors
-  * **Stream Capture:** Patch process.stdout.write and process.stderr.write to capture console output
-  * **Event Transmission:** Send testCase, testFileStart, testFileResult, stdoutChunk, stderrChunk events
-  * **Lifecycle Hooks:**
-    * Jest: onRunStart, onTestStart, onTestCaseResult, onTestResult, onRunComplete
-    * Vitest: onInit, onPathsCollected, onTestFileStart, onTestFileResult, onFinished
-  * **Fallback Processing:** Both adapters handle edge cases where test cases aren't reported individually
-  * **Error Resilience:** All IPC operations use .catch() to prevent test runner crashes
-  * **Startup Preamble:** Log adapter version and configuration for debugging
+### 3.4. Report Manager (`internal/report/manager.go`)
 
-## 4. Console Output Capture Strategy
+Handles all report generation with incremental writing for reliability.
 
-### Design Decision: Reporter Strategy
+**Responsibilities:**
+- Create and manage run directory structure
+- Initialize test run state with metadata
+- Process IPC events to update test state
+- Manage file handles for incremental log writing
+- Write test-run.md report with test case details
+- Generate individual test log files
+- Implement debounced writes for performance
+- Ensure proper cleanup and finalization
 
-- **Jest**: 3pio does NOT include Jest's default reporter to avoid duplicate and redundant output
-- **Vitest**: 3pio DOES include Vitest's default reporter to provide visual feedback during test execution
-- This difference reflects the different architectures and user expectations of each test runner
+**Key Features:**
+- Incremental writing (results available even if interrupted)
+- Per-file log separation with headers
+- Test case level tracking with suite organization
+- Memory-efficient buffering
+- Thread-safe state management with sync.RWMutex
 
-### Implications and Solutions
+### 3.5. IPC Manager (`internal/ipc/manager.go`)
 
-**Challenge:** Without the default reporter, test runners don't format console output with file associations and stack traces.
+Provides file-based communication between the CLI and test adapters.
 
-**Solution:** 3pio uses a dual-capture approach:
-1. **IPC Events with File Associations:** Test adapters send stdout/stderr chunks via IPC with the associated test file path
-2. **In-Memory Collection:** ReportManager maintains a Map of file paths to output arrays, populated from IPC events
-3. **Direct Writing:** Individual log files are written directly from the collected Map, not parsed from output.log
+**Responsibilities:**
+- Create IPC directory and file structure
+- Watch IPC file for new events using fsnotify
+- Parse JSON Lines format events
+- Validate event schema and types
+- Provide Events channel for orchestrator consumption
+- Handle cleanup and resource management
 
-This approach ensures:
-- Console output is correctly attributed to test files
-- No dependency on specific output formatting
-- Works even when test runners use worker processes (like Jest)
+**Event Types:**
+- `testFileStart`: Test file execution beginning
+- `testCase`: Individual test case result
+- `testFileResult`: Test file completion
+- `stdoutChunk`: Console output from test
+- `stderrChunk`: Error output from test
 
-## 5. Test Runner Abstraction
+### 3.6. Embedded Adapters (`internal/adapters/`)
 
-The system uses a strategy pattern for test runner support:
+JavaScript and Python reporters embedded directly in the Go binary.
 
-### 5.1. TestRunnerDefinition Interface
-* **matches():** Determines if command matches this test runner
-* **getTestFiles():** Returns list of test files (or empty for dynamic discovery)
-* **buildMainCommand():** Injects adapter into command arguments
-* **getAdapterFileName():** Returns adapter file (jest.js or vitest.js)
-* **interpretExitCode():** Maps exit codes to success/failure/error
+**Structure:**
+- `jest.js`: Jest reporter implementation
+- `vitest.js`: Vitest reporter implementation
+- `pytest_adapter.py`: pytest plugin implementation
+- `embedded.go`: Go embed directives and extraction logic
 
-### 5.2. TestRunnerManager
-* **Static registry:** TEST_RUNNERS object with Jest and Vitest definitions
-* **detect():** Identifies test runner from command and package.json
-* **getDefinition():** Returns TestRunnerDefinition for a runner
-* **getParser():** Returns OutputParser for a runner
+**Embedding Process:**
+- Adapters embedded at compile time using `//go:embed`
+- Extracted to temporary directory at runtime
+- Cleaned up after test completion
+- Paths passed to test runners via command modification
 
-### 5.3. OutputParser
-* **Base class:** Abstract OutputParser with common parsing logic
-* **Implementations:** JestOutputParser and VitestOutputParser
-* **parseTestOutput():** Extracts test boundaries and associates output with files
+**Adapter Responsibilities:**
+- Silent operation (no console output)
+- Capture test events and results
+- Send structured events via IPC
+- Patch stdout/stderr for output capture
+- Handle test lifecycle hooks
 
-## 6. Data Flow (Sequence of Events)
+## 4. Data Flow
 
-A typical run of `3pio npx vitest run` proceeds as follows:
+### Execution Sequence
 
-1. **User** executes the command
-2. **CLI Orchestrator** parses arguments and uses **TestRunnerManager** to detect Vitest
-3. **Orchestrator** calls VitestDefinition.getTestFiles() for test discovery (may return empty for dynamic mode)
-4. **Orchestrator** generates run ID with timestamp and Star Wars character name
-5. **Orchestrator** creates run directory and IPC file
-6. **Report Manager** initializes with optional test file list
-7. **Orchestrator** prints minimal preamble (report path and start message)
-8. **Orchestrator** spawns vitest with injected adapter using VitestDefinition.buildMainCommand()
-9. **Vitest Adapter** initializes, reads THREEPIO_IPC_PATH, patches stdout/stderr
-10. **Adapter** sends testFileStart event when test file begins
-11. **Adapter** sends testCase events for each individual test with results
-12. **Adapter** captures console output and sends stdoutChunk/stderrChunk events
-13. **Report Manager** receives events via IPC:
-    * Updates test case statuses in memory
-    * Collects output in per-file Maps
-    * Schedules debounced report writes
-14. **Adapter** sends testFileResult when file completes
-15. **Report Manager** updates file status and counters
-16. Process repeats for all test files (discovered statically or dynamically)
-17. **Orchestrator** calls reportManager.finalize():
-    * Writes individual test logs from Maps
-    * Updates final report with all test cases
-    * Closes output.log
-18. **Orchestrator** cleans up IPC and exits with test runner's exit code
+1. **User** executes `3pio npm test`
+2. **CLI** parses arguments and creates Orchestrator
+3. **Orchestrator** generates run ID (e.g., `20250911T120000Z-brave-luke`)
+4. **Runner Manager** detects test runner (Jest/Vitest/pytest)
+5. **Orchestrator** creates directories:
+   - `.3pio/runs/[runID]/`
+   - `.3pio/runs/[runID]/logs/`
+   - `.3pio/ipc/`
+6. **Embedded Adapters** extracted to temp directory
+7. **Report Manager** initialized with run metadata
+8. **IPC Manager** starts watching for events
+9. **Orchestrator** spawns test process with:
+   - Modified command including adapter
+   - THREEPIO_IPC_PATH environment variable
+   - Pipes for stdout/stderr capture
+10. **Test Adapter** initializes and sends events:
+    - `testFileStart` when file begins
+    - `testCase` for each test result
+    - `stdoutChunk`/`stderrChunk` for output
+    - `testFileResult` when file completes
+11. **IPC Manager** reads events from file
+12. **Report Manager** processes events:
+    - Updates in-memory state
+    - Writes to individual log files incrementally
+    - Debounces report updates
+13. **Orchestrator** displays progress to console
+14. **Process** completes or is interrupted
+15. **Report Manager** finalizes:
+    - Flushes all buffers
+    - Writes final test-run.md
+    - Closes file handles
+16. **Orchestrator** exits with test runner's exit code
+
+### Concurrent Processing
+
+The system uses Go's concurrency features for efficient processing:
+
+- **Main Process**: Coordinates all operations
+- **IPC Event Processing** (goroutine): Reads events and updates report state
+- **Stdout Capture** (goroutine): Pipes stdout to output.log and console
+- **Stderr Capture** (goroutine): Pipes stderr to output.log and error buffer
+- **Signal Handler** (goroutine): Handles SIGINT/SIGTERM for graceful shutdown
+
+All goroutines communicate through channels and are properly synchronized during shutdown.
+
+## 5. File Structure
+
+### Runtime Directory Structure
+
+The system creates the following directory structure during execution:
+
+- **.3pio/runs/[timestamp]-[name]/**: Run-specific directory
+  - **test-run.md**: Main report file
+  - **output.log**: Complete stdout/stderr capture
+  - **logs/**: Directory containing individual test file logs
+- **.3pio/ipc/**: IPC communication directory
+  - **[timestamp].jsonl**: JSON Lines format event file
+- **.3pio/debug.log**: Debug logging output
+
+### Source Code Structure
+
+The codebase follows standard Go project layout:
+
+- **cmd/3pio/**: CLI entry point
+- **internal/orchestrator/**: Central controller component
+- **internal/runner/**: Test runner detection and management
+- **internal/report/**: Report generation and file I/O
+- **internal/ipc/**: Inter-process communication
+- **internal/logger/**: File-based debug logging
+- **internal/adapters/**: Embedded test runner adapters
+- **tests/**: Integration tests and fixtures
+- **Makefile**: Build automation scripts
+
+## 6. Build and Deployment
+
+### Build Process
+1. `make adapters` prepares JavaScript/Python adapters
+2. `go:embed` directives include adapters in binary
+3. `go build` creates single executable
+4. `goreleaser` handles cross-platform builds
+
+### Binary Distribution
+- Single static binary with embedded adapters
+- No runtime dependencies required
+- Cross-platform: macOS (arm64/amd64), Linux, Windows
+- Distributed via npm, pip, and Homebrew
+
+## 7. Key Design Decisions
+
+### Embedded Adapters
+- Adapters compiled into binary for zero dependencies
+- Extracted to temp directory at runtime
+- Ensures version compatibility
+
+### File-Based IPC
+- Simple, reliable communication mechanism
+- Works across all platforms
+- Easy to debug and inspect
+
+### Incremental Writing
+- Results available even if process killed
+- Better reliability for long-running tests
+- Immediate feedback for users
+
+### Go Implementation
+- Single binary distribution
+- Excellent cross-platform support
+- Superior performance and memory efficiency
+- Built-in concurrency primitives
+
+## 8. Error Handling
+
+### Startup Failures
+- Test runner not found → Clear error message
+- Permission issues → Fallback paths
+- Missing dependencies → Helpful suggestions
+
+### Runtime Failures
+- Process crashes → Partial reports saved
+- Signal interruption → Graceful shutdown
+- IPC failures → Continue with degraded functionality
+
+### Recovery Mechanisms
+- Incremental writes ensure partial data preserved
+- File handles properly closed on exit
+- Exit codes accurately mirrored
+
+## 9. Performance Characteristics
+
+### Concurrency
+- Parallel processing of events and output
+- Non-blocking IPC reading
+- Concurrent file writes with mutex protection
+
+### Memory Management
+- Bounded buffers for output capture
+- Incremental file writing (no full memory load)
+- Efficient string handling
+
+### I/O Optimization
+- Debounced report writes
+- Buffered file operations
+- Minimal file system calls
+
+## 10. Future Considerations
+
+- WebSocket-based IPC for real-time monitoring
+- Distributed test execution support
+- Custom output formatters
+- Test result caching and comparison
+- Integration with CI/CD platforms

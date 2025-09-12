@@ -2,181 +2,260 @@
 
 ## 1. Core Purpose
 
-Test Runner Adapters are silent reporters that run inside Jest and Vitest processes. They capture test execution events, individual test case results, and console output, transmitting this data to the CLI via IPC events without interfering with normal test output.
+Test Runner Adapters are specialized reporters for Jest, Vitest, and pytest that run inside test processes. They capture test execution events, individual test case results, and console output, transmitting this data to 3pio via IPC without interfering with normal test output. These adapters are embedded in the Go binary and extracted at runtime.
 
-## 2. General Principles
+## 2. Architecture Overview
 
-### Silent Operation
-- No stdout/stderr output during normal operation
-- All communication via IPC channel only
-- Debug logging to `.3pio/debug.log` when THREEPIO_DEBUG=1
-- Coexist with default test runner reporters
+### Embedded Distribution
+- JavaScript adapters (Jest, Vitest) and Python adapter (pytest) embedded in Go binary
+- Extracted to temporary directory at runtime using Go's embed package
+- Automatic cleanup after test completion
+- Version consistency guaranteed between CLI and adapters
 
-### Configuration
-- Read THREEPIO_IPC_PATH environment variable for IPC file location
-- Validate IPC connection during initialization
-- Log startup preamble for debugging
+### Language Support
+- **JavaScript**: Jest and Vitest adapters written in JavaScript
+- **Python**: pytest adapter implemented as pytest plugin
+- Both use same IPC protocol for communication
 
-### Error Resilience
-- All IPC operations wrapped in error handlers
-- Failures don't crash test runners
-- Graceful degradation when IPC unavailable
+## 3. JavaScript Adapters
 
-## 3. Event Reporting
+### Jest Adapter
 
-### Test Case Events
-Adapters report individual test case results including:
-- Test name and suite organization
-- Status (PASS, FAIL, SKIP)
-- Execution duration
-- Error messages and stack traces for failures
+**Class Structure:**
 
-### File Level Events
-- **testFileStart**: Signals beginning of test file execution
-- **testFileResult**: Reports final status for entire file
-- Aggregate statistics for the file
+The Jest adapter implements the reporter interface with these lifecycle methods:
+- constructor: Initialize with global config and options
+- onRunStart: Setup before test run begins
+- onTestStart: Handle test file start
+- onTestCaseResult: Capture individual test results
+- onTestResult: Process file completion
+- onRunComplete: Final cleanup
 
-### Console Output Capture
-- Patch process.stdout.write and process.stderr.write
-- Capture output chunks during test execution
-- Associate output with current test file
-- Send as stdoutChunk/stderrChunk events
+**Key Features:**
+- Implements Jest's reporter interface
+- Captures individual test case results via onTestCaseResult hook
+- Handles suite hierarchy from ancestorTitles array
+- Works with Jest's worker process architecture
+- Patches stdout/stderr per test file
 
-## 4. Implementation Strategies
+**Console Capture Strategy:**
 
-### Jest Adapter (ThreePioJestReporter)
+The adapter intercepts console output by:
+1. Storing original write functions
+2. Replacing with wrapper functions
+3. Capturing output chunks
+4. Sending IPC events with file context
+5. Forwarding to original functions
 
-#### Lifecycle Hooks
-- **onRunStart**: Initialize IPC connection
-- **onTestStart**: Begin capturing for specific test file
-- **onTestCaseResult**: Report individual test case results
-- **onTestResult**: Send file completion status
-- **onRunComplete**: Cleanup and final processing
+### Vitest Adapter
 
-#### Console Capture Strategy
-- Start/stop capture per test file
-- Track current test file context
-- Handle Jest's worker process architecture
-- Work around Jest's empty testResult.console issue
+**Class Structure:**
 
-#### Test Case Extraction
-- Process test results from onTestCaseResult hook
-- Extract suite hierarchy from ancestorTitles
-- Include duration and error details
-- Handle nested describe blocks
+The Vitest adapter implements these reporter methods:
+- onInit: Initialize and start global capture
+- onPathsCollected: Track discovered test paths
+- onTestFileStart: Switch context to new file
+- onTestFileResult: Process file results and test cases
+- onFinished: Fallback processing and cleanup
 
-### Vitest Adapter (ThreePioVitestReporter)
-
-#### Lifecycle Hooks
-- **onInit**: Initialize and start global capture
-- **onPathsCollected**: Track discovered test paths
-- **onTestFileStart**: Switch context to new file
-- **onTestFileResult**: Process file results and test cases
-- **onFinished**: Fallback processing and cleanup
-
-#### Console Capture Strategy
-- Global capture started in onInit
-- Context switching based on current test file
-- Handle output without clear file context
-- Use 'global' as fallback for unattributed output
-
-#### Test Case Processing
-- Extract test cases from file.tasks recursively
-- Handle suite nesting and organization
-- Process both synchronous and asynchronous tests
+**Key Features:**
+- Implements Vitest's reporter interface
+- Recursive test case extraction from file.tasks tree
+- Global console capture with context switching
+- Handles both synchronous and asynchronous tests
 - Fallback processing in onFinished for edge cases
 
-## 5. Stream Tapping Architecture
+**Test Case Extraction:**
 
-### Capture Lifecycle
+Recursively processes the task tree:
+1. Check task type (suite or test)
+2. For suites: Build path and recurse into children
+3. For tests: Send test case event with suite path
+4. Handle nested describe blocks properly
+
+## 4. Python Adapter
+
+### pytest Adapter
+
+**Plugin Structure:**
+
+The pytest adapter implements these plugin hooks:
+- __init__: Initialize plugin state
+- pytest_sessionstart: Setup before test session
+- pytest_runtest_protocol: Handle test execution
+- pytest_runtest_logreport: Process test results
+- pytest_sessionfinish: Cleanup after session
+
+**Key Features:**
+- Implements pytest plugin hook interface
+- Captures test output via capsys fixture
+- Handles test lifecycle events
+- Supports parametrized tests
+- Works with pytest's assertion rewriting
+
+**IPC Communication:**
+
+Sends events by:
+1. Reading THREEPIO_IPC_PATH from environment
+2. Opening file in append mode
+3. Serializing event to JSON
+4. Writing with newline delimiter
+
+## 5. Embedding and Extraction
+
+### Go Embed System
+
+The adapters are embedded in the Go binary using embed directives:
+
+1. **Compile-time embedding**: Adapters included in binary
+2. **Runtime extraction**: Written to temporary directory
+3. **Path generation**: Unique paths prevent conflicts
+4. **Cleanup**: Temporary files removed after use
+
+The ExtractAdapter function:
+- Determines adapter content based on runner name
+- Creates temporary directory with hash-based name
+- Writes adapter file with appropriate extension
+- Returns absolute path for injection
+
+### Adapter Injection
+
+Each test runner has a specific injection pattern:
+
+**Jest:**
+- Uses --reporters flag
+- Replaces default reporter
+- Accepts absolute path to adapter
+
+**Vitest:**
+- Uses --reporter flag (can specify multiple)
+- Includes default reporter for user visibility
+- Adds 3pio adapter as additional reporter
+
+**pytest:**
+- Uses PYTHONPATH environment variable
+- Loads via -p (plugin) flag
+- References module name without extension
+
+## 6. IPC Protocol
+
+### Event Structure
+
+All adapters use the same JSON Lines format:
+
+- **testFileStart**: Indicates test file beginning
+  - Payload: filePath
+- **testCase**: Individual test result
+  - Payload: filePath, testName, status, duration (optional), error (optional)
+- **stdoutChunk**: Console output chunk
+  - Payload: filePath, chunk
+- **testFileResult**: Test file completion
+  - Payload: filePath, status
+
+Each event is a single line of JSON for streaming compatibility.
+
+### Environment Variables
+- `THREEPIO_IPC_PATH`: Path to IPC file for event transmission
+- `THREEPIO_DEBUG`: Enable debug logging when set to "1"
+
+## 7. Console Output Capture
+
+### Strategy Differences
+
+**Jest**: No default reporter included
+- Clean, single output stream
+- All output comes through 3pio adapter
+
+**Vitest**: Default reporter included
+- Better user experience with progress indicators
+- Dual output (default + 3pio capture)
+
+**pytest**: Plugin architecture
+- Captures via capsys fixture
+- Integrates with pytest's output handling
+
+### Implementation Pattern
 1. Store original write functions
 2. Replace with instrumented wrappers
-3. Capture and forward output chunks
-4. Send IPC events with file association
-5. Restore original functions when done
+3. Capture and forward chunks
+4. Send IPC events with file context
+5. Restore original functions
 
-### Pass-Through Behavior
-- Maintain normal console output
-- Preserve output formatting
-- No visible changes to test runner behavior
-- Support for color codes and special characters
+## 8. Error Handling
 
-## 6. Failure Modes
+### Resilience Principles
+- Never crash the test runner
+- Graceful degradation without IPC
+- Log errors to debug.log
+- Continue test execution
 
-### Environment Issues
-- Missing THREEPIO_IPC_PATH variable
-- IPC file permissions problems
-- File system errors
+### Common Error Scenarios
+- Missing THREEPIO_IPC_PATH → Skip IPC, log warning
+- File permission errors → Log error, continue
+- JSON serialization failure → Drop event, log error
+- Adapter extraction failure → Fall back to no adapter
 
-### API Compatibility
-- Test runner version changes
-- Breaking changes in reporter interfaces
-- Hook behavior modifications
-
-### Runtime Errors
-- Stream patching conflicts with other tools
-- Memory issues with large output
-- Race conditions in cleanup
-
-### Context Loss
-- Output without clear test file association
-- Worker process isolation in Jest
-- Async test execution ordering
-
-## 7. Performance Considerations
+## 9. Performance Characteristics
 
 ### Minimal Overhead
-- Lightweight event transmission
-- No buffering or batching
-- Direct pass-through for console output
-- Efficient IPC writes
-
-### Memory Management
-- No accumulation of output in memory
+- Direct IPC writes (no buffering)
+- Pass-through console output
+- No memory accumulation
 - Immediate event transmission
-- Cleanup after each test file
 
-## 8. Debugging Support
+### Resource Usage
+- Temporary disk space for extracted adapters
+- Single file handle for IPC
+- Minimal CPU overhead
+- No network operations
 
-### Startup Preamble
-Each adapter logs initialization info:
-- Adapter version
-- IPC path configuration
-- Process ID
-- Timestamp
-
-### Debug Logging
-When THREEPIO_DEBUG=1:
-- Detailed lifecycle events
-- IPC transmission logs
-- Error details with context
-- Performance metrics
-
-## 9. Testing Strategy
+## 10. Testing Strategy
 
 ### Unit Tests
-- IPC initialization and validation
-- Stream tapping logic
-- Event formatting
-- Error handling
+- Event serialization
+- Console capture logic
+- Error handling paths
+- IPC initialization
 
-### Integration Tests
-- Real Jest/Vitest project execution
-- IPC file monitoring
+### Integration Tests (`tests/integration_go/`)
+- Full test runs with real runners
 - Event sequence validation
-- Console output capture verification
+- Console output verification
+- Error recovery scenarios
 
-### Compatibility Tests
-- Multiple test runner versions
-- Various project configurations
-- Edge cases and error scenarios
-- Performance under load
+### Fixture Projects (`tests/fixtures/`)
+- basic-jest: Simple Jest project
+- basic-vitest: Simple Vitest project
+- basic-pytest: Simple pytest project
+- Each with passing, failing, and skipped tests
 
-## 10. Future Enhancements
+## 11. Development and Debugging
 
-- Support for additional test runners (Mocha, Jasmine)
+### Adapter Development
+1. Edit adapter file in `internal/adapters/`
+2. Run `make adapters` to prepare for embedding
+3. Build with `make build`
+4. Test with fixture projects
+
+### Debug Output
+When `THREEPIO_DEBUG=1`:
+- Adapter initialization logged
+- Each event transmission logged
+- Errors include stack traces
+- Performance metrics recorded
+
+### Common Issues
+- **No events received**: Check THREEPIO_IPC_PATH is set
+- **Console output missing**: Verify capture patches applied
+- **Test cases not reported**: Check reporter hooks called
+- **Adapter not found**: Ensure extraction succeeded
+
+## 12. Future Enhancements
+
+- Support for additional test runners (Mocha, Jasmine, RSpec)
 - Test coverage integration
-- Performance metrics collection
-- Parallel test execution tracking
+- Performance profiling data
+- Parallel execution tracking
 - Watch mode support
-- Custom event types for extensions
+- Custom reporter configurations
+- Real-time streaming to web UI

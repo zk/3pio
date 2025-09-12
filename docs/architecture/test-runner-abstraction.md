@@ -2,159 +2,201 @@
 
 ## 1. Overview
 
-The test runner abstraction layer provides a pluggable architecture for supporting multiple test frameworks (Jest, Vitest, and future runners) without modifying core components. This design follows the strategy pattern with explicit, compile-time known test runners.
+The test runner abstraction layer provides a pluggable architecture for supporting multiple test frameworks (Jest, Vitest, pytest, and future runners) without modifying core components. This design follows the strategy pattern with explicit, compile-time known test runners in the Go implementation.
 
 ## 2. Core Components
 
-### TestRunnerDefinition Interface
-Defines the contract for test runner implementations:
-- **matches**: Determines if a command uses this test runner
-- **getTestFiles**: Discovers test files (static or dynamic mode)
-- **buildMainCommand**: Injects adapter into command arguments
-- **getAdapterFileName**: Returns the adapter file name
-- **interpretExitCode**: Maps exit codes to semantic meanings
+### Runner Definition Interface
 
-### OutputParser Abstract Class
-Handles runner-specific console output parsing:
-- **parseTestOutput**: Extracts test boundaries from output
-- **extractTestFileFromLine**: Identifies file associations
-- **isEndOfTestOutput**: Detects test completion markers
-- **formatTestHeading**: Processes test section headers
+The Go implementation defines a contract for test runner implementations:
+- **Matches**: Determines if a command uses this test runner
+- **GetTestFiles**: Discovers test files (static or dynamic mode)
+- **BuildCommand**: Injects adapter into command arguments
+- **GetAdapterFileName**: Returns the adapter file name
+- **InterpretExitCode**: Maps exit codes to semantic meanings
 
-### TestRunnerManager
+### Runner Manager
+
 Central registry and detection logic:
-- Static TEST_RUNNERS object with all implementations
+- Registry of all test runner implementations
 - Detection method that checks each runner
-- Accessor methods for definitions and parsers
-- Type-safe runner name handling
+- Returns appropriate definition for command building
+- Handles npm/yarn/pnpm script resolution
+
+### Embedded Adapters
+
+Test runner adapters are embedded in the Go binary:
+- JavaScript adapters for Jest and Vitest
+- Python adapter for pytest
+- Extracted to temporary directory at runtime
+- Cleaned up after test completion
 
 ## 3. Implementation Structure
 
 ### Directory Organization
-```
-src/runners/
-├── base/
-│   ├── TestRunnerDefinition.ts    # Interface definition
-│   └── OutputParser.ts             # Abstract parser class
-├── jest/
-│   ├── JestDefinition.ts          # Jest-specific implementation
-│   └── JestOutputParser.ts        # Jest output parsing
-└── vitest/
-    ├── VitestDefinition.ts        # Vitest-specific implementation
-    └── VitestOutputParser.ts      # Vitest output parsing
-```
+
+The Go implementation structure:
+- `internal/runner/` - Test runner management
+  - `manager.go` - Registry and detection
+  - `definition.go` - Interface and implementations
+  - `*_command_test.go` - Comprehensive tests
+- `internal/adapters/` - Embedded adapters
+  - `jest.js` - Jest reporter
+  - `vitest.js` - Vitest reporter
+  - `pytest_adapter.py` - pytest plugin
+  - `embedded.go` - Go embed directives
 
 ### Registration Pattern
-Test runners are explicitly registered in TestRunnerManager:
+
+Test runners are explicitly registered in the Manager:
 - Compile-time known set of runners
-- Type-safe runner names
+- Type-safe runner handling
 - No runtime discovery or plugin loading
 - Clear, predictable behavior
 
 ## 4. Detection Strategy
 
 ### Command Detection
+
 Each runner implements pattern matching for:
-- Direct invocation (jest, vitest)
+- Direct invocation (jest, vitest, pytest)
 - Package manager invocation (npx, yarn, pnpm)
 - npm scripts (npm test, npm run test)
+- Python invocations (python -m pytest)
 
 ### Package.json Analysis
+
 For abstract commands (npm test):
 - Parse scripts section for runner references
-- Check dependencies for installed runners
-- Fallback to command-line patterns
+- Check for test runner patterns in commands
+- Handle nested script references
+- Fallback to explicit runner arguments
 
 ### Priority Order
-Runners checked in specific order:
-1. Jest (most common)
+
+Runners checked in registration order:
+1. Jest (most common in JavaScript)
 2. Vitest (growing adoption)
-3. Future runners as added
+3. pytest (Python standard)
+4. Future runners as added
 
 ## 5. Test File Discovery
 
 ### Static Discovery
+
 When test files can be determined upfront:
 - Jest: Uses --listTests dry run
 - Explicit file arguments in command
 - Returns complete file list before execution
 
 ### Dynamic Discovery
+
 When files discovered during execution:
-- Vitest: list command unreliable
+- Vitest: list command unreliable (runs in watch mode)
+- pytest: Collection phase identifies files
 - npm run commands without file lists
-- Returns empty array, files tracked as they run
+- Returns empty array, files tracked via IPC events
 
 ## 6. Command Building
 
 ### Adapter Injection
+
 Each runner defines how to add its adapter:
-- Jest: --reporters flag (adapter only, no default)
-- Vitest: --reporter flag with both default and adapter
-- Preserves existing reporter configurations if already specified
-- Uses absolute paths for adapters
+
+**Jest:**
+- Uses `--reporters` flag
+- Replaces default reporter with 3pio adapter
+- Absolute path to extracted adapter file
+
+**Vitest:**
+- Uses `--reporter` flag (supports multiple)
+- Includes both default and 3pio adapter
+- Preserves user experience with progress output
+
+**pytest:**
+- Sets PYTHONPATH to include adapter directory
+- Uses `-p pytest_adapter` to load plugin
+- Works with pytest's plugin architecture
 
 ### Argument Preservation
+
 Original command structure maintained:
-- User flags preserved
+- User flags preserved in order
 - File arguments kept in position
 - Environment variables passed through
-- Shell features supported via zx
+- Shell features supported
 
-## 7. Output Parsing
+## 7. Implementation Details
 
-### Runner-Specific Patterns
-Each parser handles its runner's format:
-- Jest: Worker process output format
-- Vitest: stdout/stderr prefixed lines
-- Test boundaries and file associations
-- Error message extraction
+### Jest Definition
 
-### Common Base Functionality
-Abstract OutputParser provides:
-- Line-by-line processing
-- Buffer management
-- Test file path normalization
-- Output accumulation strategies
+Handles various Jest invocation patterns:
+- Direct: `jest`, `jest test.js`
+- Via npx: `npx jest`
+- Via npm: `npm test` (when package.json uses jest)
+- Preserves all Jest-specific flags
+
+### Vitest Definition
+
+Supports Vitest patterns:
+- Direct: `vitest`, `vitest run`
+- Via npx: `npx vitest`
+- Via npm: `npm test` (when package.json uses vitest)
+- Handles both run and watch modes
+
+### pytest Definition
+
+Manages Python test patterns:
+- Direct: `pytest`, `py.test`
+- Via python: `python -m pytest`
+- With options: `pytest -v tests/`
+- Supports all pytest plugins and options
 
 ## 8. Integration Points
 
-### CLI Orchestrator
-Uses TestRunnerManager for:
+### Orchestrator
+
+Uses Runner Manager for:
 - Runner detection from commands
 - Test file discovery
-- Command modification
+- Command modification with adapter
 - Exit code interpretation
 
 ### Report Manager
-Uses OutputParser for:
-- Parsing console output into test logs
-- Associating output with test files
-- Extracting test boundaries
-- Formatting test results
 
-### Adapters
-Remain independent but follow conventions:
-- Read adapter path from environment
-- Use IPC for communication
-- Silent operation (no console output)
-- Error resilience
+Receives events from adapters:
+- Test file start/completion
+- Individual test case results
+- Console output chunks
+- Processes into structured reports
+
+### IPC Manager
+
+Facilitates communication:
+- Adapters write events to IPC file
+- Manager watches for new events
+- Events parsed and forwarded
+- Channel-based event delivery
 
 ## 9. Adding New Test Runners
 
 ### Implementation Steps
-1. Create runner directory under src/runners/
-2. Implement TestRunnerDefinition interface
-3. Implement OutputParser subclass
-4. Register in TEST_RUNNERS object
-5. Create adapter in src/adapters/
-6. Add build configuration
-7. Write tests for new components
+
+1. Create runner definition in `internal/runner/definition.go`
+2. Implement required interface methods
+3. Register in Manager's initialization
+4. Create adapter in appropriate language
+5. Add adapter to `internal/adapters/`
+6. Update embedded.go with embed directive
+7. Write comprehensive tests
+8. Update documentation
 
 ### Required Components
-- Definition class with detection logic
-- Parser for output handling
-- Adapter for test runner integration
+
+- Definition struct implementing interface
+- Detection logic for command patterns
+- Command building with adapter injection
+- Adapter implementation for test runner
 - Unit and integration tests
 - Documentation updates
 
@@ -164,53 +206,51 @@ Remain independent but follow conventions:
 - Single responsibility per component
 - Clear interfaces and contracts
 - Isolated test runner logic
-- Reduced coupling
+- Reduced coupling between components
 
 ### Extensibility
 - New runners don't modify existing code
-- Explicit registration pattern
 - Well-defined extension points
-- Type safety throughout
+- Consistent patterns across runners
+- Type safety in Go
 
-### Testability
-- Each component independently testable
-- Mock-friendly interfaces
-- Isolated business logic
-- Clear test boundaries
+### Performance
+- Embedded adapters (no runtime download)
+- Efficient detection algorithms
+- Minimal overhead in command building
+- Concurrent event processing
 
 ## 11. Design Decisions
 
-### Static vs Dynamic Registration
-Chose static registration for:
-- Compile-time type safety
-- Predictable behavior
-- Easier debugging
-- No runtime surprises
+### Go Implementation Choice
+- Single binary distribution
+- Cross-platform compatibility
+- Superior performance
+- Built-in concurrency
 
-### Interface Segregation
-Separate interfaces for:
-- Test runner operations (Definition)
-- Output parsing (Parser)
-- Adapter behavior (separate concern)
-- Clear separation of concerns
+### Embedded Adapters
+- No external dependencies
+- Version consistency guaranteed
+- Fast extraction at runtime
+- Automatic cleanup
 
-### Explicit Over Implicit
-- No auto-discovery of runners
-- Clear registration required
-- Predictable detection order
-- Explicit error messages
+### File-Based IPC
+- Simple, reliable communication
+- Works across all platforms
+- Easy to debug and inspect
+- No network dependencies
 
 ## 12. Future Considerations
 
 ### Potential Enhancements
+- Support for Mocha, Jasmine
+- Ruby RSpec integration
+- Custom runner configurations
 - Plugin architecture for external runners
-- Configuration file for runner settings
-- Custom detection strategies
-- Output parser composition
 
 ### Scalability
 Current design supports:
-- 10+ test runners without refactoring
+- Additional test runners without refactoring
 - Custom runners via interface implementation
-- Extension through composition
-- Performance optimization points identified
+- Performance optimization opportunities
+- Distributed test execution
