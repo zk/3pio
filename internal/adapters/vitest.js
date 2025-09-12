@@ -104,7 +104,9 @@ var IPCSender = class {
    * Synchronous version of sendEvent
    */
   static sendEventSync(event) {
-    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+    // Try to get IPC path from environment variable first (for workers)
+    // Fall back to injected path
+    const ipcPath = process.env.THREEPIO_IPC_PATH || /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     try {
       const dir = path.dirname(ipcPath);
       if (!fs.existsSync(dir)) {
@@ -241,28 +243,54 @@ var ThreePioVitestReporter = class {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
     this.logger = Logger.create("vitest-adapter");
+    const ipcPath = process.env.THREEPIO_IPC_PATH || /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     this.logger.startupPreamble([
       "==================================",
       `3pio Vitest Adapter v${packageJson.version}`,
       "Configuration:",
-      `  - IPC Path: ${/*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/}`,
+      `  - IPC Path: ${ipcPath}`,
       `  - Process ID: ${process.pid}`,
+      `  - Worker: ${process.env.VITEST_POOL_ID || 'main'}`,
       "=================================="
     ]);
   }
   onInit(ctx) {
     this.logger.lifecycle("Test run initializing");
-    const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+    const ipcPath = process.env.THREEPIO_IPC_PATH || /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     this.logger.info("IPC communication channel ready", { path: ipcPath });
     this.logger.initComplete({ ipcPath });
+    
+    // Send collection start event
+    IPCSender.sendEvent({
+      eventType: "collectionStart",
+      payload: { phase: "collection" }
+    }).catch((error) => {
+      this.logger.error("Failed to send collectionStart event", error);
+    });
+    
     this.logger.debug("Starting global capture for test output");
     this.startCapture();
   }
   onPathsCollected(paths) {
     this.logger.info("Test paths collected", { count: paths?.length || 0 });
+    
+    // Send collection finish event when we have the full paths list
+    // This is called before files are distributed to workers
+    if (paths && paths.length > 0) {
+      IPCSender.sendEvent({
+        eventType: "collectionFinish",
+        payload: { collected: paths.length }
+      }).catch((error) => {
+        this.logger.error("Failed to send collectionFinish event", error);
+      });
+    }
   }
   onCollected(files) {
     this.logger.info("Test files collected", { count: files?.length || 0 });
+    
+    // Only send collection finish if onPathsCollected wasn't called
+    // (for older Vitest versions or single-threaded mode)
+    // Don't send in parallel mode as each worker only sees its subset
   }
   
   // New Vitest 3+ Reporter Methods
@@ -279,6 +307,20 @@ var ThreePioVitestReporter = class {
       filepath: testModule?.filepath,
       name: testModule?.name 
     });
+    
+    // Send testFileStart event when module is collected (queued for execution)
+    const filePath = testModule?.filepath || testModule?.moduleId;
+    if (filePath) {
+      this.logger.ipc("send", "testFileStart", { filePath });
+      IPCSender.sendEvent({
+        eventType: "testFileStart",
+        payload: {
+          filePath
+        }
+      }).catch((error) => {
+        this.logger.error("Failed to send testFileStart from module collected", error);
+      });
+    }
   }
   
   onTestSuiteReady(testSuite) {
@@ -345,6 +387,71 @@ var ThreePioVitestReporter = class {
       filepath: testModule?.filepath,
       name: testModule?.name 
     });
+    
+    // Send testFileResult event when module completes
+    const filePath = testModule?.filepath || testModule?.moduleId;
+    if (filePath) {
+      // Determine module status from test results
+      let status = "PASS";
+      const failedTests = [];
+      
+      // Check if module has test results and send individual test case events
+      if (testModule.children) {
+        this.sendTestCasesFromModule(filePath, testModule.children);
+        
+        for (const child of testModule.children) {
+          if (child.type === 'test' && child.result?.state === 'failed') {
+            status = "FAIL";
+            failedTests.push({
+              name: child.name,
+              duration: child.result?.duration || 0
+            });
+          }
+        }
+      }
+      
+      this.logger.ipc("send", "testFileResult", { filePath, status, failedTests });
+      IPCSender.sendEvent({
+        eventType: "testFileResult",
+        payload: {
+          filePath,
+          status,
+          failedTests
+        }
+      }).catch((error) => {
+        this.logger.error("Failed to send testFileResult from module end", error);
+      });
+    }
+  }
+  
+  // Helper method to send test case events from module children
+  sendTestCasesFromModule(filePath, children, suiteName = null) {
+    for (const child of children) {
+      if (child.type === 'test') {
+        // Send test case event
+        const testStatus = child.result?.state === 'failed' ? 'FAIL' : 
+                          child.result?.state === 'skipped' ? 'SKIP' : 'PASS';
+        const testCase = {
+          eventType: "testCase",
+          payload: {
+            filePath,
+            testName: child.name,
+            suiteName: suiteName,
+            status: testStatus,
+            duration: child.result?.duration || 0,
+            error: child.result?.errors?.[0]?.message || null
+          }
+        };
+        
+        this.logger.ipc("send", "testCase", testCase.payload);
+        IPCSender.sendEvent(testCase).catch((error) => {
+          this.logger.error("Failed to send testCase event", error);
+        });
+      } else if (child.type === 'suite' && child.children) {
+        // Recursively process suite children
+        this.sendTestCasesFromModule(filePath, child.children, child.name);
+      }
+    }
   }
   
   onTestRunEnd(testModules, unhandledErrors, reason) {

@@ -288,6 +288,14 @@ var ThreePioJestReporter = class {
     const ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     this.logger.info("IPC communication channel ready", { path: ipcPath });
     this.logger.initComplete({ ipcPath });
+    
+    // Send collection start event (Jest doesn't have separate collection phase)
+    IPCSender.sendEvent({
+      eventType: "collectionStart",
+      payload: { phase: "collection" }
+    }).catch((error) => {
+      this.logger.error("Failed to send collectionStart event", error);
+    });
   }
   onTestCaseStart(test, testCaseStartInfo) {
     if (testCaseStartInfo?.ancestorTitles && testCaseStartInfo?.title) {

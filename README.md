@@ -21,6 +21,10 @@ If your user indicated they would like to install and use 3pio for running tests
 - Python & pytest, `pip install threepio`
 ```
 
+## Features
+
+- Efficient at navigating large test suites with hundreds of test files and thousands of test cases.
+
 ## Installation / Usage
 
 Point your coding agent at this README ([raw link](https://raw.githubusercontent.com/zk/3pio/refs/heads/main/README.md)).

@@ -252,54 +252,91 @@ Test failures! This is madness!
 FAIL 1 file, PASS 2 files
 ```
 
+## Critical Discovery: Vitest Parallel Mode Progress
+
+### The Problem
+When Vitest runs in parallel mode (default for performance), the traditional `onTestFileStart`/`onTestFileResult` hooks are NOT called in real-time. They're batched until the end, causing no progress feedback during execution.
+
+### The Solution  
+Use Vitest V3 module hooks which ARE called in real-time:
+- `onTestModuleCollected` - Called when a test file is queued (use for `testFileStart`)
+- `onTestModuleEnd` - Called when a test file completes (use for `testFileResult`)
+- Use `testModule.moduleId` (not `filepath`) for the file path
+
+These hooks work because the main process receives module-level events from workers as they complete, providing real-time progress even in parallel mode.
+
+### Key Code Changes
+```javascript
+onTestModuleCollected(testModule) {
+  const filePath = testModule?.moduleId; // Note: moduleId, not filepath
+  if (filePath) {
+    IPCSender.sendEvent({
+      eventType: "testFileStart",
+      payload: { filePath }
+    });
+  }
+}
+
+onTestModuleEnd(testModule) {
+  const filePath = testModule?.moduleId;
+  if (filePath) {
+    // Determine status from module.children test results
+    IPCSender.sendEvent({
+      eventType: "testFileResult", 
+      payload: { filePath, status, failedTests }
+    });
+  }
+}
+```
+
 ## Implementation Checklist
 
 ### Phase 1: Core Infrastructure ✅ Foundation
 
 #### 1.1 Add New IPC Event Types
-- [ ] Add `TestCollectionStartEvent` to `internal/ipc/events.go`
-- [ ] Add `TestCollectionCompleteEvent` to `internal/ipc/events.go` 
-- [ ] Add event type constants for new events
-- [ ] Update event parser to handle new event types
-- [ ] Ensure backward compatibility (existing events unchanged)
+- [x] Add `TestCollectionStartEvent` to `internal/ipc/events.go` (Already existed as CollectionStartEvent)
+- [x] Add `TestCollectionCompleteEvent` to `internal/ipc/events.go` (Already existed as CollectionFinishEvent)
+- [x] Add event type constants for new events (Already existed)
+- [x] Update event parser to handle new event types (Already working)
+- [x] Ensure backward compatibility (existing events unchanged)
 
 #### 1.2 Update Orchestrator Progress State  
-- [ ] Add `ProgressState` struct to orchestrator
+- [x] Add `ProgressState` struct to orchestrator (Added lastCollected field for deduplication)
   ```go
   type ProgressState struct {
       Phase      string  // "starting", "collecting", "executing", "complete"  
       TotalFiles int     // Total files (for final summary only)
   }
   ```
-- [ ] Initialize progress state in orchestrator constructor
-- [ ] Add progress state field to orchestrator struct
+- [x] Initialize progress state in orchestrator constructor
+- [x] Add progress state field to orchestrator struct
 
 #### 1.3 Enhance Console Output Handler
-- [ ] Add `TestCollectionStartEvent` handler to `handleConsoleOutput()`
+- [x] Add `TestCollectionStartEvent` handler to `handleConsoleOutput()`
   ```go
   case ipc.TestCollectionStartEvent:
       fmt.Println("Collecting tests...")
   ```
-- [ ] Add `TestCollectionCompleteEvent` handler to `handleConsoleOutput()`
+- [x] Add `TestCollectionCompleteEvent` handler to `handleConsoleOutput()`
   ```go
   case ipc.TestCollectionCompleteEvent:
       fmt.Printf("Found %d test files\n\n", e.Payload.TotalFiles)
       o.progressState.TotalFiles = e.Payload.TotalFiles
   ```
-- [ ] Ensure proper spacing and formatting
-- [ ] **DO NOT MODIFY** existing startup greeting format
+- [x] Ensure proper spacing and formatting
+- [x] **DO NOT MODIFY** existing startup greeting format (Preserved)
 
 #### 1.4 Handle Existing pytest Events
-- [ ] Add `collectionStart` event handler (map to `TestCollectionStartEvent`)
-- [ ] Add `collectionFinish` event handler (map to `TestCollectionCompleteEvent`)
-- [ ] Test with existing pytest adapter to verify collection display
+- [x] Add `collectionStart` event handler (map to `TestCollectionStartEvent`)
+- [x] Add `collectionFinish` event handler (map to `TestCollectionCompleteEvent`)
+- [x] Test with existing pytest adapter to verify collection display
 
 ### Phase 2: pytest Integration ✅ Ready to Test
 
 #### 2.1 Verify pytest Support
-- [ ] Test with basic pytest project to confirm collection events work
-- [ ] Verify "Collecting tests..." appears after "Beginning test execution now..."
-- [ ] Verify "Found X test files" appears with correct count
+- [x] Test with basic pytest project to confirm collection events work
+- [x] Verify "Collecting tests..." appears after "Beginning test execution now..."
+- [x] Verify "Found X test files" appears with correct count (Fixed to use session.items)
 - [ ] Test collection error handling (malformed test files)
 
 #### 2.2 pytest Edge Cases
@@ -311,7 +348,7 @@ FAIL 1 file, PASS 2 files
 ### Phase 3: Vitest Integration 🔄 Needs Implementation
 
 #### 3.1 Update Vitest Adapter
-- [ ] Add collection start event in `onInit()`
+- [x] Add collection start event in `onInit()`
   ```javascript
   onInit(ctx) {
       IPCSender.sendEvent({
@@ -321,7 +358,7 @@ FAIL 1 file, PASS 2 files
       // ... existing code
   }
   ```
-- [ ] Add collection complete event in `onCollected()`
+- [x] Add collection complete event in `onCollected()`
   ```javascript
   onCollected(files) {
       IPCSender.sendEvent({
@@ -331,13 +368,13 @@ FAIL 1 file, PASS 2 files
       // ... existing code
   }
   ```
-- [ ] Test that existing Vitest functionality remains unchanged
-- [ ] Rebuild adapters: `make adapters && make build`
+- [x] Test that existing Vitest functionality remains unchanged
+- [x] Rebuild adapters: `make adapters && make build`
 
 #### 3.2 Vitest Integration Testing
-- [ ] Test with basic Vitest project (tests/fixtures/basic-vitest)
-- [ ] Test with Mastra test suite (long collection phase)
-- [ ] Verify collection progress shows during slow discovery
+- [x] Test with basic Vitest project (tests/fixtures/basic-vitest)
+- [x] Test with Mastra test suite (long collection phase)
+- [x] Verify collection progress shows during slow discovery
 - [ ] Test with parallel execution (multiple workers)
 - [ ] Test with file filtering (`--testPathPattern`)
 
@@ -350,7 +387,7 @@ FAIL 1 file, PASS 2 files
 ### Phase 4: Jest Integration ⚠️ Partial Support
 
 #### 4.1 Update Jest Adapter
-- [ ] Add collection start event in `onRunStart()`
+- [x] Add collection start event in `onRunStart()`
   ```javascript
   onRunStart() {
       IPCSender.sendEvent({
@@ -360,36 +397,36 @@ FAIL 1 file, PASS 2 files
       // ... existing code
   }
   ```
-- [ ] **NOTE**: Jest cannot provide collection complete with file count
-- [ ] Test that Jest falls back to individual file progress
-- [ ] Rebuild adapters: `make adapters && make build`
+- [x] **NOTE**: Jest cannot provide collection complete with file count (Confirmed)
+- [x] Test that Jest falls back to individual file progress
+- [x] Rebuild adapters: `make adapters && make build`
 
 #### 4.2 Jest Integration Testing
-- [ ] Test with basic Jest project (tests/fixtures/basic-jest)
-- [ ] Verify "Collecting tests..." appears
-- [ ] Verify individual `RUNNING ./file.js` still works
+- [x] Test with basic Jest project (tests/fixtures/basic-jest)
+- [x] Verify "Collecting tests..." appears
+- [x] Verify individual `RUNNING ./file.js` still works
 - [ ] Test with parallel execution (`--maxWorkers`)
 - [ ] Test with test filtering (`--testPathPattern`)
 
 ### Phase 5: Cross-Runner Testing 🧪 Integration
 
 #### 5.1 Compatibility Testing
-- [ ] Test all three runners preserve existing behavior
-- [ ] Test runners without collection support gracefully degrade
-- [ ] Test mixed usage (switching between runners)
-- [ ] Performance testing (no significant slowdown)
+- [x] Test all three runners preserve existing behavior
+- [x] Test runners without collection support gracefully degrade
+- [x] Test mixed usage (switching between runners)
+- [x] Performance testing (no significant slowdown)
 
 #### 5.2 User Experience Testing
-- [ ] Test with small test suites (1-10 files) - should not feel cluttered
+- [x] Test with small test suites (1-10 files) - should not feel cluttered
 - [ ] Test with medium test suites (10-50 files) - useful progress
-- [ ] Test with large test suites (50+ files) - essential progress
+- [x] Test with large test suites (50+ files) - essential progress (Mastra)
 - [ ] Test interruption scenarios (Ctrl+C during collection)
 
 #### 5.3 Agent Friendliness Validation
-- [ ] Verify output is easily parseable by agents
-- [ ] Confirm no unexpected format changes
-- [ ] Test phase transitions are clear and distinct
-- [ ] Validate no complex progress indicators (percentages, etc.)
+- [x] Verify output is easily parseable by agents
+- [x] Confirm no unexpected format changes
+- [x] Test phase transitions are clear and distinct
+- [x] Validate no complex progress indicators (percentages, etc.)
 
 ### Phase 6: Documentation & Polish 📚 Finalization
 
@@ -435,12 +472,12 @@ cd open-source/mastra/packages/core
 ```
 
 ### Validation Checklist
-- [ ] All existing tests pass
-- [ ] No breaking changes to current behavior
-- [ ] Collection phase visible for supported runners
-- [ ] Graceful degradation for unsupported runners  
-- [ ] Performance impact minimal
-- [ ] User experience improved for long-running suites
+- [x] All existing tests pass
+- [x] No breaking changes to current behavior
+- [x] Collection phase visible for supported runners
+- [x] Graceful degradation for unsupported runners  
+- [x] Performance impact minimal
+- [x] User experience improved for long-running suites
 
 ## Success Criteria
 
@@ -449,7 +486,7 @@ cd open-source/mastra/packages/core
 ✅ **Phase 3 Complete**: Vitest shows collection progress  
 ✅ **Phase 4 Complete**: Jest shows partial collection progress  
 ✅ **Phase 5 Complete**: All runners work without regressions  
-✅ **Phase 6 Complete**: Documentation updated, code polished
+🔄 **Phase 6 In Progress**: Documentation updates pending
 
 **Final Goal**: Users running `3pio pnpm test` on Mastra see immediate collection feedback instead of 60 seconds of silence.
 

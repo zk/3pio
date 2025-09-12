@@ -250,8 +250,10 @@ def pytest_collection_finish(session) -> None:
     
     if _reporter:
         # Send event to indicate collection finished
+        # Get count of collected items
+        collected_count = len(session.items) if hasattr(session, 'items') else 0
         _reporter.send_event("collectionFinish", {
-            "collected": session.testscollected if hasattr(session, 'testscollected') else 0
+            "collected": collected_count
         })
         
         # If no tests were collected, we might still be in collection phase capture
