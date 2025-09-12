@@ -638,6 +638,11 @@ func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
 		}
 	}
 
+	// Add spacing after test results before next section
+	if len(tf.TestCases) > 0 {
+		sb.WriteString("\n")
+	}
+
 	// Execution error section (only if execution error occurred)
 	if tf.ExecutionError != "" {
 		sb.WriteString("## Error\n\n")
