@@ -870,3 +870,145 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 		t.Error("Baz test error output is not properly associated with baz test")
 	}
 }
+
+func TestManager_TestResultsInLogFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger)
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+	defer func() { _ = manager.Finalize(0) }()
+
+	testFile := "string.test.js"
+	if err := manager.Initialize([]string{testFile}, "npx jest"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Test 1: Passing test with duration
+	passingTest := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+		Payload: struct {
+			FilePath  string         `json:"filePath"`
+			TestName  string         `json:"testName"`
+			SuiteName string         `json:"suiteName,omitempty"`
+			Status    ipc.TestStatus `json:"status"`
+			Duration  float64        `json:"duration,omitempty"`
+			Error     string         `json:"error,omitempty"`
+		}{
+			FilePath:  testFile,
+			TestName:  "should concatenate strings",
+			SuiteName: "String operations",
+			Status:    ipc.TestStatusPass,
+			Duration:  4.0,
+		},
+	}
+	if err := manager.HandleEvent(passingTest); err != nil {
+		t.Fatalf("HandleEvent failed for passing test: %v", err)
+	}
+
+	// Test 2: Failing test with error
+	failingTest := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+		Payload: struct {
+			FilePath  string         `json:"filePath"`
+			TestName  string         `json:"testName"`
+			SuiteName string         `json:"suiteName,omitempty"`
+			Status    ipc.TestStatus `json:"status"`
+			Duration  float64        `json:"duration,omitempty"`
+			Error     string         `json:"error,omitempty"`
+		}{
+			FilePath:  testFile,
+			TestName:  "should fail this test",
+			SuiteName: "String operations",
+			Status:    ipc.TestStatusFail,
+			Duration:  3.0,
+			Error:     `Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: "bar"
+Received: "foo"
+    at Object.toBe (/Users/zk/code/3pio/tests/fixtures/basic-jest/string.test.js:12:19)`,
+		},
+	}
+	if err := manager.HandleEvent(failingTest); err != nil {
+		t.Fatalf("HandleEvent failed for failing test: %v", err)
+	}
+
+	// Test 3: Skipped test
+	skippedTest := ipc.TestCaseEvent{
+		EventType: ipc.EventTypeTestCase,
+		Payload: struct {
+			FilePath  string         `json:"filePath"`
+			TestName  string         `json:"testName"`
+			SuiteName string         `json:"suiteName,omitempty"`
+			Status    ipc.TestStatus `json:"status"`
+			Duration  float64        `json:"duration,omitempty"`
+			Error     string         `json:"error,omitempty"`
+		}{
+			FilePath:  testFile,
+			TestName:  "should skip this test",
+			SuiteName: "String operations",
+			Status:    ipc.TestStatusSkip,
+		},
+	}
+	if err := manager.HandleEvent(skippedTest); err != nil {
+		t.Fatalf("HandleEvent failed for skipped test: %v", err)
+	}
+
+	// Send file result to trigger flush
+	fileResult := ipc.TestFileResultEvent{
+		EventType: ipc.EventTypeTestFileResult,
+		Payload: struct {
+			FilePath    string         `json:"filePath"`
+			Status      ipc.TestStatus `json:"status"`
+			FailedTests []struct {
+				Name     string  `json:"name"`
+				Duration float64 `json:"duration,omitempty"`
+			} `json:"failedTests,omitempty"`
+		}{
+			FilePath: testFile,
+			Status:   ipc.TestStatusFail,
+		},
+	}
+	if err := manager.HandleEvent(fileResult); err != nil {
+		t.Fatalf("HandleEvent failed for file result: %v", err)
+	}
+
+	// Wait for flush
+	time.Sleep(200 * time.Millisecond)
+
+	// Finalize to ensure all buffers are flushed
+	_ = manager.Finalize(0)
+
+	// Read the log file
+	logPath := filepath.Join(tempDir, "logs", testFile+".log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	logContent := string(content)
+
+	// Verify test results are in the log file
+	// Check for passing test with checkmark and duration
+	if !strings.Contains(logContent, "✓ should concatenate strings (4ms)") {
+		t.Errorf("Expected log to contain passing test result with checkmark and duration, got:\n%s", logContent)
+	}
+
+	// Check for failing test with X mark, duration, and error
+	if !strings.Contains(logContent, "✕ should fail this test (3ms)") {
+		t.Errorf("Expected log to contain failing test result with X mark and duration, got:\n%s", logContent)
+	}
+
+	// Check for error details
+	if !strings.Contains(logContent, `Expected: "bar"`) {
+		t.Errorf("Expected log to contain error details, got:\n%s", logContent)
+	}
+
+	// Check for skipped test with circle
+	if !strings.Contains(logContent, "○ should skip this test") {
+		t.Errorf("Expected log to contain skipped test result with circle, got:\n%s", logContent)
+	}
+}

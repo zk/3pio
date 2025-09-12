@@ -198,6 +198,14 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 				// For Vitest: Write on first event (which is the completion event)
 				// This prevents duplicate boundaries while supporting both test runners
 				m.appendToFileBuffer(filePath, fmt.Sprintf("\n--- Test: %s ---\n", event.Payload.TestName))
+				
+				// If test is already complete (not RUNNING), write the result
+				if event.Payload.Status != "RUNNING" {
+					m.writeTestResultToLog(filePath, event.Payload)
+				}
+			} else if event.Payload.Status != "RUNNING" {
+				// Test case was updated with final status, write the result
+				m.writeTestResultToLog(filePath, event.Payload)
 			}
 			break
 		}
@@ -545,6 +553,42 @@ func getTestCaseIcon(status ipc.TestStatus) string {
 		return "○"
 	default:
 		return "~" // Running or unknown
+	}
+}
+
+// writeTestResultToLog writes the test result to the log file
+func (m *Manager) writeTestResultToLog(filePath string, payload struct {
+	FilePath  string         `json:"filePath"`
+	TestName  string         `json:"testName"`
+	SuiteName string         `json:"suiteName,omitempty"`
+	Status    ipc.TestStatus `json:"status"`
+	Duration  float64        `json:"duration,omitempty"`
+	Error     string         `json:"error,omitempty"`
+}) {
+	icon := getTestCaseIcon(payload.Status)
+	
+	// Format the test result line
+	var result string
+	if payload.Duration > 0 {
+		result = fmt.Sprintf("%s %s (%dms)\n", icon, payload.TestName, int(payload.Duration))
+	} else {
+		result = fmt.Sprintf("%s %s\n", icon, payload.TestName)
+	}
+	
+	m.appendToFileBuffer(filePath, result)
+	
+	// If there's an error, write it with proper indentation
+	if payload.Error != "" && payload.Status == ipc.TestStatusFail {
+		// Add the error with indentation
+		errorLines := strings.Split(payload.Error, "\n")
+		var formattedError strings.Builder
+		formattedError.WriteString("```\n")
+		for _, line := range errorLines {
+			formattedError.WriteString(line)
+			formattedError.WriteString("\n")
+		}
+		formattedError.WriteString("```\n")
+		m.appendToFileBuffer(filePath, formattedError.String())
 	}
 }
 
