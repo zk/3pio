@@ -8,6 +8,13 @@ import (
 	"github.com/zk/3pio/internal/orchestrator"
 )
 
+// testLogger implements orchestrator.Logger for testing
+type testLogger struct{}
+
+func (l *testLogger) Debug(format string, args ...interface{}) {}
+func (l *testLogger) Error(format string, args ...interface{}) {}
+func (l *testLogger) Info(format string, args ...interface{})  {}
+
 func TestRunTestsCore_EmptyArgs(t *testing.T) {
 	// Test that empty args returns an error
 	exitCode, err := runTestsCore([]string{})
@@ -63,6 +70,7 @@ func TestRunTestsCore_ValidCommands(t *testing.T) {
 			// Create orchestrator to verify command is recognized
 			config := orchestrator.Config{
 				Command: tc.args,
+				Logger:  &testLogger{},
 			}
 
 			orch, err := orchestrator.New(config)

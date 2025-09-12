@@ -39,6 +39,7 @@ type Orchestrator struct {
 	failedFiles    int
 	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
+	lastCollected  int             // Track last collection count to avoid duplicates
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -60,7 +61,7 @@ type Config struct {
 // New creates a new orchestrator
 func New(config Config) (*Orchestrator, error) {
 	if config.Logger == nil {
-		config.Logger = &consoleLogger{}
+		return nil, fmt.Errorf("logger is required")
 	}
 
 	return &Orchestrator{
@@ -359,6 +360,17 @@ func (o *Orchestrator) getRelativePath(filePath string) string {
 // handleConsoleOutput displays real-time console output for test events
 func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	switch e := event.(type) {
+	case ipc.CollectionStartEvent:
+		// Display collection start message
+		fmt.Println("Collecting tests...")
+
+	case ipc.CollectionFinishEvent:
+		// Display collection complete message with file count (avoid duplicates)
+		if e.Payload.Collected > 0 && e.Payload.Collected != o.lastCollected {
+			fmt.Printf("Found %d test files\n\n", e.Payload.Collected)
+			o.lastCollected = e.Payload.Collected
+		}
+
 	case ipc.TestFileStartEvent:
 		// Normalize path for deduplication - use absolute path as key
 		normalizedPath := o.normalizePath(e.Payload.FilePath)
@@ -501,21 +513,4 @@ func generateRunID() string {
 	charIdx := rng.Intn(len(characters))
 
 	return fmt.Sprintf("%s-%s-%s", timestamp, adjectives[adjIdx], characters[charIdx])
-}
-
-// consoleLogger is a simple console logger
-type consoleLogger struct{}
-
-func (c *consoleLogger) Debug(format string, args ...interface{}) {
-	if os.Getenv("THREEPIO_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
-	}
-}
-
-func (c *consoleLogger) Error(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "[ERROR] "+format+"\n", args...)
-}
-
-func (c *consoleLogger) Info(format string, args ...interface{}) {
-	fmt.Printf(format+"\n", args...)
 }

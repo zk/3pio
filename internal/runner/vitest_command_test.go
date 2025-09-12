@@ -169,21 +169,21 @@ func TestVitestBuildCommand(t *testing.T) {
 			expected: []string{"yarn", "test", "--", "--config=vitest.config.ts", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 
-		// PNPM variations (10 examples)
+		// PNPM variations (10 examples) - pnpm doesn't need --
 		{
 			name:     "pnpm test",
 			args:     []string{"pnpm", "test"},
-			expected: []string{"pnpm", "test", "--", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "test", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 		{
 			name:     "pnpm run test",
 			args:     []string{"pnpm", "run", "test"},
-			expected: []string{"pnpm", "run", "test", "--", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "run", "test", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 		{
 			name:     "pnpm run test:watch",
 			args:     []string{"pnpm", "run", "test:watch"},
-			expected: []string{"pnpm", "run", "test:watch", "--", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "run", "test:watch", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 		{
 			name:     "pnpm exec vitest",
@@ -203,12 +203,12 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "pnpm test with filter",
 			args:     []string{"pnpm", "--filter", "backend", "test"},
-			expected: []string{"pnpm", "--filter", "backend", "test", "--", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "--filter", "backend", "test", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 		{
 			name:     "pnpm recursive test",
 			args:     []string{"pnpm", "-r", "test"},
-			expected: []string{"pnpm", "-r", "test", "--", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "-r", "test", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 		{
 			name:     "pnpm test with existing separator",
@@ -218,7 +218,7 @@ func TestVitestBuildCommand(t *testing.T) {
 		{
 			name:     "pnpm test in workspace",
 			args:     []string{"pnpm", "--workspace-root", "test"},
-			expected: []string{"pnpm", "--workspace-root", "test", "--", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
+			expected: []string{"pnpm", "--workspace-root", "test", "--reporter", "/tmp/adapter.js", "--reporter", "default"},
 		},
 
 		// Bun variations (10 examples)

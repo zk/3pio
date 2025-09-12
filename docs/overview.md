@@ -1,6 +1,6 @@
 # 3pio Documentation Overview
 
-3pio is a context-friendly test runner for frameworks like Jest and Vitest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+3pio is a context-friendly test runner for frameworks like Jest, Vitest, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
 
 ## Key Features
 
@@ -11,14 +11,24 @@
 
 ## Quick Start
 
+### Installation
+
 ```bash
-# Install globally
+# Install via npm (JavaScript projects)
 npm install -g @heyzk/3pio
 
+# Install via pip (Python projects)
+pip install threepio_test_runner
+```
+
+### Usage
+
+```bash
 # Run with your existing test commands
 3pio npm test
 3pio npx jest
 3pio npx vitest run
+3pio pytest
 
 # Find your reports in .3pio/runs/
 cat .3pio/runs/*/test-run.md
@@ -35,28 +45,29 @@ Data flows from test runners → adapters → IPC files → CLI → reports.
 
 ## Documentation Structure
 
+### Architecture Documentation (`architecture/`)
+
+Documentation for understanding and working on the 3pio codebase - system design, implementation details, and development guides.
+
+- **[Architecture](./architecture/architecture.md)** - Complete system architecture, components, and data flow
+- **[Test Runner Adapters](./architecture/test-runner-adapters.md)** - Adapter implementation, embedding, and framework support
+- **[Output Handling](./architecture/output-handling.md)** - Console capture strategies and parallel execution handling
+- **[Writing Adapters](./architecture/writing-adapters.md)** - Guide for adding new test runner support
+- **[Debugging](./architecture/debugging.md)** - Troubleshooting guide and debug logs
+
 ### Planning & Design
 
 - **[Design Decisions](./design-decisions.md)** - Key architectural choices and their rationale
+- **[Future Vision](./future-vision.md)** - Universal test reporting across all languages
+- **[Future Plans](./future-plans.md)** - SBOM, signing, and cleanup features
 
-### Architecture Documentation (`architecture/`)
+### Implementation Details
 
-- **[System Architecture](./architecture/system-architecture.md)** - Component breakdown and data flow diagrams
-- **[CLI Orchestrator](./architecture/cli-orchestrator.md)** - Main entry point, argument parsing, test runner detection
-- **[Report Manager](./architecture/report-manager.md)** - File I/O, debounced writes, dynamic test discovery
-- **[IPC Manager](./architecture/ipc-manager.md)** - File-based event communication between processes
-- **[Test Runner Adapters](./architecture/test-runner-adapter.md)** - Jest and Vitest reporter implementations
-- **[Test Runner Abstraction](./architecture/test-runner-abstraction.md)** - Runner detection and command building
-
-### Implementation Details (`implementation-details/`)
-
-- **[Jest Console Handling](./implementation-details/jest-console-handling.md)** - Special considerations for Jest output capture
+- **[pytest Plugin API](./implementation-details/pytest-plugin-api.md)** - pytest adapter implementation specifics
 
 ### Operations & Troubleshooting
 
 - **[Known Issues](./known-issues.md)** - Current limitations and workarounds
-- **[Debugging](./debugging.md)** - Troubleshooting guide and debug logs
-- **[Documentation Inconsistencies](./documentation-inconsistencies.md)** - Notes on documentation maintenance
 
 ## Output Structure
 

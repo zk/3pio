@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **pytest**: Uses custom plugin that integrates with pytest's hook system
 - All console output from tests is captured at the CLI process level by monitoring stdout/stderr streams
 - The captured output is stored in `.3pio/runs/*/output.log` as a complete record
-- Individual test log files may be empty if the output parser cannot attribute console logs to specific test files
+- Individual test log files contain headers with file path and timestamp information
 
 ## Development Commands
 
@@ -158,7 +158,9 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 
 For detailed information about these issues and their solutions, see `docs/known-issues.md`.
 - Never use emojis in output
-- System debug logging is avaialable at `.3pio/debug.log`
+- All debug, info and error logging is written to `.3pio/debug.log`
+- Each test run session is clearly marked with timestamps in the debug log
+- Error messages are also displayed to stderr for immediate visibility
 
 
 
@@ -168,4 +170,5 @@ For detailed information about these issues and their solutions, see `docs/known
 - Generated test files and scripts should not be put in the root directory. Any temporary files should go in the `./scratch` directory.
 - When we make design decisions update `docs/design-decisions.md` noting the decision and rationale.
 - Adapters are prepared for embedding using `make adapters` which runs `scripts/prepare-adapters.sh`
-- Debug logging can be enabled with `THREEPIO_DEBUG=1` environment variable
+- When asked to update documentation find a place that fits in `docs/`. If no good file exists for the information create it.
+- Always use the logger class when logging. See `internal/logger/file_logger.go`.
