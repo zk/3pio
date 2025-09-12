@@ -90,7 +90,7 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 
 	// Check that individual log files were created with headers
 	for _, file := range testFiles {
-		logPath := filepath.Join(tempDir, "reports", file+".log")
+		logPath := filepath.Join(tempDir, "reports", file+".md")
 		if _, err := os.Stat(logPath); os.IsNotExist(err) {
 			t.Errorf("Log file for %s was not created at %s", file, logPath)
 			continue
@@ -165,7 +165,7 @@ func TestManager_HandleTestFileStartEvent(t *testing.T) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".log") {
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
 			foundLogFile = true
 			return filepath.SkipAll // Stop walking once we find a log file
 		}
@@ -226,7 +226,7 @@ func TestManager_HandleStdoutChunkEvent(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Check that content was written to test log
-	logPath := filepath.Join(tempDir, "reports", testFile+".log")
+	logPath := filepath.Join(tempDir, "reports", testFile+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Failed to read test log: %v", err)
@@ -569,7 +569,7 @@ func TestManager_Debouncing(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Check that all content was written (debouncing should collect all writes)
-	logPath := filepath.Join(tempDir, "reports", testFile+".log")
+	logPath := filepath.Join(tempDir, "reports", testFile+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Failed to read test log: %v", err)
@@ -660,7 +660,7 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Read the log file and verify only one test boundary was written
-	logPath := filepath.Join(tempDir, "reports", testFile+".log")
+	logPath := filepath.Join(tempDir, "reports", testFile+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Failed to read test log: %v", err)
@@ -825,7 +825,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Read the log file
-	logPath := filepath.Join(tempDir, "reports", testFile+".log")
+	logPath := filepath.Join(tempDir, "reports", testFile+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Failed to read test log: %v", err)
@@ -1012,7 +1012,7 @@ Received: "foo"
 	_ = manager.Finalize(0)
 
 	// Read the log file
-	logPath := filepath.Join(tempDir, "reports", testFile+".log")
+	logPath := filepath.Join(tempDir, "reports", testFile+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)

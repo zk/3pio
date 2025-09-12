@@ -113,14 +113,14 @@ func TestReportFileGeneration(t *testing.T) {
 	}
 
 	// Check for individual log files
-	mathLogPath := filepath.Join(reportsDir, "math.test.js.log")
+	mathLogPath := filepath.Join(reportsDir, "math.test.js.md")
 	if !fileExists(mathLogPath) {
-		t.Error("math.test.js.log file should exist")
+		t.Error("math.test.js.md file should exist")
 	}
 
-	stringLogPath := filepath.Join(reportsDir, "string.test.js.log")
+	stringLogPath := filepath.Join(reportsDir, "string.test.js.md")
 	if !fileExists(stringLogPath) {
-		t.Error("string.test.js.log file should exist")
+		t.Error("string.test.js.md file should exist")
 	}
 }
 
@@ -241,12 +241,12 @@ func TestTestRunMdContent(t *testing.T) {
 	}
 
 	// Check for log file links
-	if !strings.Contains(content, "[Log](./reports/math.test.js.log)") {
-		t.Error("test-run.md should link to math.test.js.log")
+	if !strings.Contains(content, "[Log](./reports/math.test.js.md)") {
+		t.Error("test-run.md should link to math.test.js.md")
 	}
 
-	if !strings.Contains(content, "[Log](./reports/string.test.js.log)") {
-		t.Error("test-run.md should link to string.test.js.log")
+	if !strings.Contains(content, "[Log](./reports/string.test.js.md)") {
+		t.Error("test-run.md should link to string.test.js.md")
 	}
 
 	if !strings.Contains(content, "[output.log](./output.log)") {

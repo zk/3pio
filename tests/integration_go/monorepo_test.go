@@ -58,8 +58,8 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 	// Verify that both packages' test files were processed
 	// With directory preservation, files are now in package subdirectories
 	expectedLogFiles := []string{
-		"reports/packages/package-a/math.test.js.log",
-		"reports/packages/package-b/string.test.js.log",
+		"reports/packages/package-a/math.test.js.md",
+		"reports/packages/package-b/string.test.js.md",
 	}
 
 	for _, expectedFile := range expectedLogFiles {
