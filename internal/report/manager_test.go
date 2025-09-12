@@ -123,7 +123,7 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 		if !strings.Contains(contentStr, "# Test results for") {
 			t.Errorf("Log file %s missing test results header", logPath)
 		}
-		// Test case results are now directly embedded without the old "## Test case results" header
+		// Test case results header should not appear yet (no test cases have been added)
 	}
 }
 
@@ -646,10 +646,10 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 		t.Fatalf("Failed to read test log: %v", err)
 	}
 
-	// Verify the test case appears in the clean format with checkmark
-	testCaseLine := fmt.Sprintf("✓ %s", testName)
+	// Verify the test case appears in the clean format with checkmark as a list item
+	testCaseLine := fmt.Sprintf("- ✓ %s", testName)
 	if !strings.Contains(string(content), testCaseLine) {
-		t.Errorf("Expected test case to appear in clean format, but not found\nLog content:\n%s", string(content))
+		t.Errorf("Expected test case to appear in clean format as list item, but not found\nLog content:\n%s", string(content))
 	}
 
 	// Verify the stdout output is present in the stdout/stderr section

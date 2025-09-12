@@ -23,6 +23,7 @@ If your user indicated they would like to install and use 3pio for running tests
 
 ## Features
 
+- Zero-config
 - Efficient at navigating large test suites with hundreds of test files and thousands of test cases.
 
 ## Installation / Usage

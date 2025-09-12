@@ -49,9 +49,10 @@ status: PENDING | RUNNING | COMPLETED | ERRORED
 # Test results for `string.test.js`
 
 ## Test case results
-✓ should concatenate strings (1ms)
-✓ should concatenate strings (1ms)
-✕ should fail this test (3ms)
+
+- ✓ should concatenate strings (1ms)
+- ✓ should concatenate strings (1ms)
+- ✕ should fail this test (3ms)
 ```
 expected 'foo' to be 'bar' // Object.is equality
 ```

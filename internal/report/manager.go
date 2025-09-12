@@ -608,6 +608,7 @@ func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
 
 	// Test case results section
 	if len(tf.TestCases) > 0 {
+		sb.WriteString("## Test case results\n\n")
 		currentSuite := ""
 		for _, tc := range tf.TestCases {
 			// Group by suite if present
@@ -618,9 +619,9 @@ func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
 				currentSuite = tc.Suite
 			}
 
-			// Test case line
+			// Test case line as a list item
 			icon := getTestCaseIcon(tc.Status)
-			sb.WriteString(fmt.Sprintf("%s %s", icon, tc.Name))
+			sb.WriteString(fmt.Sprintf("- %s %s", icon, tc.Name))
 
 			// Always show duration, even if 0ms
 			// Round to nearest millisecond for display
