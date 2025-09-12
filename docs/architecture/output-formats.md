@@ -1,5 +1,41 @@
 # 3pio output format specs
 
+## test-run.md
+
+```markdown
+---
+run_id: 20250912T001847-funky-mccoy
+run_path: /Users/zk/code/3pio/.3pio/runs/20250912T001212-snappy-cyan
+created: 2025-02-15T12:30:00.000Z
+updated: 2025-02-15T12:31:11.000Z
+status: PENDING | RUNNING | COMPLETED | ERRORED
+---
+
+# 3pio Test Run
+
+- Test command: `npx vitest run`
+- Run stdout/stderr: `./output.log`
+
+## Summary
+
+
+- Total files: 2
+- Files completed: 2
+- Files passed: 1
+- Files failed: 1
+- Files skipped: 0
+- Total duration: 203.56s
+
+## Test file results
+
+| Stat | Test | Report file |
+| ---- | ---- | ----------- |
+| PASS | math.test.js | ./reports/math.test.js.md |
+| FAIL | string.test.js | ./reports/string.test.js.md |
+| SKIP | tests/unit/utilities.test.js | ./reports/tests/unit/utilities.test.js.md |
+```
+
+
 ## Individual Test Files
 
 ```markdown

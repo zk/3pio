@@ -123,9 +123,7 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 		if !strings.Contains(contentStr, "# Test results for") {
 			t.Errorf("Log file %s missing test results header", logPath)
 		}
-		if !strings.Contains(contentStr, "## Test case results") {
-			t.Errorf("Log file %s missing test case results section", logPath)
-		}
+		// Test case results are now directly embedded without the old "## Test case results" header
 	}
 }
 
@@ -167,7 +165,7 @@ func TestManager_HandleTestFileStartEvent(t *testing.T) {
 	// it will become something like "_UP/_UP/_UP/absolute/path/to/new.test.js.log"
 	// But for simplicity, let's just check that some log file was created
 	reportsDir := filepath.Join(tempDir, "reports")
-	
+
 	// Find any .log file that was created (search recursively)
 	var foundLogFile bool
 	err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, walkErr error) error {
@@ -180,15 +178,15 @@ func TestManager_HandleTestFileStartEvent(t *testing.T) {
 		}
 		return nil
 	})
-	
+
 	if err != nil && err != filepath.SkipAll {
 		t.Fatalf("Failed to walk reports directory: %v", err)
 	}
-	
+
 	if !foundLogFile {
 		// List what we found for debugging
 		var found []string
-		filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
 			if err == nil {
 				found = append(found, path)
 			}
@@ -300,13 +298,14 @@ func TestManager_HandleTestCaseEvent(t *testing.T) {
 	}
 
 	reportContent := string(content)
-	if !strings.Contains(reportContent, "should add numbers correctly") {
-		t.Errorf("Expected report to contain test case name, got: %s", reportContent)
+	// Check new YAML frontmatter format
+	if !strings.Contains(reportContent, "run_id:") {
+		t.Errorf("Expected report to contain run_id in YAML frontmatter, got: %s", reportContent)
 	}
-
-	if !strings.Contains(reportContent, "Math operations") {
-		t.Errorf("Expected report to contain suite name, got: %s", reportContent)
+	if !strings.Contains(reportContent, "status: RUNNING") {
+		t.Errorf("Expected report to contain running status (since test is not completed), got: %s", reportContent)
 	}
+	// Test case details should be in individual file reports, not main test-run.md
 }
 
 func TestManager_HandleTestFileResultEvent(t *testing.T) {
@@ -358,8 +357,8 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 	}
 
 	reportContent := string(content)
-	if !strings.Contains(reportContent, "Status: **PASS**") {
-		t.Errorf("Expected report to show PASS status, got: %s", reportContent)
+	if !strings.Contains(reportContent, "| PASS | math.test.js |") {
+		t.Errorf("Expected report to show PASS status in Test file results table, got: %s", reportContent)
 	}
 }
 
@@ -458,51 +457,18 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 	reportContent := string(content)
 
 	// Check that there's proper spacing after the error block
-	// The pattern should be: error block ending with ``` followed by TWO newlines before the next test
-	if !strings.Contains(reportContent, "```\n\n### Test Suite") {
-		// Check for the specific formatting pattern
-		lines := strings.Split(reportContent, "\n")
-		foundErrorBlock := false
-		properSpacing := false
-
-		for i, line := range lines {
-			if strings.Contains(line, "```") && foundErrorBlock {
-				// This is the closing of an error block
-				// Check if there's an empty line after it before the next test case
-				if i+1 < len(lines) && lines[i+1] == "" {
-					if i+2 < len(lines) && (strings.HasPrefix(lines[i+2], "✓") ||
-						strings.HasPrefix(lines[i+2], "✕") ||
-						strings.HasPrefix(lines[i+2], "###")) {
-						properSpacing = true
-						break
-					}
-				}
-			}
-			if strings.Contains(line, "Error:") {
-				foundErrorBlock = true
-			}
-		}
-
-		if !properSpacing {
-			t.Errorf("Expected proper spacing after error blocks in report.\nGot:\n%s", reportContent)
-		}
+	// Check new YAML frontmatter format
+	if !strings.Contains(reportContent, "run_id:") {
+		t.Errorf("Expected report to contain run_id in YAML frontmatter, got: %s", reportContent)
+	}
+	if !strings.Contains(reportContent, "status: RUNNING") {
+		t.Errorf("Expected report to contain running status (since test is not completed), got: %s", reportContent)
+	}
+	if !strings.Contains(reportContent, "## Test file results") {
+		t.Errorf("Expected report to contain Test file results section, got: %s", reportContent)
 	}
 
-	// Verify all test cases are present
-	if !strings.Contains(reportContent, "should pass") {
-		t.Errorf("Missing 'should pass' test case in report")
-	}
-	if !strings.Contains(reportContent, "should fail") {
-		t.Errorf("Missing 'should fail' test case in report")
-	}
-	if !strings.Contains(reportContent, "should also pass") {
-		t.Errorf("Missing 'should also pass' test case in report")
-	}
-
-	// Verify error is included
-	if !strings.Contains(reportContent, "Error: Expected true to be false") {
-		t.Errorf("Missing error message in report")
-	}
+	// Individual test case details should be in individual file reports, not main test-run.md
 }
 
 func TestManager_HandleRunCompleteEvent(t *testing.T) {
@@ -577,11 +543,16 @@ func TestManager_Debouncing(t *testing.T) {
 	// Wait for debounce to trigger
 	time.Sleep(200 * time.Millisecond)
 
-	// Check that all content was written (debouncing should collect all writes)
+	// Check that all content was written to the stdout/stderr section
 	logPath := filepath.Join(tempDir, "reports", testFile+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Failed to read test log: %v", err)
+	}
+
+	// Content should appear in the stdout/stderr section
+	if !strings.Contains(string(content), "## stdout/stderr") {
+		t.Error("Expected stdout/stderr section header")
 	}
 
 	for i := 0; i < 5; i++ {
@@ -675,15 +646,13 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 		t.Fatalf("Failed to read test log: %v", err)
 	}
 
-	// Count occurrences of the test boundary
-	boundary := fmt.Sprintf("--- Test: %s ---", testName)
-	occurrences := strings.Count(string(content), boundary)
-
-	if occurrences != 1 {
-		t.Errorf("Expected exactly 1 test boundary, but found %d occurrences\nLog content:\n%s", occurrences, string(content))
+	// Verify the test case appears in the clean format with checkmark
+	testCaseLine := fmt.Sprintf("✓ %s", testName)
+	if !strings.Contains(string(content), testCaseLine) {
+		t.Errorf("Expected test case to appear in clean format, but not found\nLog content:\n%s", string(content))
 	}
 
-	// Verify the test output is still present
+	// Verify the stdout output is present in the stdout/stderr section
 	if !strings.Contains(string(content), "Test output here") {
 		t.Errorf("Expected stdout output to be present in log")
 	}
@@ -855,57 +824,34 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	// --- Test: should baz correctly ---
 	// Error output from baz test
 
-	// Check that each test boundary appears exactly once
-	boundaries := []string{
-		"--- Test: should foo correctly ---",
-		"--- Test: should bar correctly ---",
-		"--- Test: should baz correctly ---",
+	// Check that test cases appear in the clean format
+	testCases := []struct {
+		name   string
+		status string
+	}{
+		{"should foo correctly", "✓"},
+		{"should bar correctly", "✓"},
+		{"should baz correctly", "✕"},
 	}
 
-	for _, boundary := range boundaries {
-		count := strings.Count(logContent, boundary)
-		if count != 1 {
-			t.Errorf("Expected boundary %q to appear exactly once, got %d occurrences", boundary, count)
+	for _, tc := range testCases {
+		testCaseLine := fmt.Sprintf("%s %s", tc.status, tc.name)
+		if !strings.Contains(logContent, testCaseLine) {
+			t.Errorf("Expected test case %q to appear in clean format", tc.name)
 		}
 	}
 
-	// Check that output is associated with the correct test
-	// Find the position of each boundary
-	foo_pos := strings.Index(logContent, boundaries[0])
-	bar_pos := strings.Index(logContent, boundaries[1])
-	baz_pos := strings.Index(logContent, boundaries[2])
-
-	if foo_pos == -1 || bar_pos == -1 || baz_pos == -1 {
-		t.Fatal("Not all test boundaries found in log")
+	// Check that output appears in the stdout/stderr section
+	if !strings.Contains(logContent, "## stdout/stderr") {
+		t.Error("Expected stdout/stderr section header")
 	}
 
-	// Check order
-	if foo_pos >= bar_pos || bar_pos >= baz_pos {
-		t.Error("Test boundaries are not in the expected order")
-	}
-
-	// Check that foo's output comes after foo's boundary but before bar's boundary
-	foo_output_pos := strings.Index(logContent, "Output from foo test")
-	if foo_output_pos == -1 {
-		t.Error("Foo test output not found")
-	} else if foo_output_pos <= foo_pos || foo_output_pos >= bar_pos {
-		t.Error("Foo test output is not properly associated with foo test")
-	}
-
-	// Check that bar's output comes after bar's boundary but before baz's boundary
-	bar_output_pos := strings.Index(logContent, "Output from bar test")
-	if bar_output_pos == -1 {
-		t.Error("Bar test output not found")
-	} else if bar_output_pos <= bar_pos || bar_output_pos >= baz_pos {
-		t.Error("Bar test output is not properly associated with bar test")
-	}
-
-	// Check that baz's error output comes after baz's boundary
-	baz_output_pos := strings.Index(logContent, "Error output from baz test")
-	if baz_output_pos == -1 {
-		t.Error("Baz test error output not found")
-	} else if baz_output_pos <= baz_pos {
-		t.Error("Baz test error output is not properly associated with baz test")
+	// Check that all output is present in the stdout/stderr section
+	outputs := []string{"Output from foo test", "Output from bar test", "Error output from baz test"}
+	for _, output := range outputs {
+		if !strings.Contains(logContent, output) {
+			t.Errorf("Expected output %q to be present", output)
+		}
 	}
 }
 

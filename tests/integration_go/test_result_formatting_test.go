@@ -208,7 +208,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			// Read all report files recursively and verify test results are present
 			var reportFiles []string
 			var allReportContent strings.Builder
-			
+
 			err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
@@ -227,7 +227,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to walk reports directory: %v", err)
 			}
-			
+
 			if len(reportFiles) == 0 {
 				t.Fatalf("Expected at least one report file, found none")
 			}
@@ -256,7 +256,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 				if !strings.Contains(reportContent, "---\ntest_file:") {
 					t.Errorf("Expected to find YAML frontmatter with test_file field in report files")
 				}
-				
+
 				// Check for structured format with test results directly after title
 				if !strings.Contains(reportContent, "# Test results for") {
 					t.Errorf("Expected to find structured title '# Test results for' in report files")

@@ -50,9 +50,9 @@ func TestESModuleJestCompatibility(t *testing.T) {
 
 	report := string(reportContent)
 
-	// Should have COMPLETE status (not ERROR)
-	if !strings.Contains(report, "**Status:** COMPLETE") {
-		t.Error("Report should show COMPLETE status for successful ES module tests")
+	// Should have COMPLETED status (not ERRORED) in YAML frontmatter
+	if !strings.Contains(report, "status: COMPLETED") {
+		t.Error("Report should show COMPLETED status for successful ES module tests")
 	}
 
 	// Should include Summary section

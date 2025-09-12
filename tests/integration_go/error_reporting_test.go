@@ -122,13 +122,13 @@ func TestErrorDetailsInReport(t *testing.T) {
 
 	report := string(reportContent)
 
-	// Check that status is ERROR
-	if !strings.Contains(report, "**Status:** ERROR") {
-		t.Error("Report should show ERROR status")
+	// Check that status is ERRORED in YAML frontmatter
+	if !strings.Contains(report, "status: ERRORED") {
+		t.Error("Report should show ERRORED status in YAML frontmatter")
 	}
 
 	// Check that error details are included
-	if !strings.Contains(report, "## Error Details") && !strings.Contains(report, "## Error") {
+	if !strings.Contains(report, "## Error") {
 		t.Error("Report should include an Error section")
 	}
 

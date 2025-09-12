@@ -72,11 +72,10 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 	// Verify the test-run.md contains both packages
 	testRunContent := readFile(t, filepath.Join(runDir, "test-run.md"))
 
+	// Check that both test files appear in the table format
 	expectedPackages := []string{
-		"packages/package-a/math.test.js",
-		"packages/package-b/string.test.js",
-		"Package A Math Operations",
-		"Package B String Operations",
+		"math.test.js", // File names in table
+		"string.test.js",
 	}
 
 	for _, expected := range expectedPackages {
@@ -221,24 +220,11 @@ func TestMonorepoMultiplePackagesParallel(t *testing.T) {
 	// Verify summary shows tests from both packages
 	testRunContent := readFile(t, filepath.Join(runDir, "test-run.md"))
 
-	// Verify that all 6 tests are present (3 from each package)
-	expectedTests := []string{
-		"should add numbers correctly",
-		"should subtract numbers correctly",
-		"should multiply numbers correctly",
-		"should concatenate strings",
-		"should convert to uppercase",
-		"should check string length",
-	}
+	// Individual test names are now in separate report files
+	// Main report only shows file-level status in table format
 
-	for _, test := range expectedTests {
-		if !strings.Contains(testRunContent, test) {
-			t.Errorf("Expected test '%s' not found in test-run.md", test)
-		}
-	}
-
-	// Verify both files passed
-	if !strings.Contains(testRunContent, "Files Passed: 2") {
+	// Verify both files passed (new format)
+	if !strings.Contains(testRunContent, "- Files passed: 2") {
 		t.Logf("test-run.md content:\n%s", testRunContent)
 		t.Error("Expected 2 files passed")
 	}
