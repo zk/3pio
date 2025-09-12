@@ -142,6 +142,20 @@ All adapters communicate using JSON Lines format with these events:
 }
 ```
 
+#### collectionStart / collectionFinish
+```json
+{
+  "eventType": "collectionStart",
+  "payload": {}
+}
+
+{
+  "eventType": "collectionFinish",
+  "payload": {"collected": 67}
+}
+```
+Note: Collection events provide immediate feedback during test discovery phase
+
 ## File Structure
 
 ### Runtime Directory Structure

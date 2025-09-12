@@ -41,18 +41,22 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 
 ### Vitest Adapter
 
-**Implementation**: Reporter with different interface
-- `onInit`: Initialize and start global capture
-- `onPathsCollected`: Track discovered test paths
-- `onTestFileStart`: Switch context to new file
-- `onTestFileResult`: Process test cases recursively
-- `onFinished`: Fallback processing and cleanup
+**Implementation**: Reporter with V3 module hooks for parallel support
+- `onInit`: Initialize and send collection start event
+- `onPathsCollected`: Send collection complete with file count
+- `onTestModuleCollected`: Send testFileStart when module queued (V3 hook, real-time)
+- `onTestModuleEnd`: Send testFileResult and test cases (V3 hook, real-time)
+- `sendTestCasesFromModule`: Recursively extract and send individual test case events
+- `onTestFileStart`/`onTestFileResult`: Fallback for non-parallel mode
+- `onFinished`: Final fallback processing and cleanup
 
 **Special Considerations**:
+- Uses V3 module hooks for real-time progress in parallel mode
+- Module hooks (`onTestModule*`) work across worker processes
 - Default reporter included for better UX
 - `vitest list` unreliable (runs in watch mode)
 - Dynamic test discovery when files unknown upfront
-- Recursive test case extraction from task tree
+- Sends individual test case events with status, duration, and errors
 
 ### pytest Adapter
 
