@@ -69,8 +69,8 @@ cd tests/fixtures/basic-vitest && ../../../build/3pio npx vitest run
 make build
 ./build/3pio --version
 
-# Run with debug output
-THREEPIO_DEBUG=1 ./build/3pio npm test
+# Run with debug logs written to .3pio/debug.log
+./build/3pio npm test
 ```
 
 ### Local Testing

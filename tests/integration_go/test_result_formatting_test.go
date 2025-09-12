@@ -252,9 +252,14 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 
 			// Universal formatting validations
 			if len(logFiles) > 0 {
-				// Check for test boundaries - all test files should have these
-				if !strings.Contains(logContent, "--- Test:") {
-					t.Errorf("Expected to find test boundaries (--- Test: ---) in log files")
+				// Check for YAML frontmatter - all test files should have structured format
+				if !strings.Contains(logContent, "---\ntest_file:") {
+					t.Errorf("Expected to find YAML frontmatter with test_file field in log files")
+				}
+				
+				// Check for structured format with test results directly after title
+				if !strings.Contains(logContent, "# Test results for") {
+					t.Errorf("Expected to find structured title '# Test results for' in log files")
 				}
 
 				// If we have failing tests, they should have error details in code blocks

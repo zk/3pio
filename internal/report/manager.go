@@ -20,10 +20,14 @@ type Manager struct {
 	logger       Logger
 
 	// File handles for incremental writing
-	fileHandles map[string]*os.File
-	fileBuffers map[string][]string
-	debouncers  map[string]*time.Timer
-	outputFile  *os.File
+	fileHandles     map[string]*os.File
+	fileBuffers     map[string][]string
+	debouncers      map[string]*time.Timer
+	outputFile      *os.File
+	
+	// Separate stdout/stderr buffers for structured reports
+	stdoutBuffers   map[string][]string
+	stderrBuffers   map[string][]string
 
 	mu           sync.RWMutex
 	debounceTime time.Duration
@@ -62,15 +66,17 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger) (*Mana
 	}
 
 	return &Manager{
-		runDir:       runDir,
-		outputParser: parser,
-		logger:       logger,
-		fileHandles:  make(map[string]*os.File),
-		fileBuffers:  make(map[string][]string),
-		debouncers:   make(map[string]*time.Timer),
-		outputFile:   outputFile,
-		debounceTime: 100 * time.Millisecond,
-		maxWaitTime:  500 * time.Millisecond,
+		runDir:        runDir,
+		outputParser:  parser,
+		logger:        logger,
+		fileHandles:   make(map[string]*os.File),
+		fileBuffers:   make(map[string][]string),
+		debouncers:    make(map[string]*time.Timer),
+		outputFile:    outputFile,
+		stdoutBuffers: make(map[string][]string),
+		stderrBuffers: make(map[string][]string),
+		debounceTime:  100 * time.Millisecond,
+		maxWaitTime:   500 * time.Millisecond,
 	}, nil
 }
 
@@ -128,6 +134,9 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	case ipc.StderrChunkEvent:
 		return m.handleStderrChunk(e)
 
+	case ipc.CollectionErrorEvent:
+		return m.handleCollectionError(e)
+
 	default:
 		m.logger.Debug("Unknown event type: %T", event)
 	}
@@ -142,10 +151,11 @@ func (m *Manager) handleTestFileStart(event ipc.TestFileStartEvent) error {
 	// Ensure file is registered (dynamic discovery)
 	m.ensureTestFileRegisteredInternal(filePath)
 
-	// Update status to RUNNING
+	// Update status to RUNNING and update timestamp
 	for i := range m.state.TestFiles {
 		if m.state.TestFiles[i].File == filePath {
 			m.state.TestFiles[i].Status = ipc.TestStatusRunning
+			m.state.TestFiles[i].Updated = time.Now()
 			break
 		}
 	}
@@ -164,6 +174,9 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
 		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
+			// Update timestamp for any test case activity
+			m.state.TestFiles[i].Updated = time.Now()
+			
 			// Initialize test cases if needed
 			if m.state.TestFiles[i].TestCases == nil {
 				m.state.TestFiles[i].TestCases = make([]ipc.TestCase, 0)
@@ -223,6 +236,7 @@ func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
 	for i := range m.state.TestFiles {
 		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
 			m.state.TestFiles[i].Status = event.Payload.Status
+			m.state.TestFiles[i].Updated = time.Now()
 			m.state.FilesCompleted++
 
 			switch event.Payload.Status {
@@ -241,6 +255,11 @@ func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
 	// Flush buffer for this file immediately
 	m.flushFileBuffer(filePath)
 
+	// Generate structured individual file report
+	if err := m.writeIndividualFileReport(filePath); err != nil {
+		m.logger.Error("Failed to write individual file report for %s: %v", filePath, err)
+	}
+
 	return m.scheduleWrite()
 }
 
@@ -251,8 +270,13 @@ func (m *Manager) handleStdoutChunk(event ipc.StdoutChunkEvent) error {
 		m.logger.Error("Failed to write stdout to output.log: %v", err)
 	}
 
-	// Append to file buffer
+	// Append to file buffer (for legacy format)
 	m.appendToFileBuffer(event.Payload.FilePath, event.Payload.Chunk)
+
+	// Also append to stdout buffer for structured reports
+	if buffer, ok := m.stdoutBuffers[event.Payload.FilePath]; ok {
+		m.stdoutBuffers[event.Payload.FilePath] = append(buffer, event.Payload.Chunk)
+	}
 
 	return nil
 }
@@ -264,10 +288,61 @@ func (m *Manager) handleStderrChunk(event ipc.StderrChunkEvent) error {
 		m.logger.Error("Failed to write stderr to output.log: %v", err)
 	}
 
-	// Append to file buffer
+	// Append to file buffer (for legacy format)
 	m.appendToFileBuffer(event.Payload.FilePath, event.Payload.Chunk)
 
+	// Also append to stderr buffer for structured reports
+	if buffer, ok := m.stderrBuffers[event.Payload.FilePath]; ok {
+		m.stderrBuffers[event.Payload.FilePath] = append(buffer, event.Payload.Chunk)
+	}
+
 	return nil
+}
+
+// handleCollectionError handles collection error events (pytest specific)
+func (m *Manager) handleCollectionError(event ipc.CollectionErrorEvent) error {
+	filePath := event.Payload.FilePath
+	
+	// Ensure file is registered
+	m.ensureTestFileRegisteredInternal(filePath)
+	
+	// Find the test file and set execution error
+	normalizedPath := m.normalizePath(filePath)
+	for i := range m.state.TestFiles {
+		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
+			// Set execution error and update status to indicate error
+			m.state.TestFiles[i].ExecutionError = fmt.Sprintf("Collection failed: %s", event.Payload.Error)
+			m.state.TestFiles[i].Updated = time.Now()
+			
+			// Mark file as having execution error (will map to ERRORED in status)
+			// Keep existing status logic but the presence of ExecutionError will trigger ERRORED in report
+			break
+		}
+	}
+	
+	return m.scheduleWrite()
+}
+
+// SetExecutionError sets an execution error for a test file
+// This is used for errors that occur during test execution (not test failures)
+func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	// Ensure file is registered
+	m.ensureTestFileRegisteredInternal(filePath)
+	
+	// Find the test file and set execution error
+	normalizedPath := m.normalizePath(filePath)
+	for i := range m.state.TestFiles {
+		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
+			m.state.TestFiles[i].ExecutionError = errorMsg
+			m.state.TestFiles[i].Updated = time.Now()
+			break
+		}
+	}
+	
+	return m.scheduleWrite()
 }
 
 // ensureTestFileRegisteredInternal ensures a test file is registered (internal, assumes lock held)
@@ -306,6 +381,8 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 	} else {
 		m.fileHandles[filePath] = file
 		m.fileBuffers[filePath] = make([]string, 0)
+		m.stdoutBuffers[filePath] = make([]string, 0)
+		m.stderrBuffers[filePath] = make([]string, 0)
 
 		// Write header to the log file
 		header := fmt.Sprintf(`# File: %s
@@ -321,11 +398,14 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 	}
 
 	// Add to state
+	now := time.Now()
 	m.state.TestFiles = append(m.state.TestFiles, ipc.TestFile{
 		Status:    ipc.TestStatusPending,
 		File:      filePath,
 		LogFile:   logFileName,
 		TestCases: make([]ipc.TestCase, 0),
+		Created:   now,
+		Updated:   now,
 	})
 }
 
@@ -491,6 +571,129 @@ func (m *Manager) generateMarkdownReport() string {
 	sb.WriteString(fmt.Sprintf("---\n*Updated: %s*\n", m.state.UpdatedAt.Format(time.RFC3339)))
 
 	return sb.String()
+}
+
+// generateIndividualFileReport generates a structured report for a single test file
+func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
+	var sb strings.Builder
+
+	// Extract filename from full path for title
+	filename := filepath.Base(tf.File)
+
+	// YAML frontmatter
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("test_file: %s\n", tf.File))
+	sb.WriteString(fmt.Sprintf("created: %s\n", tf.Created.UTC().Format("2006-01-02T15:04:05.000Z")))
+	sb.WriteString(fmt.Sprintf("updated: %s\n", tf.Updated.UTC().Format("2006-01-02T15:04:05.000Z")))
+
+	// Map internal status to spec status
+	var statusText string
+	switch tf.Status {
+	case ipc.TestStatusPending:
+		statusText = "PENDING"
+	case ipc.TestStatusRunning:
+		statusText = "RUNNING"
+	case ipc.TestStatusPass, ipc.TestStatusFail, ipc.TestStatusSkip:
+		statusText = "COMPLETED"
+	default:
+		if tf.ExecutionError != "" {
+			statusText = "ERRORED"
+		} else {
+			statusText = "COMPLETED"
+		}
+	}
+	sb.WriteString(fmt.Sprintf("status: %s\n", statusText))
+	sb.WriteString("---\n\n")
+
+	// Title
+	sb.WriteString(fmt.Sprintf("# Test results for `%s`\n\n", filename))
+
+	// Test case results section
+	if len(tf.TestCases) > 0 {
+		currentSuite := ""
+		for _, tc := range tf.TestCases {
+			// Group by suite if present
+			if tc.Suite != "" && tc.Suite != currentSuite {
+				if currentSuite != "" {
+					sb.WriteString("\n")
+				}
+				currentSuite = tc.Suite
+			}
+
+			// Test case line
+			icon := getTestCaseIcon(tc.Status)
+			sb.WriteString(fmt.Sprintf("%s %s", icon, tc.Name))
+
+			if tc.Duration > 0 {
+				sb.WriteString(fmt.Sprintf(" (%.0fms)", tc.Duration))
+			}
+			sb.WriteString("\n")
+
+			// Test failure error (not execution error)
+			if tc.Error != "" && tc.Status == ipc.TestStatusFail {
+				sb.WriteString("```\n")
+				sb.WriteString(tc.Error)
+				sb.WriteString("\n```\n")
+			}
+		}
+	}
+
+	// Execution error section (only if execution error occurred)
+	if tf.ExecutionError != "" {
+		sb.WriteString("## Error\n\n")
+		sb.WriteString(tf.ExecutionError)
+		sb.WriteString("\n\n")
+	}
+
+	// stdout/stderr section (only if content exists)
+	stdoutContent := strings.Join(m.stdoutBuffers[tf.File], "")
+	stderrContent := strings.Join(m.stderrBuffers[tf.File], "")
+	
+	if stdoutContent != "" || stderrContent != "" {
+		sb.WriteString("## stdout/stderr\n\n")
+		sb.WriteString("```\n")
+		if stdoutContent != "" {
+			sb.WriteString(stdoutContent)
+		}
+		if stderrContent != "" {
+			sb.WriteString(stderrContent)
+		}
+		sb.WriteString("\n```\n\n")
+	}
+
+	return sb.String()
+}
+
+// writeIndividualFileReport writes the structured report for a single test file
+func (m *Manager) writeIndividualFileReport(filePath string) error {
+	// Find the test file in state
+	normalizedPath := m.normalizePath(filePath)
+	var targetFile *ipc.TestFile
+	for i := range m.state.TestFiles {
+		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
+			targetFile = &m.state.TestFiles[i]
+			break
+		}
+	}
+
+	if targetFile == nil {
+		return fmt.Errorf("test file not found in state: %s", filePath)
+	}
+
+	// Generate report content
+	report := m.generateIndividualFileReport(*targetFile)
+
+	// Write to file
+	logFileName := sanitizePathForFilesystem(filePath) + ".log"
+	logPath := filepath.Join(m.runDir, "reports", logFileName)
+	
+	// Create parent directories if needed
+	logDir := filepath.Dir(logPath)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("failed to create log directory for %s: %w", filePath, err)
+	}
+
+	return os.WriteFile(logPath, []byte(report), 0644)
 }
 
 // Finalize completes the test run and closes all resources

@@ -146,10 +146,13 @@ type TestCase struct {
 
 // TestFile represents a test file in the test run state
 type TestFile struct {
-	Status    TestStatus `json:"status"`
-	File      string     `json:"file"`
-	LogFile   string     `json:"logFile,omitempty"`
-	TestCases []TestCase `json:"testCases,omitempty"`
+	Status         TestStatus `json:"status"`
+	File           string     `json:"file"`
+	LogFile        string     `json:"logFile,omitempty"`
+	TestCases      []TestCase `json:"testCases,omitempty"`
+	Created        time.Time  `json:"created"`
+	Updated        time.Time  `json:"updated"`
+	ExecutionError string     `json:"executionError,omitempty"`
 }
 
 // TestRunState represents the complete state of a test run

@@ -152,7 +152,7 @@ In `internal/runner/definition.go`:
 ### Silent Operation
 - Never write to stdout/stderr directly
 - All communication through IPC
-- Debug output only when `THREEPIO_DEBUG=1`
+- All debug output written to `.3pio/debug.log`
 
 ### Error Resilience
 - Wrap all IPC operations in try/catch
