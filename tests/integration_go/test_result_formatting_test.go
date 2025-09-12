@@ -17,7 +17,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binaryName = "3pio.exe"
 	}
-	
+
 	binaryPath, err := filepath.Abs(filepath.Join("../../build", binaryName))
 	if err != nil {
 		t.Fatalf("Failed to get absolute path to binary: %v", err)

@@ -15,7 +15,7 @@ func runBinary(t *testing.T, projectDir string, args ...string) (string, string,
 	if runtime.GOOS == "windows" {
 		binaryName = "3pio.exe"
 	}
-	
+
 	binaryPath, err := filepath.Abs(filepath.Join("../../build", binaryName))
 	if err != nil {
 		t.Fatalf("Failed to get absolute path to binary: %v", err)
