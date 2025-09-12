@@ -154,3 +154,63 @@ This document captures key architectural and design decisions made during the de
 - File handle pooling for very large test suites (>100 files) to avoid OS limits
 - Configurable debounce timings via environment variables
 - Compression for very large log files
+
+## Unified Report Generation Architecture (2025-09-12)
+
+**Decision**: Replace incremental buffering with complete file regeneration using a single unified report generation function.
+
+**Previous Behavior**:
+- Test files started with legacy format headers ("## Test case results", "--- Test: ..." boundaries)
+- Different phases used different report generation logic
+- Incremental buffering with file handles and periodic flushes
+- Inconsistent formatting between file start and completion phases
+
+**New Behavior**:
+- Single `generateIndividualFileReport()` function used for all report generation
+- `updateIndividualFileReport()` regenerates entire file content when test state changes
+- Consistent clean format across all phases: file start, test execution, and completion
+- No incremental buffering - complete file rewrite on each state change
+
+**Report Format**:
+```yaml
+---
+test_file: /path/to/test.ts
+created: 2025-09-12T10:10:49.389Z
+updated: 2025-09-12T10:10:56.937Z
+status: RUNNING|COMPLETED|ERRORED
+---
+
+# Test results for `test.ts`
+
+✓ passing test (2ms)
+✕ failing test (5ms)
+```error block```
+```
+
+**Rationale**:
+1. **Consistency**: Single function ensures identical formatting across all test phases
+2. **Simplicity**: Eliminates complex buffering logic and file handle management
+3. **Reliability**: No risk of corrupted reports from partial writes or buffer issues
+4. **AI-Friendly**: Clean, predictable format optimized for context efficiency
+5. **Maintainability**: Single source of truth for report format reduces code complexity
+
+**Implementation Details**:
+- Removed `appendToFileBuffer()`, `flushFileBuffer()`, and `scheduleFileWrite()` functions
+- Eliminated `fileHandles` and `fileBuffers` maps
+- `handleTestCase()` now calls `updateIndividualFileReport()` for immediate regeneration
+- `Finalize()` regenerates all reports one final time for consistency
+
+**Performance Considerations**:
+- File regeneration is fast for typical test report sizes (<1MB)
+- Trade-off: Slightly more I/O for significantly better consistency and reliability
+- Most individual test files have <100 test cases, making regeneration negligible
+
+**Trade-offs**:
+- **Pros**:
+  - 100% consistent formatting across all phases
+  - Eliminates buffer-related complexity and bugs
+  - Simplifies debugging and maintenance
+  - AI agents see predictable format always
+- **Cons**:
+  - More file I/O operations during test execution
+  - Cannot preserve partial writes in buffer during crashes (acceptable trade-off)

@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 )
 
 // TestTestResultFormattingInLogFiles tests that test results are properly formatted
-// in individual log files across all test fixtures
+// in individual report files across all test fixtures
 func TestTestResultFormattingInLogFiles(t *testing.T) {
 	// Build path to the 3pio binary
 	binaryName := "3pio"
@@ -197,42 +198,46 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			}
 
 			runDir := filepath.Join(runsDir, runDirs[0].Name())
-			logsDir := filepath.Join(runDir, "logs")
+			reportsDir := filepath.Join(runDir, "reports")
 
-			// Check that logs directory exists
-			if _, err := os.Stat(logsDir); os.IsNotExist(err) {
-				t.Fatalf("Expected logs directory to exist")
+			// Check that reports directory exists
+			if _, err := os.Stat(reportsDir); os.IsNotExist(err) {
+				t.Fatalf("Expected reports directory to exist")
 			}
 
-			// Read all log files and verify test results are present
-			logFiles, err := os.ReadDir(logsDir)
-			if err != nil {
-				t.Fatalf("Failed to read logs directory: %v", err)
-			}
+			// Read all report files recursively and verify test results are present
+			var reportFiles []string
+			var allReportContent strings.Builder
 
-			if len(logFiles) == 0 {
-				t.Fatalf("Expected at least one log file, found none")
-			}
-
-			// Collect all log content
-			var allLogContent strings.Builder
-			for _, logFile := range logFiles {
-				logPath := filepath.Join(logsDir, logFile.Name())
-				content, err := os.ReadFile(logPath)
+			err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
-					t.Fatalf("Failed to read log file %s: %v", logPath, err)
+					return err
 				}
-
-				t.Logf("Log file %s content:\n%s", logFile.Name(), string(content))
-				allLogContent.Write(content)
+				if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+					reportFiles = append(reportFiles, path)
+					content, err := os.ReadFile(path)
+					if err != nil {
+						return fmt.Errorf("failed to read report file %s: %v", path, err)
+					}
+					t.Logf("Log file %s content:\n%s", path, string(content))
+					allReportContent.Write(content)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("Failed to walk reports directory: %v", err)
 			}
 
-			logContent := allLogContent.String()
+			if len(reportFiles) == 0 {
+				t.Fatalf("Expected at least one report file, found none")
+			}
+
+			reportContent := allReportContent.String()
 
 			// Universal validations - check for what we expect to find
-			hasPass := strings.Contains(logContent, "✓")
-			hasFail := strings.Contains(logContent, "✕")
-			hasSkip := strings.Contains(logContent, "○")
+			hasPass := strings.Contains(reportContent, "✓")
+			hasFail := strings.Contains(reportContent, "✕")
+			hasSkip := strings.Contains(reportContent, "○")
 
 			// Validate expected test result types
 			if tc.expectPass && !hasPass {
@@ -246,19 +251,24 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			}
 
 			// Universal formatting validations
-			if len(logFiles) > 0 {
-				// Check for test boundaries - all test files should have these
-				if !strings.Contains(logContent, "--- Test:") {
-					t.Errorf("Expected to find test boundaries (--- Test: ---) in log files")
+			if len(reportFiles) > 0 {
+				// Check for YAML frontmatter - all test files should have structured format
+				if !strings.Contains(reportContent, "---\ntest_file:") {
+					t.Errorf("Expected to find YAML frontmatter with test_file field in report files")
+				}
+
+				// Check for structured format with test results directly after title
+				if !strings.Contains(reportContent, "# Test results for") {
+					t.Errorf("Expected to find structured title '# Test results for' in report files")
 				}
 
 				// If we have failing tests, they should have error details in code blocks
-				if hasFail && !strings.Contains(logContent, "```") {
+				if hasFail && !strings.Contains(reportContent, "```") {
 					t.Errorf("Expected to find error details in code blocks (```) for failing tests")
 				}
 
 				// Check for durations - most test runners include them
-				hasDurations := strings.Contains(logContent, "ms)")
+				hasDurations := strings.Contains(reportContent, "ms)")
 				if !hasDurations && (hasPass || hasFail || hasSkip) {
 					t.Logf("Note: No test durations found - may be expected for %s", tc.testRunner)
 				}

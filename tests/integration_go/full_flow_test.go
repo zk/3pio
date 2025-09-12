@@ -54,8 +54,8 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 	expectedFiles := []string{
 		"test-run.md",
 		"output.log",
-		"logs/math.test.js.log",
-		"logs/string.test.js.log",
+		"reports/math.test.js.md",
+		"reports/string.test.js.md",
 	}
 
 	for _, expectedFile := range expectedFiles {

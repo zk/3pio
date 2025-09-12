@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -106,21 +105,21 @@ func TestReportFileGeneration(t *testing.T) {
 		t.Error("output.log file should exist")
 	}
 
-	// Check for logs directory
-	logsDir := filepath.Join(runDir, "logs")
-	if !fileExists(logsDir) {
-		t.Error("logs directory should exist")
+	// Check for reports directory
+	reportsDir := filepath.Join(runDir, "reports")
+	if !fileExists(reportsDir) {
+		t.Error("reports directory should exist")
 	}
 
 	// Check for individual log files
-	mathLogPath := filepath.Join(logsDir, "math.test.js.log")
+	mathLogPath := filepath.Join(reportsDir, "math.test.js.md")
 	if !fileExists(mathLogPath) {
-		t.Error("math.test.js.log file should exist")
+		t.Error("math.test.js.md file should exist")
 	}
 
-	stringLogPath := filepath.Join(logsDir, "string.test.js.log")
+	stringLogPath := filepath.Join(reportsDir, "string.test.js.md")
 	if !fileExists(stringLogPath) {
-		t.Error("string.test.js.log file should exist")
+		t.Error("string.test.js.md file should exist")
 	}
 }
 
@@ -159,98 +158,47 @@ func TestTestRunMdContent(t *testing.T) {
 		t.Error("test-run.md should contain '## Summary'")
 	}
 
-	if !strings.Contains(content, "- Total Files: 2") {
-		t.Error("test-run.md should show 'Total Files: 2'")
+	if !strings.Contains(content, "- Total files: 2") {
+		t.Error("test-run.md should show '- Total files: 2'")
 	}
 
-	if !strings.Contains(content, "- Files Completed: 2") {
-		t.Error("test-run.md should show 'Files Completed: 2'")
+	if !strings.Contains(content, "- Files completed: 2") {
+		t.Error("test-run.md should show '- Files completed: 2'")
 	}
 
-	if !strings.Contains(content, "- Files Passed: 1") {
-		t.Error("test-run.md should show 'Files Passed: 1'")
+	if !strings.Contains(content, "- Files passed: 1") {
+		t.Error("test-run.md should show '- Files passed: 1'")
 	}
 
-	if !strings.Contains(content, "- Files Failed: 1") {
-		t.Error("test-run.md should show 'Files Failed: 1'")
+	if !strings.Contains(content, "- Files failed: 1") {
+		t.Error("test-run.md should show '- Files failed: 1'")
 	}
 
-	// Check math.test.js section
-	if !strings.Contains(content, "## math.test.js") {
-		t.Error("test-run.md should contain math.test.js section")
+	// Check math.test.js in test file results table
+	if !strings.Contains(content, "| PASS | math.test.js |") {
+		t.Error("test-run.md should contain math.test.js with PASS status in table")
 	}
 
-	if !strings.Contains(content, "Status: **PASS**") {
-		t.Error("math.test.js should have PASS status")
+	// Check string.test.js in test file results table with FAIL status
+	if !strings.Contains(content, "| FAIL | string.test.js |") {
+		t.Error("test-run.md should contain string.test.js with FAIL status in table")
 	}
 
-	if !strings.Contains(content, "### Math operations") {
-		t.Error("test-run.md should contain Math operations suite")
+	// Individual test details are now in separate report files
+	// Main report only shows file-level summary in table format
+
+	// Check that report files are referenced in the table
+	if !strings.Contains(content, "./reports/math.test.js.md") {
+		t.Error("test-run.md should reference math.test.js.md in table")
 	}
 
-	if !strings.Contains(content, "✓ should add numbers correctly") {
-		t.Error("test-run.md should show passing add test")
+	if !strings.Contains(content, "./reports/string.test.js.md") {
+		t.Error("test-run.md should reference string.test.js.md in table")
 	}
 
-	if !strings.Contains(content, "✓ should multiply numbers correctly") {
-		t.Error("test-run.md should show passing multiply test")
-	}
-
-	if !strings.Contains(content, "✓ should handle division") {
-		t.Error("test-run.md should show passing division test")
-	}
-
-	// Check string.test.js section
-	if !strings.Contains(content, "## string.test.js") {
-		t.Error("test-run.md should contain string.test.js section")
-	}
-
-	if !strings.Contains(content, "Status: **FAIL**") {
-		t.Error("string.test.js should have FAIL status")
-	}
-
-	if !strings.Contains(content, "### String operations") {
-		t.Error("test-run.md should contain String operations suite")
-	}
-
-	if !strings.Contains(content, "✓ should concatenate strings") {
-		t.Error("test-run.md should show passing concatenate test")
-	}
-
-	if !strings.Contains(content, "✕ should fail this test") {
-		t.Error("test-run.md should show failing test")
-	}
-
-	if !strings.Contains(content, "○ should skip this test") {
-		t.Error("test-run.md should show skipped test")
-	}
-
-	if !strings.Contains(content, "✓ should convert to uppercase") {
-		t.Error("test-run.md should show passing uppercase test")
-	}
-
-	// Check for error message
-	if !regexp.MustCompile(`expected 'foo' to be 'bar'`).MatchString(content) {
-		t.Error("test-run.md should contain expected error message")
-	}
-
-	// Check for duration format (ms or s)
-	durationRegex := regexp.MustCompile(`\(\d+(\.\d+)?\s*(ms|s)\)`)
-	if !durationRegex.MatchString(content) {
-		t.Error("test-run.md should contain duration information")
-	}
-
-	// Check for log file links
-	if !strings.Contains(content, "[Log](./logs/math.test.js.log)") {
-		t.Error("test-run.md should link to math.test.js.log")
-	}
-
-	if !strings.Contains(content, "[Log](./logs/string.test.js.log)") {
-		t.Error("test-run.md should link to string.test.js.log")
-	}
-
-	if !strings.Contains(content, "[output.log](./output.log)") {
-		t.Error("test-run.md should link to output.log")
+	// Check that output.log is referenced in header
+	if !strings.Contains(content, "./output.log") {
+		t.Error("test-run.md should reference output.log")
 	}
 }
 

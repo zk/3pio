@@ -17,13 +17,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 6. **Output Parser** (`internal/output/`) - Parses stdout/stderr streams
 
 ### Data Flow
-- CLI attempts dry run (optional) → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager writes structured logs incrementally → final report at `.3pio/runs/[timestamp]-[memorable-name]/test-run.md`
+- CLI attempts dry run (optional) → creates run directory → spawns test runner with adapter → adapter sends test events via IPC → CLI captures all stdout/stderr at process level → Report Manager generates unified test reports → final report at `.3pio/runs/[timestamp]-[memorable-name]/test-run.md`
 
-### Incremental Log Writing
-- Individual test log files are created immediately when a test file is registered
-- Output is written incrementally to log files
+### Unified Report Generation
+- Individual test reports use a single `generateIndividualFileReport()` function for consistent formatting
+- Reports are regenerated completely when test state changes (no incremental buffering)
+- All reports use the same clean format with YAML frontmatter and structured test case listings
+- Consistent format across all phases: file start, test execution, and completion
 - Partial results are available even if the test run is interrupted (e.g., Ctrl+C)
-- All file handles are properly closed and buffers flushed during finalization
 
 ### Console Output Capture Strategy
 - **Jest**: 3pio does NOT use Jest's default reporter to avoid duplicate output
@@ -69,8 +70,8 @@ cd tests/fixtures/basic-vitest && ../../../build/3pio npx vitest run
 make build
 ./build/3pio --version
 
-# Run with debug output
-THREEPIO_DEBUG=1 ./build/3pio npm test
+# Run with debug logs written to .3pio/debug.log
+./build/3pio npm test
 ```
 
 ### Local Testing

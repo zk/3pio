@@ -186,7 +186,7 @@ pytest adapters use the capsys fixture to capture output and send it via IPC eve
 ### 1. Silent Operation
 - **Never** write to stdout/stderr directly
 - All communication must go through IPC
-- Debug output only when `THREEPIO_DEBUG=1`
+- All debug output written to `.3pio/debug.log`
 
 ### 2. Error Resilience
 - Wrap all IPC operations in try/catch
@@ -276,9 +276,9 @@ Create comprehensive tests:
 
 ### Debugging
 
-Enable debug mode for detailed logs:
+Check debug logs for detailed information:
 ```bash
-THREEPIO_DEBUG=1 ./build/3pio npm test
+./build/3pio npm test
 tail -f .3pio/debug.log
 ```
 

@@ -116,8 +116,8 @@ cd tests/fixtures/basic-vitest
 cd open-source/mastra/packages/core
 ../../../../build/3pio pnpm test
 
-# Check for individual logs (currently broken)
-ls -la .3pio/runs/*/logs/
+# Check for individual reports (currently broken)
+ls -la .3pio/runs/*/reports/
 ```
 
 ## Next Steps

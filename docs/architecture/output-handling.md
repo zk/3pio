@@ -127,7 +127,7 @@ Some test runners have distinct collection/discovery phases:
 ```
 .3pio/runs/[runID]/
 ├── output.log              # Complete stdout/stderr from process
-└── logs/                   # Individual test file logs
+└── reports/                # Individual test file reports
     ├── math.test.js.log   # Output from math tests
     └── string.test.js.log # Output from string tests
 ```
