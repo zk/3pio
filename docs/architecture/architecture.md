@@ -68,22 +68,31 @@ JavaScript and Python reporters embedded in the Go binary:
 
 ### Execution Sequence
 
-1. User executes `3pio npm test`
+1. User executes `3pio npm test` or `3pio go test`
 2. CLI parses arguments and creates Orchestrator
 3. Orchestrator generates run ID (e.g., `20250911T120000Z-brave-luke`)
 4. Runner Manager detects test runner
 5. Orchestrator creates directory structure
-6. Embedded adapters extracted to temp directory
-7. Report Manager initialized with run metadata
-8. IPC Manager starts watching for events
-9. Orchestrator spawns test process with modified command
-10. Test adapter sends events via IPC
-11. IPC Manager reads and parses events
-12. Report Manager processes events incrementally
-13. Orchestrator displays progress to console
-14. Process completes or is interrupted
-15. Report Manager finalizes all files
-16. Orchestrator exits with test runner's exit code
+6. For adapter-based runners (Jest/Vitest/pytest):
+   - Embedded adapters extracted to temp directory
+   - Command modified to include adapter
+7. For native runners (Go test):
+   - Command modified to add `-json` flag
+   - No adapter extraction needed
+8. Report Manager initialized with run metadata
+9. IPC Manager starts watching for events
+10. Orchestrator spawns test process with modified command
+11. For adapter-based runners:
+    - Test adapter sends events via IPC
+12. For native runners:
+    - Orchestrator processes JSON output directly
+    - Generates IPC events from JSON stream
+13. IPC Manager reads and parses events
+14. Report Manager processes events incrementally
+15. Orchestrator displays progress to console
+16. Process completes or is interrupted
+17. Report Manager finalizes all files
+18. Orchestrator exits with test runner's exit code
 
 ### Concurrent Processing
 

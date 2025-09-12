@@ -45,6 +45,8 @@ npx @heyzk/3pio [your test command]
 3pio npm test -- test/unit
 3pio npx jest
 3pio npx vitest run
+3pio go test
+3pio go test ./...
 ```
 
 **Note:** 3pio writes it's files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
@@ -57,6 +59,12 @@ npx @heyzk/3pio [your test command]
 ### Vitest
 - **Requires Vitest 3.0+** - The reporter uses Vitest 3.x lifecycle hooks (`onFinished`)
 - Older versions of Vitest are not supported due to API changes
+
+### Go test
+- Native support without external adapter
+- Automatically adds `-json` flag for structured output
+- Supports parallel tests, subtests, and test caching
+- Compatible with all Go versions that support `go test -json` (Go 1.10+)
 
 ## Output
 

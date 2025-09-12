@@ -18,6 +18,7 @@ import (
 	"github.com/zk/3pio/internal/ipc"
 	"github.com/zk/3pio/internal/report"
 	"github.com/zk/3pio/internal/runner"
+	"github.com/zk/3pio/internal/runner/definitions"
 )
 
 // Orchestrator manages the test execution lifecycle
@@ -139,17 +140,33 @@ func (o *Orchestrator) Run() error {
 		return fmt.Errorf("failed to initialize report: %w", err)
 	}
 
-	// Extract adapter to temp directory
-	adapterPath, err := o.extractAdapter(runnerDef.GetAdapterFileName())
-	if err != nil {
-		return fmt.Errorf("failed to extract adapter: %w", err)
+	// Check if this is a native runner (like Go test)
+	var testCommandSlice []string
+	var isNativeRunner bool
+	var nativeDef interface{}
+	
+	// Check if adapter is needed (empty adapter name means native runner)
+	adapterFileName := runnerDef.GetAdapterFileName()
+	if adapterFileName == "" {
+		// Native runner - no adapter needed (e.g., Go test)
+		isNativeRunner = true
+		// Try to get the native definition using type assertion
+		if wrapper, ok := runnerDef.(*definitions.GoTestWrapper); ok {
+			nativeDef = wrapper.GoTestDefinition
+		}
+		testCommandSlice = runnerDef.BuildCommand(o.command, "")
+		o.logger.Debug("Using native runner for: %v", testCommandSlice)
+	} else {
+		// Traditional adapter-based runner
+		adapterPath, err := o.extractAdapter(adapterFileName)
+		if err != nil {
+			return fmt.Errorf("failed to extract adapter: %w", err)
+		}
+		testCommandSlice = runnerDef.BuildCommand(o.command, adapterPath)
+		o.logger.Debug("Adapter path: %s", adapterPath)
 	}
 
-	// Build command with adapter injection
-	testCommandSlice := runnerDef.BuildCommand(o.command, adapterPath)
-
 	o.logger.Debug("Executing command: %v", testCommandSlice)
-	o.logger.Debug("Adapter path: %s", adapterPath)
 	o.logger.Debug("IPC path: %s", o.ipcPath)
 
 	// Setup signal handling
@@ -205,12 +222,34 @@ func (o *Orchestrator) Run() error {
 		o.processEvents()
 	}()
 
-	// Capture stdout (only to file, don't echo to console)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		o.captureOutput(stdoutPipe, outputFile)
-	}()
+	// Capture stdout
+	if isNativeRunner {
+		// For native runners, process the JSON output and generate IPC events
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Process output through the native definition
+			if nd, ok := nativeDef.(interface {
+				ProcessOutput(io.Reader, string) error
+			}); ok {
+				// Create a tee reader to capture output to file and process it
+				teeReader := io.TeeReader(stdoutPipe, outputFile)
+				if err := nd.ProcessOutput(teeReader, o.ipcPath); err != nil {
+					o.logger.Error("Failed to process native output: %v", err)
+				}
+			} else {
+				// Fallback to just capturing
+				o.captureOutput(stdoutPipe, outputFile)
+			}
+		}()
+	} else {
+		// For adapter-based runners, just capture to file
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			o.captureOutput(stdoutPipe, outputFile)
+		}()
+	}
 
 	// Capture stderr (to file and error capture buffer)
 	wg.Add(1)

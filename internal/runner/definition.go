@@ -26,6 +26,15 @@ type Definition interface {
 	InterpretExitCode(code int) string
 }
 
+// NativeRunner interface for runners that process output directly without adapters
+type NativeRunner interface {
+	Definition
+	// IsNative returns true if this runner processes output directly
+	IsNative() bool
+	// GetNativeDefinition returns the underlying native definition
+	GetNativeDefinition() interface{}
+}
+
 // BaseDefinition provides common functionality for test runners
 type BaseDefinition struct {
 	name        string

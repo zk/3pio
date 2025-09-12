@@ -3,23 +3,34 @@ package runner
 import (
 	"fmt"
 	"strings"
+	
+	"github.com/zk/3pio/internal/logger"
+	"github.com/zk/3pio/internal/runner/definitions"
 )
 
 // Manager manages test runner definitions
 type Manager struct {
 	runners map[string]Definition
+	logger  *logger.FileLogger
 }
 
 // NewManager creates a new runner manager
 func NewManager() *Manager {
+	// Create a logger for the manager
+	fileLogger, _ := logger.NewFileLogger()
+	
 	m := &Manager{
 		runners: make(map[string]Definition),
+		logger:  fileLogger,
 	}
 
 	// Register built-in runners
 	m.Register("jest", NewJestDefinition())
 	m.Register("vitest", NewVitestDefinition())
 	m.Register("pytest", NewPytestDefinition())
+	
+	// Register Go test runner (native, no adapter)
+	m.Register("go", definitions.NewGoTestWrapper(fileLogger))
 
 	return m
 }
