@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,12 @@ import (
 // in individual log files across all test fixtures
 func TestTestResultFormattingInLogFiles(t *testing.T) {
 	// Build path to the 3pio binary
-	binaryPath, err := filepath.Abs("../../build/3pio")
+	binaryName := "3pio"
+	if runtime.GOOS == "windows" {
+		binaryName = "3pio.exe"
+	}
+	
+	binaryPath, err := filepath.Abs(filepath.Join("../../build", binaryName))
 	if err != nil {
 		t.Fatalf("Failed to get absolute path to binary: %v", err)
 	}
