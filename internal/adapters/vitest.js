@@ -264,6 +264,122 @@ var ThreePioVitestReporter = class {
   onCollected(files) {
     this.logger.info("Test files collected", { count: files?.length || 0 });
   }
+  
+  // New Vitest 3+ Reporter Methods
+  onTestRunStart(specifications) {
+    this.logger.info("[V3] onTestRunStart called", { 
+      count: specifications?.length || 0,
+      specs: specifications?.map(s => s.moduleId || s.filepath || s) 
+    });
+  }
+  
+  onTestModuleCollected(testModule) {
+    this.logger.info("[V3] onTestModuleCollected called", { 
+      moduleId: testModule?.moduleId,
+      filepath: testModule?.filepath,
+      name: testModule?.name 
+    });
+  }
+  
+  onTestSuiteReady(testSuite) {
+    this.logger.info("[V3] onTestSuiteReady called", { 
+      name: testSuite?.name,
+      filepath: testSuite?.filepath,
+      id: testSuite?.id 
+    });
+  }
+  
+  onTestCaseReady(testCase) {
+    this.logger.info("[V3] onTestCaseReady called", { 
+      name: testCase?.name,
+      fullName: testCase?.fullName,
+      id: testCase?.id,
+      filepath: testCase?.filepath 
+    });
+  }
+  
+  onTestCaseResult(testCase) {
+    this.logger.info("[V3] onTestCaseResult called", { 
+      name: testCase?.name,
+      fullName: testCase?.fullName,
+      result: testCase?.result?.(),
+      state: testCase?.result?.()?.state,
+      filepath: testCase?.filepath 
+    });
+    
+    // Send IPC event for test case result
+    const result = testCase?.result?.();
+    if (result && testCase?.filepath) {
+      const status = result.state === 'passed' ? 'PASS' : 
+                     result.state === 'failed' ? 'FAIL' : 
+                     result.state === 'skipped' ? 'SKIP' : 'UNKNOWN';
+      
+      IPCSender.sendEvent({
+        eventType: "testCase",
+        payload: {
+          filePath: testCase.filepath,
+          testName: testCase.name,
+          suiteName: testCase.suite?.name,
+          status,
+          duration: result.duration,
+          error: result.errors?.map(e => e.message || String(e)).join('\n')
+        }
+      }).catch((error) => {
+        this.logger.error("Failed to send testCase event", error);
+      });
+    }
+  }
+  
+  onTestSuiteResult(testSuite) {
+    this.logger.info("[V3] onTestSuiteResult called", { 
+      name: testSuite?.name,
+      filepath: testSuite?.filepath,
+      result: testSuite?.result?.(),
+      state: testSuite?.result?.()?.state 
+    });
+  }
+  
+  onTestModuleEnd(testModule) {
+    this.logger.info("[V3] onTestModuleEnd called", { 
+      moduleId: testModule?.moduleId,
+      filepath: testModule?.filepath,
+      name: testModule?.name 
+    });
+  }
+  
+  onTestRunEnd(testModules, unhandledErrors, reason) {
+    this.logger.info("[V3] onTestRunEnd called", { 
+      modules: testModules?.length || 0,
+      errors: unhandledErrors?.length || 0,
+      reason: reason 
+    });
+    this.logger.lifecycle("Test run complete (V3)", {
+      modules: testModules?.length || 0,
+      errors: unhandledErrors?.length || 0
+    });
+  }
+  
+  onHookStart(hook) {
+    this.logger.debug("[V3] onHookStart called", { 
+      type: hook?.type,
+      name: hook?.name 
+    });
+  }
+  
+  onHookEnd(hook) {
+    this.logger.debug("[V3] onHookEnd called", { 
+      type: hook?.type,
+      name: hook?.name 
+    });
+  }
+  
+  onTestAnnotate(testCase, annotation) {
+    this.logger.debug("[V3] onTestAnnotate called", { 
+      testName: testCase?.name,
+      annotation: annotation 
+    });
+  }
+  
   onTestFileStart(file) {
     this.logger.testFlow("Starting test file", file.filepath);
     this.currentTestFile = file.filepath;
