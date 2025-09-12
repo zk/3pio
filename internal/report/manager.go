@@ -198,7 +198,7 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 				// For Vitest: Write on first event (which is the completion event)
 				// This prevents duplicate boundaries while supporting both test runners
 				m.appendToFileBuffer(filePath, fmt.Sprintf("\n--- Test: %s ---\n", event.Payload.TestName))
-				
+
 				// If test is already complete (not RUNNING), write the result
 				if event.Payload.Status != "RUNNING" {
 					m.writeTestResultToLog(filePath, event.Payload)
@@ -300,7 +300,7 @@ func (m *Manager) registerTestFileInternal(filePath string) {
 	} else {
 		m.fileHandles[filePath] = file
 		m.fileBuffers[filePath] = make([]string, 0)
-		
+
 		// Write header to the log file
 		header := fmt.Sprintf(`# File: %s
 # Timestamp: %s
@@ -566,7 +566,7 @@ func (m *Manager) writeTestResultToLog(filePath string, payload struct {
 	Error     string         `json:"error,omitempty"`
 }) {
 	icon := getTestCaseIcon(payload.Status)
-	
+
 	// Format the test result line
 	var result string
 	if payload.Duration > 0 {
@@ -574,9 +574,9 @@ func (m *Manager) writeTestResultToLog(filePath string, payload struct {
 	} else {
 		result = fmt.Sprintf("%s %s\n", icon, payload.TestName)
 	}
-	
+
 	m.appendToFileBuffer(filePath, result)
-	
+
 	// If there's an error, write it with proper indentation
 	if payload.Error != "" && payload.Status == ipc.TestStatusFail {
 		// Add the error with indentation

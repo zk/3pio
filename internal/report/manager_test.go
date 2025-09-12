@@ -95,14 +95,14 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 			t.Errorf("Log file for %s was not created at %s", file, logPath)
 			continue
 		}
-		
+
 		// Read the log file to check for header
 		content, err := os.ReadFile(logPath)
 		if err != nil {
 			t.Errorf("Failed to read log file %s: %v", logPath, err)
 			continue
 		}
-		
+
 		contentStr := string(content)
 		// Check for header components
 		if !strings.Contains(contentStr, "# File: "+file) {
@@ -925,7 +925,7 @@ func TestManager_TestResultsInLogFiles(t *testing.T) {
 			SuiteName: "String operations",
 			Status:    ipc.TestStatusFail,
 			Duration:  3.0,
-			Error:     `Error: expect(received).toBe(expected) // Object.is equality
+			Error: `Error: expect(received).toBe(expected) // Object.is equality
 
 Expected: "bar"
 Received: "foo"

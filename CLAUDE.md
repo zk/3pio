@@ -171,3 +171,4 @@ For detailed information about these issues and their solutions, see `docs/known
 - When we make design decisions update `docs/design-decisions.md` noting the decision and rationale.
 - Adapters are prepared for embedding using `make adapters` which runs `scripts/prepare-adapters.sh`
 - When asked to update documentation find a place that fits in `docs/`. If no good file exists for the information create it.
+- Always use the logger class when logging. See `internal/logger/file_logger.go`.

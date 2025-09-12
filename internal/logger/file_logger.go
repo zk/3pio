@@ -37,9 +37,9 @@ func NewFileLogger() (*FileLogger, error) {
 		time.Now().Format(time.RFC3339),
 		os.Getpid(),
 		mustGetwd())
-	
+
 	if _, err := file.WriteString(header); err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("failed to write log header: %w", err)
 	}
 
@@ -89,10 +89,10 @@ func (l *FileLogger) Close() error {
 
 	if l.file != nil {
 		// Write session footer
-		footer := fmt.Sprintf("\n--- Session ended: %s ---\n\n", 
+		footer := fmt.Sprintf("\n--- Session ended: %s ---\n\n",
 			time.Now().Format(time.RFC3339))
 		_, _ = l.file.WriteString(footer)
-		
+
 		err := l.file.Close()
 		l.file = nil
 		return err

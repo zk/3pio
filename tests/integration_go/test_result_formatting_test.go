@@ -24,14 +24,14 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 
 	// Test cases for ALL fixtures
 	testCases := []struct {
-		fixtureName  string
-		command      []string
-		testRunner   string // "jest", "vitest", "pytest"
-		expectPass   bool   // Should have some passing tests
-		expectFail   bool   // Should have some failing tests  
-		expectSkip   bool   // Should have some skipped tests
-		shouldRun    bool   // Whether we expect tests to run
-		skipReason   string // Reason to skip if needed
+		fixtureName string
+		command     []string
+		testRunner  string // "jest", "vitest", "pytest"
+		expectPass  bool   // Should have some passing tests
+		expectFail  bool   // Should have some failing tests
+		expectSkip  bool   // Should have some skipped tests
+		shouldRun   bool   // Whether we expect tests to run
+		skipReason  string // Reason to skip if needed
 	}{
 		// Basic fixtures - comprehensive test coverage
 		{
@@ -44,7 +44,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			shouldRun:   true,
 		},
 		{
-			fixtureName: "basic-vitest", 
+			fixtureName: "basic-vitest",
 			command:     []string{"npx", "vitest", "run"},
 			testRunner:  "vitest",
 			expectPass:  true,
@@ -70,7 +70,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			skipReason:  "Empty test suite - no actual test cases",
 		},
 		{
-			fixtureName: "empty-vitest", 
+			fixtureName: "empty-vitest",
 			command:     []string{"npx", "vitest", "run"},
 			testRunner:  "vitest",
 			shouldRun:   false,
@@ -136,7 +136,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			skipReason:  "Config error fixture - tests configuration failures",
 		},
 		{
-			fixtureName: "jest-ts-config-error", 
+			fixtureName: "jest-ts-config-error",
 			command:     []string{"npx", "jest"},
 			testRunner:  "jest",
 			shouldRun:   false,
@@ -153,7 +153,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 
 			// Change to fixture directory
 			fixtureDir := filepath.Join("../fixtures", tc.fixtureName)
-			
+
 			// Clean up any existing .3pio directory
 			threepioDir := filepath.Join(fixtureDir, ".3pio")
 			if err := os.RemoveAll(threepioDir); err != nil && !os.IsNotExist(err) {
@@ -166,7 +166,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			cmd.Dir = fixtureDir
 
 			// Run the command (may fail due to test failures, which is expected)
-			output, err := cmd.CombinedOutput()
+			output, _ := cmd.CombinedOutput()
 			t.Logf("Command output for %s:\n%s", tc.fixtureName, string(output))
 
 			// For pytest fixtures, if pytest is not installed, skip the test

@@ -39,7 +39,7 @@ type Orchestrator struct {
 	failedFiles    int
 	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
-	lastCollected  int              // Track last collection count to avoid duplicates
+	lastCollected  int             // Track last collection count to avoid duplicates
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -363,14 +363,14 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	case ipc.CollectionStartEvent:
 		// Display collection start message
 		fmt.Println("Collecting tests...")
-		
+
 	case ipc.CollectionFinishEvent:
 		// Display collection complete message with file count (avoid duplicates)
 		if e.Payload.Collected > 0 && e.Payload.Collected != o.lastCollected {
 			fmt.Printf("Found %d test files\n\n", e.Payload.Collected)
 			o.lastCollected = e.Payload.Collected
 		}
-		
+
 	case ipc.TestFileStartEvent:
 		// Normalize path for deduplication - use absolute path as key
 		normalizedPath := o.normalizePath(e.Payload.FilePath)
@@ -514,4 +514,3 @@ func generateRunID() string {
 
 	return fmt.Sprintf("%s-%s-%s", timestamp, adjectives[adjIdx], characters[charIdx])
 }
-

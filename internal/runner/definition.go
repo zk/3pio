@@ -322,7 +322,7 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 	if isPackageManagerCommand && !isDirectVitestCall && !foundVitest {
 		// Commands like: npm test, yarn test, pnpm test, bun test, deno task test
 		result := make([]string, 0, len(args)+6)
-		
+
 		// Different package managers handle flags differently:
 		// - pnpm: passes unknown flags directly to the script (no -- needed)
 		// - npm/yarn/bun/deno: need -- separator to pass flags to the script
@@ -331,7 +331,7 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
 			(cmd == "bun" || strings.HasPrefix(cmd, "bun ")) ||
 			(cmd == "deno" || strings.HasPrefix(cmd, "deno "))
-		
+
 		// Check if -- separator already exists
 		hasSeparator := false
 		for _, arg := range args {
@@ -340,15 +340,15 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 				break
 			}
 		}
-		
+
 		result = append(result, args...)
-		
+
 		if needsSeparator && !hasSeparator {
 			result = append(result, "--")
 		}
-		
+
 		result = append(result, "--reporter", adapterPath, "--reporter", "default")
-		
+
 		return result
 	}
 
@@ -432,54 +432,6 @@ func (v *VitestDefinition) isVitestInPackageJSON() bool {
 	for _, depKey := range []string{"dependencies", "devDependencies"} {
 		if deps, ok := pkg[depKey].(map[string]interface{}); ok {
 			if _, hasVitest := deps["vitest"]; hasVitest {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// shouldAddRunForPackageScript checks if we need to add 'run' subcommand
-// This is needed when package.json has "test": "vitest" without the run flag
-func (v *VitestDefinition) shouldAddRunForPackageScript() bool {
-	data, err := os.ReadFile("package.json")
-	if err != nil {
-		return false
-	}
-
-	var pkg map[string]interface{}
-	if err := json.Unmarshal(data, &pkg); err != nil {
-		return false
-	}
-
-	// Check test script
-	if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
-		if test, ok := scripts["test"].(string); ok {
-			// Check if the script is just "vitest" without any subcommand
-			// We need to be careful not to add 'run' if it already has a subcommand
-			test = strings.TrimSpace(test)
-			if test == "vitest" {
-				// Script is exactly "vitest", needs 'run'
-				return true
-			}
-			// Check if it starts with "vitest " followed by flags (not subcommands)
-			if strings.HasPrefix(test, "vitest ") {
-				remainder := strings.TrimSpace(test[7:]) // Remove "vitest "
-				// Check if remainder starts with a flag (--) or is empty
-				if strings.HasPrefix(remainder, "--") || strings.HasPrefix(remainder, "-") {
-					// It's "vitest --some-flag", needs 'run' before the flag
-					return true
-				}
-				// Check if it's a known subcommand
-				knownSubcommands := []string{"run", "watch", "bench", "typecheck", "list", "related", "init"}
-				for _, cmd := range knownSubcommands {
-					if strings.HasPrefix(remainder, cmd) {
-						// Already has a subcommand, don't add 'run'
-						return false
-					}
-				}
-				// Not a known subcommand, might be test files, needs 'run'
 				return true
 			}
 		}

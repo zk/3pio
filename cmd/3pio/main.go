@@ -90,7 +90,11 @@ func runTestsCore(args []string) (int, error) {
 		fmt.Fprintf(os.Stderr, "Failed to create debug logger: %v\n", err)
 		return 1, err
 	}
-	defer fileLogger.Close()
+	defer func() {
+		if err := fileLogger.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close debug log: %v\n", err)
+		}
+	}()
 
 	// Create orchestrator configuration
 	config := orchestrator.Config{
