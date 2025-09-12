@@ -56,10 +56,10 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 	runDir := getLatestRunDir(t, projectDir)
 
 	// Verify that both packages' test files were processed
-	// Note: Log files use just the filename, not the full package path
+	// With directory preservation, files are now in package subdirectories
 	expectedLogFiles := []string{
-		"logs/math.test.js.log",
-		"logs/string.test.js.log",
+		"reports/packages/package-a/math.test.js.log",
+		"reports/packages/package-b/string.test.js.log",
 	}
 
 	for _, expectedFile := range expectedLogFiles {

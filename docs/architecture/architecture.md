@@ -17,7 +17,7 @@ The system consists of six primary components:
 
 ### 2. Orchestrator (`internal/orchestrator/`)
 The central controller managing the entire test execution lifecycle:
-- Generates unique run IDs (timestamp + memorable Star Wars names)
+- Generates unique run IDs (format: `{timestamp}-{adjective}-{character}`, e.g., `20250911T194308-sneaky-yoda`)
 - Detects test runner using Runner Manager
 - Creates run directory structure (`.3pio/runs/[runID]/`)
 - Initializes IPC and Report managers
@@ -162,14 +162,14 @@ Note: Collection events provide immediate feedback during test discovery phase
 ```
 .3pio/
 ├── runs/
-│   └── [timestamp]-[name]/
+│   └── [runID]/
 │       ├── test-run.md           # Main report
 │       ├── output.log             # Complete stdout/stderr
-│       └── logs/                  # Individual test logs
+│       └── reports/              # Individual test reports
 │           ├── math.test.js.log
 │           └── string.test.js.log
 ├── ipc/
-│   └── [timestamp].jsonl         # IPC communication
+│   └── [runID].jsonl            # IPC communication
 └── debug.log                      # Debug logging
 ```
 

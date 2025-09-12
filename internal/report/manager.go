@@ -48,10 +48,10 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger) (*Mana
 		return nil, fmt.Errorf("failed to create run directory: %w", err)
 	}
 
-	// Create logs subdirectory
-	logsDir := filepath.Join(runDir, "logs")
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create logs directory: %w", err)
+	// Create reports subdirectory
+	reportsDir := filepath.Join(runDir, "reports")
+	if err := os.MkdirAll(reportsDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create reports directory: %w", err)
 	}
 
 	// Open output.log file
@@ -289,9 +289,15 @@ func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
 
 // registerTestFileInternal registers a test file (internal, assumes lock held)
 func (m *Manager) registerTestFileInternal(filePath string) {
-	// Create log file
-	logFileName := sanitizeFileName(filePath) + ".log"
-	logPath := filepath.Join(m.runDir, "logs", logFileName)
+	// Create log file with preserved directory structure
+	logFileName := sanitizePathForFilesystem(filePath) + ".log"
+	logPath := filepath.Join(m.runDir, "reports", logFileName)
+	
+	// Create parent directories if needed
+	logDir := filepath.Dir(logPath)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		m.logger.Error("Failed to create log directory for %s: %v", filePath, err)
+	}
 
 	// Open file handle
 	file, err := os.Create(logPath)
@@ -443,7 +449,7 @@ func (m *Manager) generateMarkdownReport() string {
 
 		// Log file link
 		if tf.LogFile != "" {
-			sb.WriteString(fmt.Sprintf("[Log](./logs/%s)\n\n", tf.LogFile))
+			sb.WriteString(fmt.Sprintf("[Log](./reports/%s)\n\n", tf.LogFile))
 		}
 
 		// Test cases
@@ -531,15 +537,59 @@ func (m *Manager) normalizePath(filePath string) string {
 	return absPath
 }
 
-// sanitizeFileName sanitizes a file path for use as a filename
-func sanitizeFileName(filePath string) string {
-	// Get just the filename from the path (no directories)
-	name := filepath.Base(filePath)
-
-	// Replace any remaining dangerous characters
-	name = strings.ReplaceAll(name, "..", "")
-
-	return name
+// sanitizePathForFilesystem sanitizes a file path to preserve directory structure
+// while preventing directory traversal and filesystem issues
+func sanitizePathForFilesystem(filePath string) string {
+	// Clean the path to normalize it
+	cleanPath := filepath.Clean(filePath)
+	
+	// Try to make the path relative to the current working directory
+	cwd, err := os.Getwd()
+	if err == nil {
+		if absPath, err := filepath.Abs(cleanPath); err == nil {
+			if relPath, err := filepath.Rel(cwd, absPath); err == nil {
+				cleanPath = relPath
+			}
+		}
+	}
+	
+	// Handle paths that start with ".." by replacing with "_UP"
+	parts := strings.Split(cleanPath, string(filepath.Separator))
+	
+	// Filter out empty parts and sanitize
+	var filteredParts []string
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if part == ".." {
+			filteredParts = append(filteredParts, "_UP")
+		} else if part == "." {
+			// Skip current directory markers unless it's the only part
+			if len(parts) > 1 {
+				continue
+			}
+			filteredParts = append(filteredParts, "_DOT")
+		} else {
+			// Sanitize other problematic characters in each part
+			part = strings.ReplaceAll(part, ":", "_")
+			part = strings.ReplaceAll(part, "*", "_")
+			part = strings.ReplaceAll(part, "?", "_")
+			part = strings.ReplaceAll(part, "\"", "_")
+			part = strings.ReplaceAll(part, "<", "_")
+			part = strings.ReplaceAll(part, ">", "_")
+			part = strings.ReplaceAll(part, "|", "_")
+			filteredParts = append(filteredParts, part)
+		}
+	}
+	
+	// If we end up with no parts, use a default
+	if len(filteredParts) == 0 {
+		return "test"
+	}
+	
+	// Rejoin the sanitized parts
+	return filepath.Join(filteredParts...)
 }
 
 // getTestCaseIcon returns an icon for individual test cases

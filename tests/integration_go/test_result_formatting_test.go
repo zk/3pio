@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -197,34 +198,38 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			}
 
 			runDir := filepath.Join(runsDir, runDirs[0].Name())
-			logsDir := filepath.Join(runDir, "logs")
+			reportsDir := filepath.Join(runDir, "reports")
 
-			// Check that logs directory exists
-			if _, err := os.Stat(logsDir); os.IsNotExist(err) {
-				t.Fatalf("Expected logs directory to exist")
+			// Check that reports directory exists
+			if _, err := os.Stat(reportsDir); os.IsNotExist(err) {
+				t.Fatalf("Expected reports directory to exist")
 			}
 
-			// Read all log files and verify test results are present
-			logFiles, err := os.ReadDir(logsDir)
+			// Read all log files recursively and verify test results are present
+			var logFiles []string
+			var allLogContent strings.Builder
+			
+			err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if !info.IsDir() && strings.HasSuffix(info.Name(), ".log") {
+					logFiles = append(logFiles, path)
+					content, err := os.ReadFile(path)
+					if err != nil {
+						return fmt.Errorf("failed to read log file %s: %v", path, err)
+					}
+					t.Logf("Log file %s content:\n%s", path, string(content))
+					allLogContent.Write(content)
+				}
+				return nil
+			})
 			if err != nil {
-				t.Fatalf("Failed to read logs directory: %v", err)
+				t.Fatalf("Failed to walk reports directory: %v", err)
 			}
-
+			
 			if len(logFiles) == 0 {
 				t.Fatalf("Expected at least one log file, found none")
-			}
-
-			// Collect all log content
-			var allLogContent strings.Builder
-			for _, logFile := range logFiles {
-				logPath := filepath.Join(logsDir, logFile.Name())
-				content, err := os.ReadFile(logPath)
-				if err != nil {
-					t.Fatalf("Failed to read log file %s: %v", logPath, err)
-				}
-
-				t.Logf("Log file %s content:\n%s", logFile.Name(), string(content))
-				allLogContent.Write(content)
 			}
 
 			logContent := allLogContent.String()

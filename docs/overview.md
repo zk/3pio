@@ -77,7 +77,7 @@ Documentation for understanding and working on the 3pio codebase - system design
 │   └── 2025-09-09T111224921Z-revolutionary-chewbacca/
 │       ├── test-run.md           # Main report with all test results
 │       ├── output.log             # Complete stdout/stderr capture
-│       └── logs/                  # Per-file test logs
+│       └── reports/              # Per-file test reports
 │           ├── math.test.js.log
 │           └── string.test.js.log
 ├── ipc/
