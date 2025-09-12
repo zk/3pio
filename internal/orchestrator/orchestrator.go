@@ -427,7 +427,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 
 			// Use the actual file name for the log reference
 			logFileName := filepath.Base(normalizedPath)
-			fmt.Printf("  See .3pio/runs/%s/reports/%s.log\n", o.runID, strings.TrimSuffix(logFileName, filepath.Ext(logFileName)))
+			fmt.Printf("  See .3pio/runs/%s/reports/%s.md\n", o.runID, strings.TrimSuffix(logFileName, filepath.Ext(logFileName)))
 			fmt.Println("    ")
 		}
 

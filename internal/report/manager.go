@@ -365,7 +365,7 @@ func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
 // registerTestFileInternal registers a test file (internal, assumes lock held)
 func (m *Manager) registerTestFileInternal(filePath string) {
 	// Create log file with preserved directory structure
-	logFileName := sanitizePathForFilesystem(filePath) + ".log"
+	logFileName := sanitizePathForFilesystem(filePath) + ".md"
 	logPath := filepath.Join(m.runDir, "reports", logFileName)
 	
 	// Create parent directories if needed
@@ -684,7 +684,7 @@ func (m *Manager) writeIndividualFileReport(filePath string) error {
 	report := m.generateIndividualFileReport(*targetFile)
 
 	// Write to file
-	logFileName := sanitizePathForFilesystem(filePath) + ".log"
+	logFileName := sanitizePathForFilesystem(filePath) + ".md"
 	logPath := filepath.Join(m.runDir, "reports", logFileName)
 	
 	// Create parent directories if needed
