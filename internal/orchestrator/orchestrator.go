@@ -429,20 +429,39 @@ func sanitizePathForFilesystem(filePath string) string {
 	cleanPath = strings.TrimPrefix(cleanPath, "/")
 	cleanPath = strings.TrimPrefix(cleanPath, "./")
 
-	// Handle paths that start with ".." by replacing with "_UP"
-	parts := strings.Split(cleanPath, string(filepath.Separator))
-	for i, part := range parts {
-		if part == ".." {
-			parts[i] = "_UP"
-		}
-	}
-	cleanPath = strings.Join(parts, string(filepath.Separator))
+	// Replace all slashes with underscores
+	cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
+	cleanPath = strings.ReplaceAll(cleanPath, "\\", "_")
 
-	// For JS/TS files, keep the extension as part of the name
-	// For other files like Go, remove the extension
-	ext := filepath.Ext(cleanPath)
-	if ext != ".js" && ext != ".jsx" && ext != ".ts" && ext != ".tsx" && ext != ".mjs" && ext != ".cjs" {
-		cleanPath = strings.TrimSuffix(cleanPath, ext)
+	// Replace dots with underscores (for package names like github.com)
+	// but preserve file extensions
+	lastDot := strings.LastIndex(cleanPath, ".")
+	if lastDot > 0 {
+		ext := cleanPath[lastDot:]
+		// Check if it looks like a file extension (2-5 chars, alphanumeric)
+		if len(ext) >= 2 && len(ext) <= 5 {
+			isFileExt := true
+			for i := 1; i < len(ext); i++ {
+				c := ext[i]
+				if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+					isFileExt = false
+					break
+				}
+			}
+			if isFileExt {
+				// Preserve the extension
+				cleanPath = strings.ReplaceAll(cleanPath[:lastDot], ".", "_") + ext
+			} else {
+				// Not a file extension, replace all dots
+				cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
+			}
+		} else {
+			// Not a file extension, replace all dots
+			cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
+		}
+	} else {
+		// No dots or dot at start, replace all
+		cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
 	}
 
 	return cleanPath
@@ -456,6 +475,29 @@ func (o *Orchestrator) getRelativePath(filePath string) string {
 		relativePath = "./" + relPath
 	}
 	return relativePath
+}
+
+// makeRelativePath normalizes paths to relative paths (matching report manager)
+func (o *Orchestrator) makeRelativePath(name string) string {
+	// Only convert if it looks like an absolute file path
+	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") {
+		// Not a path, return as-is (e.g., test names, suite names)
+		return name
+	}
+
+	// Try to make relative to current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		if relPath, err := filepath.Rel(cwd, name); err == nil {
+			// Ensure relative paths start with ./
+			if !strings.HasPrefix(relPath, ".") && !strings.HasPrefix(relPath, "/") {
+				relPath = "./" + relPath
+			}
+			return relPath
+		}
+	}
+
+	// If conversion fails, return original
+	return name
 }
 
 // handleConsoleOutput displays real-time console output for test events
@@ -481,6 +523,11 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
 
 	case ipc.GroupResultEvent:
+		// Update the report manager with the group result
+		if err := o.reportManager.HandleEvent(e); err != nil {
+			o.logger.Error("Failed to handle group result: %v", err)
+		}
+
 		// Display hierarchical output when a group completes
 		status := convertStringToTestStatus(e.Payload.Status)
 		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status)
@@ -498,6 +545,11 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	// Legacy file-based events removed - only group events are supported
 
 	case ipc.GroupTestCaseEvent:
+		// Forward to report manager FIRST
+		if err := o.reportManager.HandleEvent(e); err != nil {
+			o.logger.Error("Failed to handle test case: %v", err)
+		}
+
 		// Track failed tests for hierarchical display
 		if e.Payload.Status == "FAIL" {
 			// Use the first parent name as file path (should be the file)
@@ -558,46 +610,80 @@ func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []strin
 		return
 	}
 
-	// Display raw groupName as provided by test runner
-	fmt.Printf("%-8s %s\n", "RUNNING", groupName)
+	// Normalize the path for consistent display
+	normalizedGroupName := o.makeRelativePath(groupName)
+	fmt.Printf("%-8s %s\n", "RUNNING", normalizedGroupName)
 }
 
 // displayGroupResult displays the result of a completed group
 func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string, status ipc.TestStatus) {
-	groupID := report.GenerateGroupID(groupName, parentNames)
+	o.logger.Debug("displayGroupResult called: group=%s, parentNames=%v, status=%s",
+		groupName, parentNames, status)
+
+	// Normalize paths to match how they're stored in the report manager
+	normalizedGroupName := o.makeRelativePath(groupName)
+	normalizedParentNames := make([]string, len(parentNames))
+	for i, name := range parentNames {
+		normalizedParentNames[i] = o.makeRelativePath(name)
+	}
+
+	groupID := report.GenerateGroupID(normalizedGroupName, normalizedParentNames)
 
 	// Get the group from the report manager
 	group, exists := o.reportManager.GetGroup(groupID)
 	if !exists {
+		o.logger.Debug("Group not found in report manager: %s", groupID)
 		return
 	}
 
-	// Only display top-level groups (files) once
+	// Only display top-level groups (files)
 	if len(parentNames) == 0 {
-		// Check if we've already displayed the final result for this file
+		// Check if we've already displayed the FINAL result for this file
+		// Don't count intermediate PASS results as final if tests are still running
 		if o.completedFiles[groupName] {
+			o.logger.Debug("Group already completed: %s", groupName)
 			return
 		}
-		o.completedFiles[groupName] = true
+
+		// Only mark as completed if this is truly the final status
+		// (all tests are done or it's a failure)
+		if group.IsComplete() || status == ipc.TestStatusFail {
+			o.completedFiles[groupName] = true
+		}
+
+		o.logger.Debug("Calling displayGroupHierarchy for: %s", groupName)
 		o.displayGroupHierarchy(group, 0)
 	}
 }
 
 // displayGroupHierarchy displays a group and its children with hierarchical indentation
 func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int) {
-	// Skip groups without test cases
-	if !group.HasTestCases() {
-		return
-	}
-
 	// Only display top-level groups (files) in main output
 	// Subgroups will only be shown if they have failures
 	if len(group.ParentNames) > 0 {
 		return // Don't display subgroups at this level
 	}
 
+	// Debug logging
+	o.logger.Debug("displayGroupHierarchy: group=%s, hasTestCases=%v, testCases=%d, subgroups=%d",
+		group.Name, group.HasTestCases(), len(group.TestCases), len(group.Subgroups))
+
+	// For groups without test cases, show their actual status (SKIP or FAIL)
+	if !group.HasTestCases() {
+		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+		o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
+
+		// Only show if not pending (pending means it never really ran)
+		if group.Status != report.TestStatusPending {
+			fmt.Printf("%-8s %s\n", statusStr, group.Name)
+		}
+		return
+	}
+
 	// Display group status using raw groupName
 	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+	o.logger.Debug("displayGroupHierarchy: displaying status=%s (group.Status=%s) for %s",
+		statusStr, group.Status, group.Name)
 
 	// Get duration for this group
 	durationStr := ""
@@ -616,7 +702,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
 		// Show report path using raw groupName
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(group.Name))
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, sanitizePathForFilesystem(group.Name))
 		fmt.Printf("  See %s\n", reportPath)
 
 		// Display failed subgroups and tests
@@ -642,6 +728,17 @@ func (o *Orchestrator) displayFailedSubgroups(group *report.TestGroup, parentPat
 		if testCase.Status == report.TestStatusFail {
 			hasDirectFailures = true
 			break
+		}
+	}
+
+	// Debug logging to understand what's happening
+	if parentPath == "" {
+		o.logger.Debug("displayFailedSubgroups for root group %s: hasDirectFailures=%v, testCases=%d",
+			group.Name, hasDirectFailures, len(group.TestCases))
+		for _, tc := range group.TestCases {
+			if tc.Status == report.TestStatusFail {
+				o.logger.Debug("  Failed test case: %s", tc.Name)
+			}
 		}
 	}
 

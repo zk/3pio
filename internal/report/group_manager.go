@@ -307,8 +307,21 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	testCase.Stdout = payload.Stdout
 	testCase.Stderr = payload.Stderr
 	
-	// Add to parent group
-	parentGroup.TestCases = append(parentGroup.TestCases, testCase)
+	// Check if test case already exists (deduplication)
+	testExists := false
+	for i, existingTest := range parentGroup.TestCases {
+		if existingTest.ID == testCase.ID {
+			// Update existing test case instead of adding duplicate
+			parentGroup.TestCases[i] = testCase
+			testExists = true
+			break
+		}
+	}
+
+	// Add to parent group only if it doesn't exist
+	if !testExists {
+		parentGroup.TestCases = append(parentGroup.TestCases, testCase)
+	}
 	parentGroup.Updated = time.Now()
 	
 	// Update parent group statistics
@@ -604,14 +617,14 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	content += fmt.Sprintf("updated: %s\n", group.Updated.Format(time.RFC3339))
 	content += "---\n\n"
 
-	// Header - use different formats based on group type
+	// Header - use consistent "Test Report:" format for all groups
 	if len(parentPath) == 0 {
 		// Root group (file)
-		content += fmt.Sprintf("# Test results for `%s`\n\n", group.Name)
+		content += fmt.Sprintf("# Test Report: %s\n\n", group.Name)
 	} else {
 		// All non-root groups show full hierarchical path
 		fullPath := strings.Join(append(parentPath, group.Name), " > ")
-		content += fmt.Sprintf("# Results for `%s`\n\n", fullPath)
+		content += fmt.Sprintf("# Test Report: %s\n\n", fullPath)
 	}
 	
 	// Summary section - show direct tests OR subgroups, not both aggregated counts

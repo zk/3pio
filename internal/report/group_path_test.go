@@ -112,7 +112,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "should add",
 				ParentNames: []string{"math.test.js", "Calculator"},
 			},
-			contains: []string{"reports", "math.test.js", "calculator", "should_add"},
+			contains: []string{"reports", "math_test.js", "calculator", "should_add"},
 		},
 		{
 			name: "Group with invalid chars",

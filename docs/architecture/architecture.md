@@ -2,7 +2,9 @@
 
 ## Overview
 
-3pio is a context-friendly test runner adapter that translates traditional test runner output (Jest, Vitest, pytest) into structured, persistent reports optimized for AI agents and developers. This document provides a comprehensive view of the Go-based architecture.
+3pio is a context-friendly test runner for frameworks like Jest, Vitest, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+
+It uses a project's existing test runner to run tests via a main process, and depending on the specific test runner it inject adapters or capture output from the test process to write a heirarchy of test results on the filesystem in a way that is easy for coding agents to understand and work with.
 
 ## System Components
 

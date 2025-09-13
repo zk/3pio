@@ -51,19 +51,41 @@ func SanitizeGroupName(name string) string {
 	// Step 1: Convert to lowercase (as per migration plan)
 	name = strings.ToLower(name)
 
-	// Step 2: Replace path separators and dots with underscores
+	// Step 2: Remove leading/trailing dots and spaces FIRST
+	name = trimPattern.ReplaceAllString(name, "")
+
+	// Step 3: Replace path separators with underscores
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
+
+	// Preserve file extension if present (only for common extensions)
+	lastDot := strings.LastIndex(name, ".")
+	var ext string
+	if lastDot > 0 && lastDot < len(name)-1 {
+		possibleExt := name[lastDot:]
+		// Only preserve if it looks like a file extension (1-4 alphanumeric chars)
+		if len(possibleExt) >= 2 && len(possibleExt) <= 5 &&
+			strings.IndexFunc(possibleExt[1:], func(r rune) bool {
+				return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+			}) == -1 {
+			ext = possibleExt
+			name = name[:lastDot]
+		}
+	}
+
+	// Replace remaining dots with underscores
 	name = strings.ReplaceAll(name, ".", "_")
 
-	// Step 3: Replace invalid filesystem characters
+	// Add extension back if it was preserved
+	if ext != "" {
+		name = name + ext
+	}
+
+	// Step 4: Replace invalid filesystem characters
 	name = invalidCharsPattern.ReplaceAllString(name, "_")
 
-	// Step 4: Collapse multiple spaces/underscores to single underscore
+	// Step 5: Collapse multiple spaces/underscores to single underscore
 	name = multiSpacePattern.ReplaceAllString(name, "_")
-	
-	// Step 5: Remove leading/trailing dots and spaces
-	name = trimPattern.ReplaceAllString(name, "")
 
 	// Step 6: Handle Windows reserved names
 	upperName := strings.ToUpper(name)

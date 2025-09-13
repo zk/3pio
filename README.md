@@ -19,12 +19,13 @@ If your user indicated they would like to install and use 3pio for running tests
 
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
-Usage is simple, prefix your normal test command with `3pio`.
+## Why?
 
-
-## How?
+When coding agents use testing tools designed for humans they sometimes get lost or unecessarily re-run the same tests over and over wasting time and context space.
 
 3pio creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
+
+Your agent knows how to find the information it needs to know, and it can revist the results over and over. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
 
 ## Features
 
@@ -33,9 +34,23 @@ Usage is simple, prefix your normal test command with `3pio`.
 
 ## Installation / Usage
 
-Point your coding agent at this README ([raw link](https://raw.githubusercontent.com/zk/3pio/refs/heads/main/README.md)).
+Step 1. Point your coding agent at this readme
 
-or:
+```bash
+Please install 3pio: https://raw.githubusercontent.com/zk/3pio/refs/heads/main/README.md
+```
+
+Your agent will install 3pio via the package manager that's best for your project.
+
+
+Step 2: Tell your agent about it
+```bash
+When running tests use `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+```
+
+You may want to add that to your CLAUDE.md / AGENTS.md / GEMINI.md. Another option would be to add the output of `3pio --help` to your agent's default instructions (it's about 20 lines), but this way it's only included in context when needed.
+
+
 
 ```bash
 

@@ -41,6 +41,7 @@ type GoTestDefinition struct {
 	packageTestsDone  map[string]int        // Track completed tests per package
 	packageStatuses   map[string]string     // Track overall status per package
 	packageGroups     map[string]*PackageGroupInfo // Track package-level group info
+	packageResultSent map[string]bool       // Track if result has been sent for package
 
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool // Track discovered groups to avoid duplicates
@@ -122,6 +123,7 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		packageTestsDone:  make(map[string]int),
 		packageStatuses:   make(map[string]string),
 		packageGroups:     make(map[string]*PackageGroupInfo),
+		packageResultSent: make(map[string]bool),
 		discoveredGroups:  make(map[string]bool),
 		groupStarts:      make(map[string]bool),
 		fileGroups:       make(map[string]*FileGroupInfo),
@@ -199,9 +201,12 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 	// Store package map for later use
 	g.packageMap = packageMap
 	
-	// Skip building test-to-file mapping as it's expensive (calls go test -list per package)
-	// We'll use package-based mapping which is sufficient for most cases
-	g.logger.Debug("Skipping buildTestToFileMap to avoid performance overhead")
+	// Build test-to-file mapping for accurate test tracking
+	// This is needed to properly process all tests including those that fail
+	if err := g.buildTestToFileMap(); err != nil {
+		g.logger.Debug("Failed to build test-to-file map: %v", err)
+		// Continue without the map - will fall back to package-based mapping
+	}
 	
 	// Extract all test files
 	var testFiles []string
@@ -334,7 +339,8 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 	// Get the file path for this test
 	filePath := g.getFilePathForTest(event.Package, event.Test)
 	if filePath == "" {
-		return
+		// Log but don't return - we still need to process this test
+		g.logger.Debug("Could not determine file path for test %s in package %s", event.Test, event.Package)
 	}
 
 	// Check if this is the first test from this package
@@ -359,20 +365,22 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 	// Increment expected test count for this package
 	g.packageTestCounts[event.Package]++
 
-	// Track file for internal use
-	if !g.fileStarted[filePath] {
-		g.fileStarted[filePath] = true
-		g.fileStartTimes[filePath] = event.Time
+	// Track file for internal use (only if we have a file path)
+	if filePath != "" {
+		if !g.fileStarted[filePath] {
+			g.fileStarted[filePath] = true
+			g.fileStartTimes[filePath] = event.Time
 
-		// Store file group info
-		g.fileGroups[filePath] = &FileGroupInfo{
-			StartTime: event.Time,
-			Tests:     []TestInfo{},
+			// Store file group info
+			g.fileGroups[filePath] = &FileGroupInfo{
+				StartTime: event.Time,
+				Tests:     []TestInfo{},
+			}
 		}
+
+		// Increment expected test count for this file
+		g.fileTestCounts[filePath]++
 	}
-	
-	// Increment expected test count for this file
-	g.fileTestCounts[filePath]++
 }
 
 // handleTestPause processes test pause events
@@ -428,7 +436,7 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		filePath = g.getFilePathForPackage(event.Package)
 		if filePath == "" {
 			g.logger.Debug("Could not map test %s in package %s to file", event.Test, event.Package)
-			return
+			// Don't return - still need to process the test even without file mapping
 		}
 	}
 	
@@ -465,13 +473,15 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		})
 	}
 
-	// Track test in file group (for internal use)
-	if fileGroup, ok := g.fileGroups[filePath]; ok {
-		fileGroup.Tests = append(fileGroup.Tests, TestInfo{
-			Name:     finalTestName,
-			Status:   status,
-			Duration: event.Elapsed,
-		})
+	// Track test in file group (for internal use) - only if we have a file path
+	if filePath != "" {
+		if fileGroup, ok := g.fileGroups[filePath]; ok {
+			fileGroup.Tests = append(fileGroup.Tests, TestInfo{
+				Name:     finalTestName,
+				Status:   status,
+				Duration: event.Elapsed,
+			})
+		}
 	}
 
 	// Track package completion
@@ -489,71 +499,41 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		}
 	}
 
-	// Track file completion (for internal use)
-	g.fileTestsDone[filePath]++
+	// Track file completion (for internal use) - only if we have a file path
+	if filePath != "" {
+		g.fileTestsDone[filePath]++
 
-	// Update file status based on test result
-	if event.Action == "fail" {
-		g.fileStatuses[filePath] = "FAIL"
-	} else if g.fileStatuses[filePath] != "FAIL" {
-		// Only update to PASS/SKIP if not already failed
-		if event.Action == "pass" {
-			g.fileStatuses[filePath] = "PASS"
-		} else if event.Action == "skip" && g.fileStatuses[filePath] != "PASS" {
-			g.fileStatuses[filePath] = "SKIP"
+		// Update file status based on test result
+		if event.Action == "fail" {
+			g.fileStatuses[filePath] = "FAIL"
+		} else if g.fileStatuses[filePath] != "FAIL" {
+			// Only update to PASS/SKIP if not already failed
+			if event.Action == "pass" {
+				g.fileStatuses[filePath] = "PASS"
+			} else if event.Action == "skip" && g.fileStatuses[filePath] != "PASS" {
+				g.fileStatuses[filePath] = "SKIP"
+			}
 		}
 	}
 	
-	// Check if all tests for this package are complete
-	if g.packageTestsDone[event.Package] >= g.packageTestCounts[event.Package] && g.packageTestCounts[event.Package] > 0 {
-		// Calculate duration
-		var elapsed float64
-		if startTime, ok := g.packageStartTimes[event.Package]; ok {
-			elapsed = event.Time.Sub(startTime).Seconds()
-		}
-
-		// Calculate totals for the package group
-		pkgGroup := g.packageGroups[event.Package]
-		totals := map[string]interface{}{
-			"total":   len(pkgGroup.Tests),
-			"passed":  0,
-			"failed":  0,
-			"skipped": 0,
-		}
-
-		for _, test := range pkgGroup.Tests {
-			switch test.Status {
-			case "PASS":
-				totals["passed"] = totals["passed"].(int) + 1
-			case "FAIL":
-				totals["failed"] = totals["failed"].(int) + 1
-			case "SKIP":
-				totals["skipped"] = totals["skipped"].(int) + 1
-			}
-		}
-
-		// Send GroupResult for the package
-		g.sendGroupResult(event.Package, []string{}, g.packageStatuses[event.Package], elapsed, totals)
-
-		// testFileResult event removed - using group events instead
-		g.logger.Debug("Sent group result for package %s: status=%s, duration=%.2fs", event.Package, g.packageStatuses[event.Package], elapsed)
-	}
+	// Don't send package result here - wait for the actual package result event
+	// The package-level pass/fail event comes at the end after all tests complete
 }
 
 // handlePackageResult processes package result events
 func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	// Update package info
 	if pkg, ok := g.packageMap[event.Package]; ok {
 		pkg.Status = strings.ToUpper(event.Action)
-		
+
 		// Check if cached
 		if event.Output != "" && strings.Contains(event.Output, "(cached)") {
 			pkg.IsCached = true
 		}
-		
+
 		// testFileStart/testFileResult events removed - using group events instead
 		// Cached packages are handled by group events
 		if pkg.IsCached {
@@ -563,6 +543,51 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			// but handle it just in case
 			g.logger.Debug("Package %s has no test files", event.Package)
 		}
+	}
+
+	// Send package result if we haven't already
+	if !g.packageResultSent[event.Package] {
+		// Mark that we're sending the result
+		g.packageResultSent[event.Package] = true
+
+		// Make sure package is discovered and started
+		if !g.packageStarted[event.Package] {
+			g.ensureGroupsDiscovered(event.Package, []string{})
+			g.ensureGroupStarted([]string{event.Package})
+			g.packageStarted[event.Package] = true
+		}
+
+		// Send the package group result
+		status := strings.ToUpper(event.Action)
+
+		// Calculate totals from tracked tests
+		totals := map[string]interface{}{
+			"total":   0,
+			"passed":  0,
+			"failed":  0,
+			"skipped": 0,
+		}
+
+		// If we have a package group with tests, use those totals
+		if pkgGroup, ok := g.packageGroups[event.Package]; ok && len(pkgGroup.Tests) > 0 {
+			totals["total"] = len(pkgGroup.Tests)
+			for _, test := range pkgGroup.Tests {
+				switch test.Status {
+				case "PASS":
+					totals["passed"] = totals["passed"].(int) + 1
+				case "FAIL":
+					totals["failed"] = totals["failed"].(int) + 1
+				case "SKIP":
+					totals["skipped"] = totals["skipped"].(int) + 1
+				}
+			}
+		}
+
+		// Send GroupResult for the package
+		g.sendGroupResult(event.Package, []string{}, status, event.Elapsed, totals)
+
+		g.logger.Debug("Sent package result for %s: status=%s, duration=%.2fs, tests=%d",
+			event.Package, status, event.Elapsed, totals["total"])
 	}
 }
 
@@ -915,7 +940,9 @@ func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames [
 	}
 
 	if status == "FAIL" && len(output) > 0 {
-		payload["error"] = strings.Join(output, "")
+		payload["error"] = map[string]interface{}{
+			"message": strings.Join(output, ""),
+		}
 	}
 
 	event := map[string]interface{}{
@@ -943,7 +970,9 @@ func (g *GoTestDefinition) sendTestCase(filePath, testName, suiteName, status st
 	}
 	
 	if status == "FAIL" && len(output) > 0 {
-		payload["error"] = strings.Join(output, "")
+		payload["error"] = map[string]interface{}{
+			"message": strings.Join(output, ""),
+		}
 	}
 	
 	event := map[string]interface{}{
