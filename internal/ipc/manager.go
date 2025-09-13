@@ -153,7 +153,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	// First, decode to determine event type
 	var rawEvent map[string]interface{}
 	if err := json.Unmarshal(line, &rawEvent); err != nil {
-		m.logger.Error("Failed to parse event: %v", err)
+		m.logger.Debug("Failed to parse event: %v", err)
 		return
 	}
 
@@ -170,7 +170,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		// Only new group-based testCase events are supported
 		var e GroupTestCaseEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse group test case event: %v", err)
+			m.logger.Debug("Failed to parse group test case event: %v", err)
 			return
 		}
 		event = e
@@ -178,7 +178,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeRunComplete:
 		var e RunCompleteEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse run complete event: %v", err)
+			m.logger.Debug("Failed to parse run complete event: %v", err)
 			return
 		}
 		event = e
@@ -186,7 +186,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeCollectionStart:
 		var e CollectionStartEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse collection start event: %v", err)
+			m.logger.Debug("Failed to parse collection start event: %v", err)
 			return
 		}
 		event = e
@@ -194,7 +194,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeCollectionError:
 		var e CollectionErrorEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse collection error event: %v", err)
+			m.logger.Debug("Failed to parse collection error event: %v", err)
 			return
 		}
 		event = e
@@ -202,7 +202,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeCollectionFinish:
 		var e CollectionFinishEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse collection finish event: %v", err)
+			m.logger.Debug("Failed to parse collection finish event: %v", err)
 			return
 		}
 		event = e
@@ -210,7 +210,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeGroupDiscovered:
 		var e GroupDiscoveredEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse group discovered event: %v", err)
+			m.logger.Debug("Failed to parse group discovered event: %v", err)
 			return
 		}
 		event = e
@@ -218,7 +218,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeGroupStart:
 		var e GroupStartEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse group start event: %v", err)
+			m.logger.Debug("Failed to parse group start event: %v", err)
 			return
 		}
 		event = e
@@ -226,7 +226,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeGroupResult:
 		var e GroupResultEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse group result event: %v", err)
+			m.logger.Debug("Failed to parse group result event: %v", err)
 			return
 		}
 		event = e
@@ -234,7 +234,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeGroupStdout:
 		var e GroupStdoutChunkEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse group stdout event: %v", err)
+			m.logger.Debug("Failed to parse group stdout event: %v", err)
 			return
 		}
 		event = e
@@ -242,7 +242,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeGroupStderr:
 		var e GroupStderrChunkEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse group stderr event: %v", err)
+			m.logger.Debug("Failed to parse group stderr event: %v", err)
 			return
 		}
 		event = e

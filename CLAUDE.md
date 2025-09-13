@@ -160,9 +160,10 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 
 For detailed information about these issues and their solutions, see `docs/known-issues.md`.
 - Never use emojis in output
-- All debug, info and error logging is written to `.3pio/debug.log`
+- All debug and info logging is written to `.3pio/debug.log`
 - Each test run session is clearly marked with timestamps in the debug log
-- Error messages are also displayed to stderr for immediate visibility
+- Only critical errors that require user attention are displayed to stderr
+- Parsing errors and internal issues are logged to debug.log only, not console output
 
 
 
