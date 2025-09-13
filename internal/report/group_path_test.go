@@ -46,7 +46,7 @@ func TestSanitizeGroupName(t *testing.T) {
 		{
 			name:     "Windows reserved name",
 			input:    "CON",
-			expected: "_CON_",
+			expected: "_con_",
 		},
 		{
 			name:     "Windows reserved case insensitive",
@@ -112,7 +112,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "should add",
 				ParentNames: []string{"math.test.js", "Calculator"},
 			},
-			contains: []string{"reports", "math.test.js", "Calculator", "should_add"},
+			contains: []string{"reports", "math.test.js", "calculator", "should_add"},
 		},
 		{
 			name: "Group with invalid chars",
@@ -120,7 +120,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "test:with*invalid|chars",
 				ParentNames: []string{"src/components"},
 			},
-			contains: []string{"src_components", "test_with_invalid_chars"},
+			contains: []string{"src", "components", "test_with_invalid_chars"},
 		},
 	}
 

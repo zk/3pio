@@ -597,3 +597,53 @@ func TestGroupManager_Cleanup(t *testing.T) {
 	}
 	gm.updateMutex.Unlock()
 }
+
+func TestFormatGroupReport_OnlyShowCountsGreaterThanZero(t *testing.T) {
+	tmpDir := t.TempDir()
+	log, _ := logger.NewFileLogger()
+	gm := NewGroupManager(tmpDir, "", log)
+
+	// Test group with some passed tests, no failed tests, some skipped tests
+	group := &TestGroup{
+		ID:          "test-group",
+		Name:        "Test Group",
+		ParentNames: []string{},
+		Status:      TestStatusPass,
+		Duration:    100 * time.Millisecond,
+		Created:     time.Now(),
+		Updated:     time.Now(),
+		TestCases:   []TestCase{
+			{Name: "test1", Status: TestStatusPass, Duration: 10 * time.Millisecond},
+			{Name: "test2", Status: TestStatusPass, Duration: 20 * time.Millisecond},
+			{Name: "test3", Status: TestStatusSkip, Duration: 0},
+		},
+		Stats: TestGroupStats{
+			TotalTests:   3,
+			PassedTests:  2,
+			FailedTests:  0, // This should not appear in summary
+			SkippedTests: 1,
+		},
+		Subgroups: make(map[string]*TestGroup),
+	}
+
+	content := gm.formatGroupReport(group)
+
+	// Should include these lines
+	if !strings.Contains(content, "- Total tests: 3") {
+		t.Error("Should show total tests")
+	}
+	if !strings.Contains(content, "- Tests passed: 2") {
+		t.Error("Should show passed tests")
+	}
+	if !strings.Contains(content, "- Tests skipped: 1") {
+		t.Error("Should show skipped tests")
+	}
+
+	// Should NOT include this line (failed tests is 0)
+	if strings.Contains(content, "- Tests failed: 0") {
+		t.Error("Should not show 'Tests failed: 0'")
+	}
+	if strings.Contains(content, "Tests failed:") {
+		t.Error("Should not show failed tests line when count is 0")
+	}
+}

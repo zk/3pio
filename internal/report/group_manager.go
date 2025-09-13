@@ -620,8 +620,12 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	// Only show direct test statistics if there are direct test cases
 	if len(group.TestCases) > 0 {
 		content += fmt.Sprintf("- Total tests: %d\n", group.Stats.TotalTests)
-		content += fmt.Sprintf("- Tests passed: %d\n", group.Stats.PassedTests)
-		content += fmt.Sprintf("- Tests failed: %d\n", group.Stats.FailedTests)
+		if group.Stats.PassedTests > 0 {
+			content += fmt.Sprintf("- Tests passed: %d\n", group.Stats.PassedTests)
+		}
+		if group.Stats.FailedTests > 0 {
+			content += fmt.Sprintf("- Tests failed: %d\n", group.Stats.FailedTests)
+		}
 		if group.Stats.SkippedTests > 0 {
 			content += fmt.Sprintf("- Tests skipped: %d\n", group.Stats.SkippedTests)
 		}

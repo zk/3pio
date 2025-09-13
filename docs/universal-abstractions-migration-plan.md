@@ -519,6 +519,7 @@ func GenerateGroupPath(group *TestGroup) string {
 - **Groups with direct tests only**: Show test counts (Total tests, Tests passed, Tests failed, Tests skipped)
 - **Groups with both direct tests AND subgroups**: Show test counts AND subgroup counts (Subgroups, Subgroups passed, Subgroups failed)
 - **Groups with subgroups only**: Show subgroup counts only (Subgroups, Subgroups passed, Subgroups failed)
+- **Only include counts > 0**: Omit lines where the count is zero (e.g., don't show "Tests failed: 0")
 
 **Report Content Structure**:
 ```markdown
@@ -647,7 +648,6 @@ updated: 2025-02-15T12:31:11.000Z
 
 - Total tests: 3
 - Tests passed: 2
-- Tests failed: 0
 - Tests skipped: 1
 - Subgroups: 4
 - Subgroups passed: 2
