@@ -798,3 +798,28 @@ func (gm *GroupManager) ProcessRunComplete(event ipc.RunCompleteEvent) error {
 	gm.scheduleReportUpdate("")
 	return nil
 }
+
+// Flush immediately writes all pending group reports
+func (gm *GroupManager) Flush() {
+	// Cancel any pending timer
+	gm.updateMutex.Lock()
+	if gm.updateTimer != nil {
+		gm.updateTimer.Stop()
+		gm.updateTimer = nil
+	}
+	gm.updateMutex.Unlock()
+
+	// Flush all pending updates immediately
+	gm.flushPendingUpdates()
+
+	// Also generate reports for all groups to ensure nothing is missed
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	for _, group := range gm.groups {
+		if err := gm.generateGroupReport(group); err != nil {
+			gm.logger.Error("Failed to generate report for group %s: %v",
+				group.ID, err)
+		}
+	}
+}

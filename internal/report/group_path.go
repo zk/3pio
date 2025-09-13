@@ -86,21 +86,21 @@ func SanitizeGroupName(name string) string {
 // GenerateGroupPath generates a filesystem path for a test group
 func GenerateGroupPath(group *TestGroup, runDir string) string {
 	if group == nil {
-		return runDir
+		return filepath.Join(runDir, "reports")
 	}
-	
+
 	// Build the full hierarchy path
 	hierarchy := append(group.ParentNames, group.Name)
-	
+
 	// Limit depth to prevent excessive nesting
 	if len(hierarchy) > MaxDepth {
 		// Collapse intermediate levels
 		hierarchy = collapseHierarchy(hierarchy)
 	}
-	
+
 	// Sanitize each component
-	components := make([]string, 0, len(hierarchy)+1)
-	components = append(components, runDir)
+	components := make([]string, 0, len(hierarchy)+2)
+	components = append(components, runDir, "reports")
 	
 	for _, part := range hierarchy {
 		sanitized := SanitizeGroupName(part)
@@ -121,17 +121,17 @@ func GenerateGroupPath(group *TestGroup, runDir string) string {
 // GenerateGroupPathFromHierarchy generates a filesystem path from a hierarchy slice
 func GenerateGroupPathFromHierarchy(hierarchy []string, runDir string) string {
 	if len(hierarchy) == 0 {
-		return runDir
+		return filepath.Join(runDir, "reports")
 	}
-	
+
 	// Limit depth to prevent excessive nesting
 	if len(hierarchy) > MaxDepth {
 		hierarchy = collapseHierarchy(hierarchy)
 	}
-	
+
 	// Sanitize each component
-	components := make([]string, 0, len(hierarchy)+1)
-	components = append(components, runDir)
+	components := make([]string, 0, len(hierarchy)+2)
+	components = append(components, runDir, "reports")
 	
 	for _, part := range hierarchy {
 		sanitized := SanitizeGroupName(part)

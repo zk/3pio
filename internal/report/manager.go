@@ -558,7 +558,10 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Individual file reports removed - now handled by group manager
+	// Flush all pending group reports
+	if m.groupManager != nil {
+		m.groupManager.Flush()
+	}
 
 	// Close output.log
 	if m.outputFile != nil {
