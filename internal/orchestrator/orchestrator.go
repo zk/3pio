@@ -558,9 +558,8 @@ func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []strin
 		return
 	}
 
-	// Build path for top-level group
-	relativePath := o.getRelativePath(groupName)
-	fmt.Printf("%-8s %s\n", "RUNNING", relativePath)
+	// Display raw groupName as provided by test runner
+	fmt.Printf("%-8s %s\n", "RUNNING", groupName)
 }
 
 // displayGroupResult displays the result of a completed group
@@ -597,10 +596,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		return // Don't display subgroups at this level
 	}
 
-	// Build simple path for file
-	filePath := o.getRelativePath(group.Name)
-
-	// Display group status
+	// Display group status using raw groupName
 	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
 
 	// Get duration for this group
@@ -614,13 +610,13 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		delete(o.fileStartTimes, groupID) // Clean up
 	}
 
-	// Display the file result
-	fmt.Printf("%-8s %s%s\n", statusStr, filePath, durationStr)
+	// Display the file result using raw groupName
+	fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
 
 	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
-		// Show report path
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(filePath))
+		// Show report path using raw groupName
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(group.Name))
 		fmt.Printf("  See %s\n", reportPath)
 
 		// Display failed subgroups and tests
@@ -630,11 +626,11 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 // displayFailedSubgroups recursively displays subgroups that contain failures
 func (o *Orchestrator) displayFailedSubgroups(group *report.TestGroup, parentPath string) {
-	// Build current path
+	// Build current path using raw groupNames
 	var currentPath string
 	if parentPath == "" {
-		// For the root, use the relative file path
-		currentPath = o.getRelativePath(group.Name)
+		// For the root, use the raw groupName
+		currentPath = group.Name
 	} else {
 		// For subgroups, append to parent path
 		currentPath = parentPath + " > " + group.Name
