@@ -22,6 +22,9 @@ type Manager struct {
 	detectedRunner  string // e.g., "vitest", "jest", "go test", "pytest"
 	modifiedCommand string // The actual command executed with adapter
 
+	// Group manager for hierarchical test organization
+	groupManager *GroupManager
+
 	// File handles for incremental writing
 	fileHandles map[string]*os.File
 	fileBuffers map[string][]string
@@ -68,12 +71,16 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger, detect
 		return nil, fmt.Errorf("failed to create output.log: %w", err)
 	}
 
+	// TODO: Create GroupManager for hierarchical test organization
+	// For now, we'll just log group events without processing them
+
 	return &Manager{
 		runDir:          runDir,
 		outputParser:    parser,
 		logger:          logger,
 		detectedRunner:  detectedRunner,
 		modifiedCommand: modifiedCommand,
+		groupManager:    nil, // TODO: Initialize when ready
 		fileHandles:     make(map[string]*os.File),
 		fileBuffers:     make(map[string][]string),
 		debouncers:      make(map[string]*time.Timer),
@@ -148,6 +155,42 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 
 	case ipc.CollectionErrorEvent:
 		return m.handleCollectionError(e)
+
+	// Group events - forward to GroupManager
+	case ipc.GroupDiscoveredEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessGroupDiscovered(e)
+		}
+
+	case ipc.GroupStartEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessGroupStart(e)
+		}
+
+	case ipc.GroupResultEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessGroupResult(e)
+		}
+
+	case ipc.GroupTestCaseEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessTestCase(e)
+		}
+
+	case ipc.GroupStdoutChunkEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessGroupStdout(e)
+		}
+
+	case ipc.GroupStderrChunkEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessGroupStderr(e)
+		}
+
+	case ipc.RunCompleteEvent:
+		if m.groupManager != nil {
+			return m.groupManager.ProcessRunComplete(e)
+		}
 
 	default:
 		m.logger.Debug("Unknown event type: %T", event)

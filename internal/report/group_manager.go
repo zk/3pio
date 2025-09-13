@@ -778,3 +778,23 @@ func (gm *GroupManager) getRootGroupIDs() []string {
 	}
 	return ids
 }
+
+// ProcessGroupStdout processes stdout event from IPC
+func (gm *GroupManager) ProcessGroupStdout(event ipc.GroupStdoutChunkEvent) error {
+	return gm.ProcessStdoutChunk(event.Payload.GroupName, event.Payload.ParentNames, event.Payload.Chunk)
+}
+
+// ProcessGroupStderr processes stderr event from IPC
+func (gm *GroupManager) ProcessGroupStderr(event ipc.GroupStderrChunkEvent) error {
+	return gm.ProcessStderrChunk(event.Payload.GroupName, event.Payload.ParentNames, event.Payload.Chunk)
+}
+
+// ProcessRunComplete processes run complete event
+func (gm *GroupManager) ProcessRunComplete(event ipc.RunCompleteEvent) error {
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
+
+	// Trigger final report generation
+	gm.scheduleReportUpdate("")
+	return nil
+}

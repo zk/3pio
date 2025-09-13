@@ -238,6 +238,46 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		}
 		event = e
 
+	case EventTypeGroupDiscovered:
+		var e GroupDiscoveredEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse group discovered event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupStart:
+		var e GroupStartEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse group start event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupResult:
+		var e GroupResultEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse group result event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupStdout:
+		var e GroupStdoutChunkEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse group stdout event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupStderr:
+		var e GroupStderrChunkEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Error("Failed to parse group stderr event: %v", err)
+			return
+		}
+		event = e
+
 	default:
 		m.logger.Error("[3PIO ERROR] Unknown event type: %s", eventType)
 		return

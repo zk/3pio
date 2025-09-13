@@ -5,7 +5,9 @@ const (
 	EventTypeGroupDiscovered EventType = "testGroupDiscovered"
 	EventTypeGroupStart      EventType = "testGroupStart"
 	EventTypeGroupResult     EventType = "testGroupResult"
-	// Note: EventTypeTestCase, EventTypeStdoutChunk, EventTypeStderrChunk already defined in events.go
+	EventTypeGroupTestCase   EventType = "testCase"  // Reuse existing testCase type with group hierarchy
+	EventTypeGroupStdout     EventType = "groupStdout"
+	EventTypeGroupStderr     EventType = "groupStderr"
 )
 
 // GroupDiscoveredEvent indicates a test group has been discovered (during collection phase)
@@ -13,6 +15,8 @@ type GroupDiscoveredEvent struct {
 	EventType   string                 `json:"eventType"`
 	Payload     GroupDiscoveredPayload `json:"payload"`
 }
+
+func (e GroupDiscoveredEvent) Type() EventType { return EventTypeGroupDiscovered }
 
 type GroupDiscoveredPayload struct {
 	GroupName   string   `json:"groupName"`            // Name of this group
@@ -26,6 +30,8 @@ type GroupStartEvent struct {
 	Payload     GroupStartPayload  `json:"payload"`
 }
 
+func (e GroupStartEvent) Type() EventType { return EventTypeGroupStart }
+
 type GroupStartPayload struct {
 	GroupName   string                 `json:"groupName"`
 	ParentNames []string               `json:"parentNames,omitempty"`
@@ -38,6 +44,8 @@ type GroupResultEvent struct {
 	EventType   string              `json:"eventType"`
 	Payload     GroupResultPayload  `json:"payload"`
 }
+
+func (e GroupResultEvent) Type() EventType { return EventTypeGroupResult }
 
 type GroupResultPayload struct {
 	GroupName   string   `json:"groupName"`
@@ -62,6 +70,8 @@ type GroupTestCaseEvent struct {
 	EventType   string            `json:"eventType"`
 	Payload     TestCasePayload   `json:"payload"`
 }
+
+func (e GroupTestCaseEvent) Type() EventType { return EventTypeGroupTestCase }
 
 type TestCasePayload struct {
 	TestName    string      `json:"testName"`
@@ -91,11 +101,15 @@ type GroupStdoutChunkEvent struct {
 	Payload     OutputChunkPayload  `json:"payload"`
 }
 
+func (e GroupStdoutChunkEvent) Type() EventType { return EventTypeGroupStdout }
+
 // GroupStderrChunkEvent represents stderr output from a test group
 type GroupStderrChunkEvent struct {
 	EventType   string              `json:"eventType"`
 	Payload     OutputChunkPayload  `json:"payload"`
 }
+
+func (e GroupStderrChunkEvent) Type() EventType { return EventTypeGroupStderr }
 
 type OutputChunkPayload struct {
 	GroupName   string   `json:"groupName,omitempty"`   // The group this output belongs to

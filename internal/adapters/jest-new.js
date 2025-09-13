@@ -88,7 +88,7 @@ function ensureGroupsDiscovered(filePath, ancestorTitles) {
     if (!discoveredGroups.has(groupId)) {
       discoveredGroups.set(groupId, group);
       sendEvent({
-        eventType: 'testGroupDiscovered',
+        eventType: 'groupDiscovered',
         payload: {
           groupName: group.name,
           parentNames: group.parentNames
@@ -109,7 +109,7 @@ function ensureGroupStarted(hierarchy) {
     const group = discoveredGroups.get(groupId);
     if (group) {
       sendEvent({
-        eventType: 'testGroupStart',
+        eventType: 'groupStart',
         payload: {
           groupName: group.name,
           parentNames: group.parentNames
@@ -189,7 +189,7 @@ class ThreePioJestReporter {
       
       // Send the test case event with group hierarchy
       sendEvent({
-        eventType: 'testCase',
+        eventType: 'groupTestCase',
         payload: {
           testName: testName,
           parentNames: parentNames,
@@ -300,7 +300,7 @@ class ThreePioJestReporter {
             const duration = startTime ? Date.now() - startTime : undefined;
             
             sendEvent({
-              eventType: 'testGroupResult',
+              eventType: 'groupResult',
               payload: {
                 groupName: groupName,
                 parentNames: parentNames,
@@ -320,7 +320,7 @@ class ThreePioJestReporter {
     const fileDuration = fileGroup?.startTime ? Date.now() - fileGroup.startTime : undefined;
     
     sendEvent({
-      eventType: 'testGroupResult',
+      eventType: 'groupResult',
       payload: {
         groupName: test.path,
         parentNames: [],
