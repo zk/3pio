@@ -669,7 +669,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 
 			content += fmt.Sprintf("- %s %s", icon, tc.Name)
 			if tc.Duration > 0 {
-				content += fmt.Sprintf(" (%dms)", tc.Duration.Milliseconds())
+				content += fmt.Sprintf(" (%.2fs)", tc.Duration.Seconds())
 			}
 			content += "\n"
 

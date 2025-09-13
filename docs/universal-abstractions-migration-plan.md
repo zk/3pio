@@ -527,9 +527,9 @@ updated: 2025-02-15T12:31:11.000Z
 
 ## Test case results
 
-- ✓ should render correctly (12ms)
-- ✓ should handle click events (8ms)
-- ✕ should apply custom styles (15ms)
+- ✓ should render correctly (0.01s)
+- ✓ should handle click events (0.01s)
+- ✕ should apply custom styles (0.02s)
 ```
 Error: Expected color to be 'red' but got 'blue'
   at line 45 in Button.test.js
@@ -565,8 +565,8 @@ updated: 2025-02-15T12:31:11.000Z
 
 ## Test case results
 
-- ✓ should have default aria-label (5ms)
-- ✕ should handle disabled state (10ms)
+- ✓ should have default aria-label (0.01s)
+- ✕ should handle disabled state (0.01s)
 ```
 Expected disabled attribute to be present
   at line 23 in Button.test.js
@@ -576,8 +576,8 @@ Expected disabled attribute to be present
 
 | Status | Name | Tests | Duration | Report |
 |--------|------|-------|----------|--------|
-| PASS | with props | 3 passed | 45ms | ./with_props.md |
-| PASS | without props | 3 passed | 38ms | ./without_props.md |
+| PASS | with props | 3 passed | 0.05s | ./with_props.md |
+| PASS | without props | 3 passed | 0.04s | ./without_props.md |
 
 ## stdout/stderr
 ```
@@ -650,8 +650,8 @@ updated: 2025-02-15T12:31:11.000Z
 
 ## Test case results
 
-- ✓ should initialize properly (125ms)
-- ✓ should cleanup resources (89ms)
+- ✓ should initialize properly (0.12s)
+- ✓ should cleanup resources (0.09s)
 - ○ should handle edge case (skipped)
 
 ## Subgroups
@@ -686,16 +686,16 @@ updated: 2025-02-15T12:31:11.000Z
 
 ## Test case results
 
-- ✓ test_addition (10ms)
-- ✓ test_subtraction (8ms)
-- ✕ test_division_by_zero (15ms)
+- ✓ test_addition (0.01s)
+- ✓ test_subtraction (0.01s)
+- ✕ test_division_by_zero (0.02s)
 ```
 AssertionError: Expected ZeroDivisionError but got None
   at line 45 in test_math.py
 ```
-- ✓ test_multiplication (12ms)
-- ✓ test_modulo (9ms)
-- ✓ test_power (11ms)
+- ✓ test_multiplication (0.01s)
+- ✓ test_modulo (0.01s)
+- ✓ test_power (0.01s)
 
 ## stdout/stderr
 ```
@@ -767,13 +767,13 @@ Beginning test execution now...
 RUNNING  ./src/components/Button.test.js
 RUNNING  ./src/components/Button.test.js > Button rendering
 RUNNING  ./src/components/Button.test.js > Button rendering > with props
-PASS     ./src/components/Button.test.js > Button rendering > with props (45ms)
-PASS     ./src/components/Button.test.js > Button rendering > without props (38ms)
-PASS     ./src/components/Button.test.js > Button rendering (83ms)
+PASS     ./src/components/Button.test.js > Button rendering > with props (0.05s)
+PASS     ./src/components/Button.test.js > Button rendering > without props (0.04s)
+PASS     ./src/components/Button.test.js > Button rendering (0.08s)
 RUNNING  ./src/components/Button.test.js > Button events
-FAIL     ./src/components/Button.test.js > Button events (125ms)
+FAIL     ./src/components/Button.test.js > Button events (0.13s)
   See .3pio/runs/20250912T125741-funky-gestahl/reports/src_components_button_test_js/button_events/index.md
-PASS     ./src/components/Button.test.js (208ms)
+PASS     ./src/components/Button.test.js (0.21s)
 
 Results:     14 passed, 2 failed, 16 total
 Total time:  2.345s
