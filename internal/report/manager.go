@@ -59,11 +59,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		return nil, fmt.Errorf("failed to create run directory: %w", err)
 	}
 
-	// Create reports subdirectory
-	reportsDir := filepath.Join(runDir, "reports")
-	if err := os.MkdirAll(reportsDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create reports directory: %w", err)
-	}
+	// Reports directory no longer needed - using group-based directories
 
 	// Open output.log file
 	outputPath := filepath.Join(runDir, "output.log")
@@ -152,14 +148,81 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	defer m.mu.Unlock()
 
 	switch e := event.(type) {
+	// File-based events are now handled by GroupManager
 	case ipc.TestFileStartEvent:
-		return m.handleTestFileStart(e)
+		if m.groupManager != nil {
+			// Convert to group event
+			return m.groupManager.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+				Payload: ipc.GroupDiscoveredPayload{
+					GroupName:    e.Payload.FilePath,
+					ParentNames:  []string{},
+				},
+			})
+		}
+		return nil
 
 	case ipc.TestCaseEvent:
-		return m.handleTestCase(e)
+		if m.groupManager != nil {
+			// First ensure parent groups are discovered
+			if e.Payload.FilePath != "" {
+				// Discover file group
+				_ = m.groupManager.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+					Payload: ipc.GroupDiscoveredPayload{
+						GroupName:   e.Payload.FilePath,
+						ParentNames: []string{},
+					},
+				})
+
+				// If there's a suite, discover it too
+				if e.Payload.SuiteName != "" {
+					_ = m.groupManager.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+						Payload: ipc.GroupDiscoveredPayload{
+							GroupName:   e.Payload.SuiteName,
+							ParentNames: []string{e.Payload.FilePath},
+						},
+					})
+				}
+			}
+
+			// Now convert to group test case event
+			parentNames := []string{}
+			if e.Payload.FilePath != "" {
+				parentNames = append(parentNames, e.Payload.FilePath)
+			}
+			if e.Payload.SuiteName != "" {
+				parentNames = append(parentNames, e.Payload.SuiteName)
+			}
+			// Convert error string to TestError pointer if needed
+			var testError *ipc.TestError
+			if e.Payload.Error != "" {
+				testError = &ipc.TestError{
+					Message: e.Payload.Error,
+				}
+			}
+			return m.groupManager.ProcessTestCase(ipc.GroupTestCaseEvent{
+				Payload: ipc.TestCasePayload{
+					TestName:     e.Payload.TestName,
+					ParentNames:  parentNames,
+					Status:       string(e.Payload.Status),
+					Duration:     e.Payload.Duration,
+					Error:        testError,
+				},
+			})
+		}
+		return nil
 
 	case ipc.TestFileResultEvent:
-		return m.handleTestFileResult(e)
+		if m.groupManager != nil {
+			// Convert to group result event
+			return m.groupManager.ProcessGroupResult(ipc.GroupResultEvent{
+				Payload: ipc.GroupResultPayload{
+					GroupName:    e.Payload.FilePath,
+					ParentNames:  []string{},
+					Status:       string(e.Payload.Status),
+				},
+			})
+		}
+		return nil
 
 	case ipc.StdoutChunkEvent:
 		return m.handleStdoutChunk(e)
@@ -213,8 +276,9 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	return nil
 }
 
-// handleTestFileStart handles test file start events
-func (m *Manager) handleTestFileStart(event ipc.TestFileStartEvent) error {
+// Removed legacy handleTestFileStart - now handled by group manager
+// Legacy function removed
+func (m *Manager) handleTestFileStart_REMOVED(event ipc.TestFileStartEvent) error {
 	filePath := event.Payload.FilePath
 
 	// Ensure file is registered (dynamic discovery)
@@ -229,14 +293,14 @@ func (m *Manager) handleTestFileStart(event ipc.TestFileStartEvent) error {
 		}
 	}
 
-	// Update test-run.md report
-	m.updateTestRunReport()
+	// Test-run.md updates now handled by group manager
 
 	return m.scheduleWrite()
 }
 
-// handleTestCase handles individual test case events
-func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
+// Removed legacy handleTestCase - now handled by group manager
+// Legacy function removed
+func (m *Manager) handleTestCase_REMOVED(event ipc.TestCaseEvent) error {
 	filePath := event.Payload.FilePath
 
 	// Ensure file is registered
@@ -279,7 +343,7 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 				})
 
 				// Immediately regenerate and update the individual file report
-				m.updateIndividualFileReport(filePath)
+				// Individual file reports removed - using group reports
 			} else {
 				// Update existing test case with new information
 				for j := range m.state.TestFiles[i].TestCases {
@@ -301,7 +365,7 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 				}
 
 				// Regenerate and update the individual file report
-				m.updateIndividualFileReport(filePath)
+				// Individual file reports removed - using group reports
 			}
 			break
 		}
@@ -310,8 +374,9 @@ func (m *Manager) handleTestCase(event ipc.TestCaseEvent) error {
 	return m.scheduleWrite()
 }
 
-// handleTestFileResult handles test file completion events
-func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
+// Removed legacy handleTestFileResult - now handled by group manager
+// Legacy function removed
+func (m *Manager) handleTestFileResult_REMOVED(event ipc.TestFileResultEvent) error {
 	filePath := event.Payload.FilePath
 
 	// Update file status and counters
@@ -336,10 +401,9 @@ func (m *Manager) handleTestFileResult(event ipc.TestFileResultEvent) error {
 	}
 
 	// Regenerate individual file report
-	m.updateIndividualFileReport(filePath)
+	// Individual file reports removed - using group reports
 
-	// Update test-run.md report
-	m.updateTestRunReport()
+	// Test-run.md updates now handled by group manager
 
 	// Generate structured individual file report
 	if err := m.writeIndividualFileReport(filePath); err != nil {
@@ -360,7 +424,7 @@ func (m *Manager) handleStdoutChunk(event ipc.StdoutChunkEvent) error {
 	if buffer, ok := m.stdoutBuffers[event.Payload.FilePath]; ok {
 		m.stdoutBuffers[event.Payload.FilePath] = append(buffer, event.Payload.Chunk)
 		// Regenerate individual file report to include the new stdout content
-		m.updateIndividualFileReport(event.Payload.FilePath)
+		// Individual file reports removed - using group reports
 	}
 
 	return nil
@@ -377,7 +441,7 @@ func (m *Manager) handleStderrChunk(event ipc.StderrChunkEvent) error {
 	if buffer, ok := m.stderrBuffers[event.Payload.FilePath]; ok {
 		m.stderrBuffers[event.Payload.FilePath] = append(buffer, event.Payload.Chunk)
 		// Regenerate individual file report to include the new stderr content
-		m.updateIndividualFileReport(event.Payload.FilePath)
+		// Individual file reports removed - using group reports
 	}
 
 	return nil
@@ -448,43 +512,9 @@ func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
 
 // registerTestFileInternal registers a test file (internal, assumes lock held)
 func (m *Manager) registerTestFileInternal(filePath string) {
-	// Create log file with preserved directory structure
-	logFileName := sanitizePathForFilesystem(filePath) + ".md"
-	logPath := filepath.Join(m.runDir, "reports", logFileName)
-
-	// Create parent directories if needed
-	logDir := filepath.Dir(logPath)
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		m.logger.Error("Failed to create log directory for %s: %v", filePath, err)
-	}
-
-	// Add to state first (so we have timestamps available)
-	now := time.Now()
-
-	// Initialize buffers for stdout/stderr
-	m.stdoutBuffers[filePath] = make([]string, 0)
-	m.stderrBuffers[filePath] = make([]string, 0)
-
-	// Write initial report using the standard format
-	initialTestFile := ipc.TestFile{
-		File:      filePath,
-		Status:    ipc.TestStatusRunning,
-		TestCases: []ipc.TestCase{},
-		Created:   now,
-		Updated:   now,
-	}
-	initialReport := m.generateIndividualFileReport(initialTestFile)
-	if err := os.WriteFile(logPath, []byte(initialReport), 0644); err != nil {
-		m.logger.Error("Failed to write initial report file %s: %v", logPath, err)
-	}
-	m.state.TestFiles = append(m.state.TestFiles, ipc.TestFile{
-		Status:    ipc.TestStatusPending,
-		File:      filePath,
-		LogFile:   logFileName,
-		TestCases: make([]ipc.TestCase, 0),
-		Created:   now,
-		Updated:   now,
-	})
+	// Legacy file registration removed - handled by group manager
+	// File-based reports are no longer created
+	// Groups are created on-demand by the group manager
 }
 
 // scheduleWrite schedules a debounced state write
@@ -571,15 +601,14 @@ func (m *Manager) generateMarkdownReport() string {
 		sb.WriteString("\n```\n\n")
 	}
 
-	// Check if we should use group-based or legacy reporting
-	useGroupReporting := m.groupManager != nil && len(m.groupManager.GetRootGroups()) > 0
-
-	if useGroupReporting {
+	// Always use group-based reporting
+	if m.groupManager != nil {
 		// Generate hierarchical summary and results using group data
 		m.generateGroupBasedReport(&sb, statusText)
 	} else {
-		// Fall back to legacy file-based reporting
-		m.generateLegacyReport(&sb, statusText)
+		// No test results to report
+		sb.WriteString("## Test Results\n\n")
+		sb.WriteString("No test results available.\n")
 	}
 
 	return sb.String()
@@ -636,8 +665,9 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 	}
 }
 
-// generateLegacyReport generates the traditional file-based report
-func (m *Manager) generateLegacyReport(sb *strings.Builder, statusText string) {
+// Removed legacy generateLegacyReport - now using group-based reporting
+// Legacy function removed
+func (m *Manager) generateLegacyReport_REMOVED(sb *strings.Builder, statusText string) {
 	// Summary (show when we have test files, hide for command errors)
 	if statusText != "ERRORED" && len(m.state.TestFiles) > 0 {
 		sb.WriteString("## Summary\n\n")
@@ -699,10 +729,8 @@ func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGro
 		sb.WriteString("\n")
 
 		// Add report link for failed files
-		if group.Status == TestStatusFail {
-			reportPath := fmt.Sprintf("./reports/%s.md", sanitizePathForFilesystem(group.Name))
-			sb.WriteString(fmt.Sprintf("%s  [View detailed report](%s)\n", indentStr, reportPath))
-		}
+		// Report links are now handled by the group's own report path
+		// which is generated in the group-based directory structure
 	} else {
 		// Suite-level groups
 		statusIcon := getGroupStatusIcon(group.Status)
@@ -801,8 +829,9 @@ func getTestFileStatusText(status ipc.TestStatus) string {
 	}
 }
 
-// updateTestRunReport updates the test-run.md file with current state
-func (m *Manager) updateTestRunReport() {
+// Removed legacy updateTestRunReport - now handled by group manager
+// Legacy function removed
+func (m *Manager) updateTestRunReport_REMOVED() {
 	m.state.UpdatedAt = time.Now()
 	report := m.generateMarkdownReport()
 
@@ -812,8 +841,9 @@ func (m *Manager) updateTestRunReport() {
 	}
 }
 
-// generateIndividualFileReport generates a structured report for a single test file
-func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
+// Removed legacy generateIndividualFileReport - now using group-based reporting
+// Legacy function removed
+func (m *Manager) generateIndividualFileReport_REMOVED(tf ipc.TestFile) string {
 	var sb strings.Builder
 
 	// Extract filename from full path for title
@@ -914,34 +944,8 @@ func (m *Manager) generateIndividualFileReport(tf ipc.TestFile) string {
 
 // writeIndividualFileReport writes the structured report for a single test file
 func (m *Manager) writeIndividualFileReport(filePath string) error {
-	// Find the test file in state
-	normalizedPath := m.normalizePath(filePath)
-	var targetFile *ipc.TestFile
-	for i := range m.state.TestFiles {
-		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
-			targetFile = &m.state.TestFiles[i]
-			break
-		}
-	}
-
-	if targetFile == nil {
-		return fmt.Errorf("test file not found in state: %s", filePath)
-	}
-
-	// Generate report content
-	report := m.generateIndividualFileReport(*targetFile)
-
-	// Write to file
-	logFileName := sanitizePathForFilesystem(filePath) + ".md"
-	logPath := filepath.Join(m.runDir, "reports", logFileName)
-
-	// Create parent directories if needed
-	logDir := filepath.Dir(logPath)
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("failed to create log directory for %s: %w", filePath, err)
-	}
-
-	return os.WriteFile(logPath, []byte(report), 0644)
+	// Legacy file reports removed - now handled by group manager
+	return nil
 }
 
 // Finalize completes the test run and closes all resources
@@ -949,10 +953,7 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Regenerate final reports for all test files
-	for _, tf := range m.state.TestFiles {
-		m.updateIndividualFileReport(tf.File)
-	}
+	// Individual file reports removed - now handled by group manager
 
 	// Close output.log
 	if m.outputFile != nil {
@@ -1063,29 +1064,11 @@ func getTestCaseIcon(status ipc.TestStatus) string {
 	}
 }
 
-// updateIndividualFileReport regenerates and writes the entire report for a test file
-func (m *Manager) updateIndividualFileReport(filePath string) {
+// Removed legacy updateIndividualFileReport - now using group-based reporting
+// Legacy function removed
+func (m *Manager) updateIndividualFileReport_REMOVED(filePath string) {
 	// Find the test file in state
-	normalizedPath := m.normalizePath(filePath)
-	for i := range m.state.TestFiles {
-		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
-			tf := m.state.TestFiles[i]
-
-			// Generate the report using the standard format
-			report := m.generateIndividualFileReport(tf)
-
-			// Get the log file path
-			logFileName := sanitizePathForFilesystem(filePath) + ".md"
-			logPath := filepath.Join(m.runDir, "reports", logFileName)
-
-			// Write the entire report to file (replacing contents)
-			if err := os.WriteFile(logPath, []byte(report), 0644); err != nil {
-				m.logger.Error("Failed to update report file %s: %v", logPath, err)
-			}
-
-			break
-		}
-	}
+	// Legacy file report update removed - handled by group manager
 }
 
 // GetRootGroups returns root groups from the group manager for console display

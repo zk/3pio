@@ -188,15 +188,23 @@ class ThreePioJestReporter {
       const error = testCaseResult.failureMessages?.join('\n\n');
       
       // Send the test case event with group hierarchy
+      const payload = {
+        testName: testName,
+        parentNames: parentNames,
+        status: status,
+        duration: testCaseResult.duration
+      };
+
+      // Only include error if it exists
+      if (error) {
+        payload.error = {
+          message: error
+        };
+      }
+
       sendEvent({
         eventType: 'testCase',
-        payload: {
-          testName: testName,
-          parentNames: parentNames,
-          status: status,
-          duration: testCaseResult.duration,
-          error: error
-        }
+        payload: payload
       });
       
       // Track test in file group

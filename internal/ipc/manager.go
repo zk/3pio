@@ -191,12 +191,34 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		event = e
 
 	case EventTypeTestCase:
-		var e TestCaseEvent
-		if err := json.Unmarshal(line, &e); err != nil {
+		// Try to determine if this is a new GroupTestCaseEvent or old TestCaseEvent
+		// by checking for parentNames field
+		var raw map[string]interface{}
+		if err := json.Unmarshal(line, &raw); err != nil {
 			m.logger.Error("Failed to parse test case event: %v", err)
 			return
 		}
-		event = e
+
+		// Check if payload has parentNames (new format) or filePath (old format)
+		if payload, ok := raw["payload"].(map[string]interface{}); ok {
+			if _, hasParentNames := payload["parentNames"]; hasParentNames {
+				// New format with parentNames
+				var e GroupTestCaseEvent
+				if err := json.Unmarshal(line, &e); err != nil {
+					m.logger.Error("Failed to parse group test case event: %v", err)
+					return
+				}
+				event = e
+			} else {
+				// Old format with filePath
+				var e TestCaseEvent
+				if err := json.Unmarshal(line, &e); err != nil {
+					m.logger.Error("Failed to parse test case event: %v", err)
+					return
+				}
+				event = e
+			}
+		}
 
 	case EventTypeTestFileResult:
 		var e TestFileResultEvent
