@@ -51,9 +51,10 @@ func SanitizeGroupName(name string) string {
 	// Step 1: Convert to lowercase (as per migration plan)
 	name = strings.ToLower(name)
 
-	// Step 2: Replace path separators with underscores
+	// Step 2: Replace path separators and dots with underscores
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
+	name = strings.ReplaceAll(name, ".", "_")
 
 	// Step 3: Replace invalid filesystem characters
 	name = invalidCharsPattern.ReplaceAllString(name, "_")
@@ -106,28 +107,11 @@ func GenerateGroupPath(group *TestGroup, runDir string) string {
 	components = append(components, runDir, "reports")
 
 	for _, part := range hierarchy {
-		// Check if this part is a file path (contains directory separators)
-		if strings.Contains(part, "/") || strings.Contains(part, "\\") {
-			// For file paths, preserve directory structure
-			// Clean up leading "./" if present
-			cleanPath := strings.TrimPrefix(part, "./")
-			cleanPath = strings.TrimPrefix(cleanPath, ".\\")
-
-			// Split into directory components and sanitize each separately
-			pathParts := strings.Split(cleanPath, "/")
-			if strings.Contains(cleanPath, "\\") {
-				pathParts = strings.Split(cleanPath, "\\")
-			}
-
-			for _, pathPart := range pathParts {
-				if pathPart != "" {
-					sanitized := SanitizeGroupName(pathPart)
-					components = append(components, sanitized)
-				}
-			}
-		} else {
-			// For non-path names, sanitize normally
-			sanitized := SanitizeGroupName(part)
+		// Always sanitize the entire group name as a single unit
+		// This ensures Go package names like "github.com/zk/3pio" become "github_com_zk_3pio"
+		// and file paths like "./src/test.js" become "_src_test_js"
+		sanitized := SanitizeGroupName(part)
+		if sanitized != "" {
 			components = append(components, sanitized)
 		}
 	}
@@ -159,28 +143,11 @@ func GenerateGroupPathFromHierarchy(hierarchy []string, runDir string) string {
 	components = append(components, runDir, "reports")
 
 	for _, part := range hierarchy {
-		// Check if this part is a file path (contains directory separators)
-		if strings.Contains(part, "/") || strings.Contains(part, "\\") {
-			// For file paths, preserve directory structure
-			// Clean up leading "./" if present
-			cleanPath := strings.TrimPrefix(part, "./")
-			cleanPath = strings.TrimPrefix(cleanPath, ".\\")
-
-			// Split into directory components and sanitize each separately
-			pathParts := strings.Split(cleanPath, "/")
-			if strings.Contains(cleanPath, "\\") {
-				pathParts = strings.Split(cleanPath, "\\")
-			}
-
-			for _, pathPart := range pathParts {
-				if pathPart != "" {
-					sanitized := SanitizeGroupName(pathPart)
-					components = append(components, sanitized)
-				}
-			}
-		} else {
-			// For non-path names, sanitize normally
-			sanitized := SanitizeGroupName(part)
+		// Always sanitize the entire group name as a single unit
+		// This ensures Go package names like "github.com/zk/3pio" become "github_com_zk_3pio"
+		// and file paths like "./src/test.js" become "_src_test_js"
+		sanitized := SanitizeGroupName(part)
+		if sanitized != "" {
 			components = append(components, sanitized)
 		}
 	}
