@@ -37,11 +37,12 @@ cat .3pio/runs/*/test-run.md
 ## Architecture
 
 1. **CLI Orchestrator** - Main entry point managing test lifecycle
-2. **Report Manager** - Handles all report file I/O with debounced writes
-3. **IPC Manager** - File-based communication between adapters and CLI
-4. **Test Runner Adapters** - Silent reporters running inside test processes
+2. **Report Manager** - Handles hierarchical group-based report generation
+3. **Group Manager** - Manages test hierarchy with universal group abstractions
+4. **IPC Manager** - File-based communication between adapters and CLI
+5. **Test Runner Adapters** - Silent reporters running inside test processes
 
-Data flows from test runners → adapters → IPC files → CLI → reports.
+Data flows from test runners → adapters → group events → group hierarchy → reports.
 
 ## Documentation Structure
 
@@ -75,20 +76,26 @@ Documentation for understanding and working on the 3pio codebase - system design
 .3pio/
 ├── runs/
 │   └── 2025-09-09T111224921Z-revolutionary-chewbacca/
-│       ├── test-run.md           # Main report with all test results
-│       ├── output.log             # Complete stdout/stderr capture
-│       └── reports/              # Per-file test reports
-│           ├── math.test.js.log
-│           └── string.test.js.log
+│       ├── test-run.md                         # Main report with group hierarchy
+│       ├── output.log                          # Complete stdout/stderr capture
+│       └── reports/                            # Hierarchical group reports
+│           ├── src_components_button_test_js/  # File group directory
+│           │   ├── index.md                    # File-level tests
+│           │   └── button_rendering/           # Nested describe block
+│           │       └── with_props.md          # Nested test results
+│           └── test_math_py/                   # Python file group
+│               └── testmathoperations.md       # Class-based tests
 ├── ipc/
-│   └── *.jsonl                   # Inter-process communication events
-└── debug.log                      # System debug information
-
+│   └── *.jsonl                                # Inter-process communication events
+└── debug.log                                   # System debug information
 ```
 
 ## Key Concepts
 
+- **Universal Group Abstractions**: Hierarchical test organization (files → describes → suites → tests)
 - **Test Discovery Modes**: Static (files known upfront) vs Dynamic (files discovered during execution)
-- **IPC Events**: Test case results, file completion, and console output chunks
+- **Group Events**: Group discovery, start, test cases with hierarchy, and group results
+- **Hierarchical Reports**: Nested directory structure mirroring test organization
 - **Debounced Writes**: Performance optimization for frequent file updates
 - **Silent Adapters**: Test reporters that communicate only via IPC, no console output
+- **Deterministic IDs**: SHA256-based group identification for consistent cross-run references

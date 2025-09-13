@@ -87,11 +87,12 @@ make build
 
 ### IPC Event Schema
 Events written to `.3pio/ipc/[timestamp].jsonl`:
-- `stdoutChunk`: `{ eventType: "stdoutChunk", payload: { filePath, chunk } }`
-- `stderrChunk`: `{ eventType: "stderrChunk", payload: { filePath, chunk } }`
-- `testCase`: `{ eventType: "testCase", payload: { filePath, testName, suiteName?, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
-- `testFileResult`: `{ eventType: "testFileResult", payload: { filePath, status: "PASS"|"FAIL"|"SKIP" } }`
-- `testFileStart`: `{ eventType: "testFileStart", payload: { filePath } }`
+- `testGroupDiscovered`: `{ eventType: "testGroupDiscovered", payload: { groupName, parentNames } }`
+- `testGroupStart`: `{ eventType: "testGroupStart", payload: { groupName, parentNames } }`
+- `testCase`: `{ eventType: "testCase", payload: { testName, parentNames, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
+- `testGroupResult`: `{ eventType: "testGroupResult", payload: { groupName, parentNames, status, duration?, totals? } }`
+- `groupStdout`: `{ eventType: "groupStdout", payload: { groupName, parentNames, chunk } }`
+- `groupStderr`: `{ eventType: "groupStderr", payload: { groupName, parentNames, chunk } }`
 
 ### Adapter Development
 - Adapters must be **silent** - no stdout/stderr output

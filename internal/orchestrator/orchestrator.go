@@ -477,33 +477,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		status := convertStringToTestStatus(e.Payload.Status)
 		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status)
 
-	case ipc.TestFileStartEvent:
-		// Normalize path for deduplication - use absolute path as key
-		normalizedPath := o.normalizePath(e.Payload.FilePath)
-		displayKey := normalizedPath + ":start"
-
-		// Skip if already displayed this start event for this file
-		if o.displayedFiles[displayKey] {
-			return
-		}
-		o.displayedFiles[displayKey] = true
-
-		relativePath := o.getRelativePath(normalizedPath)
-		fmt.Printf("RUNNING  %s\n", relativePath)
-		// Track start time for duration calculation
-		o.fileStartTimes[normalizedPath] = time.Now()
-
-	case ipc.TestCaseEvent:
-		// Track failed tests for later display - use legacy suiteName approach
-		if e.Payload.Status == ipc.TestStatusFail {
-			normalizedPath := o.normalizePath(e.Payload.FilePath)
-			testName := e.Payload.TestName
-			// Use suiteName if available
-			if e.Payload.SuiteName != "" {
-				testName = e.Payload.SuiteName + " > " + testName
-			}
-			o.fileFailedTests[normalizedPath] = append(o.fileFailedTests[normalizedPath], testName)
-		}
+	// Legacy file-based events removed - only group events are supported
 
 	case ipc.GroupTestCaseEvent:
 		// Track failed tests for hierarchical display
@@ -521,40 +495,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			}
 		}
 
-	case ipc.TestFileResultEvent:
-		// Handle file-level results for compatibility, but prefer group-based display
-		normalizedPath := o.normalizePath(e.Payload.FilePath)
-
-		// Skip if already displayed this result event for this file
-		if o.displayedFiles[normalizedPath+":result"] {
-			return
-		}
-		o.displayedFiles[normalizedPath+":result"] = true
-
-		// Check if we have group data for hierarchical display
-		if groups := o.reportManager.GetRootGroups(); len(groups) > 0 {
-			// Look for a completed group matching this file
-			var matchedGroup *report.TestGroup
-			for _, group := range groups {
-				if group.Name == normalizedPath && group.IsComplete() {
-					matchedGroup = group
-					break
-				}
-			}
-
-			if matchedGroup != nil {
-				// Use hierarchical display for completed groups
-				o.displayGroupHierarchy(matchedGroup, 0)
-			} else {
-				// Fallback to legacy display if no completed group found
-				o.displayLegacyFileResult(e)
-			}
-		} else {
-			// Fallback to legacy file-based display
-			o.displayLegacyFileResult(e)
-		}
-
-		o.totalFiles++
+	// Legacy TestFileResultEvent removed - using group events instead
 	}
 }
 
@@ -677,53 +618,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	}
 }
 
-// displayLegacyFileResult displays file results using the legacy format
-func (o *Orchestrator) displayLegacyFileResult(e ipc.TestFileResultEvent) {
-	normalizedPath := o.normalizePath(e.Payload.FilePath)
-	relativePath := o.getRelativePath(normalizedPath)
-
-	// Format status with proper spacing
-	var status string
-	switch e.Payload.Status {
-	case ipc.TestStatusPass:
-		status = "PASS    "
-		o.passedFiles++
-	case ipc.TestStatusFail:
-		status = "FAIL    "
-		o.failedFiles++
-	default:
-		status = "SKIP    "
-	}
-
-	// Calculate duration if we have a start time
-	durationStr := ""
-	if startTime, ok := o.fileStartTimes[normalizedPath]; ok {
-		duration := time.Since(startTime).Seconds()
-		durationStr = fmt.Sprintf(" (%.2fs)", duration)
-		delete(o.fileStartTimes, normalizedPath) // Clean up
-	}
-
-	// For failed tests, don't print duration on same line since report path goes on next line
-	if e.Payload.Status == ipc.TestStatusFail {
-		fmt.Printf("%s %s\n", status, relativePath)
-
-		// Display failed test names if we have them
-		if failedTests, ok := o.fileFailedTests[normalizedPath]; ok && len(failedTests) > 0 {
-			for _, testName := range failedTests {
-				fmt.Printf("  ✕ %s\n", testName)
-			}
-		}
-	} else {
-		fmt.Printf("%s %s%s\n", status, relativePath, durationStr)
-	}
-
-	// Display failed test report path
-	if e.Payload.Status == ipc.TestStatusFail {
-		// Use the relative path to generate the correct report path with directory structure
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(relativePath))
-		fmt.Printf("  See %s\n", reportPath)
-	}
-}
+// displayLegacyFileResult removed - using group-based display instead
 
 // getTestCaseConsoleIcon returns an icon for individual test cases in console output
 func getTestCaseConsoleIcon(status ipc.TestStatus) string {

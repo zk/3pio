@@ -223,10 +223,7 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 		if err := json.Unmarshal(line, &event); err != nil {
 			// Non-JSON line (likely build error)
 			g.logger.Debug("Non-JSON output: %s", string(line))
-			// Send as stdout chunk for the current file
-			if g.currentFile != "" {
-				g.sendStdoutChunk(g.currentFile, string(line)+"\n")
-			}
+			// Non-JSON output no longer sent as events - handled by group events
 			continue
 		}
 		
@@ -326,7 +323,7 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 	if !g.fileStarted[filePath] {
 		g.fileStarted[filePath] = true
 		g.fileStartTimes[filePath] = event.Time
-		g.sendTestFileStart(filePath)
+		// testFileStart event removed - using group events instead
 
 		// Discover the file as a root group and start it
 		g.ensureGroupsDiscovered(filePath, []string{})
@@ -338,7 +335,7 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 			Tests:     []TestInfo{},
 		}
 
-		g.logger.Debug("Sent testFileStart for %s at %v", filePath, event.Time)
+		g.logger.Debug("File group discovered and started for %s at %v", filePath, event.Time)
 	}
 	
 	// Increment expected test count for this file
@@ -481,9 +478,8 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		// Send GroupResult for the file
 		g.sendGroupResult(filePath, []string{}, g.fileStatuses[filePath], elapsed, totals)
 
-		// Keep legacy testFileResult for compatibility
-		g.sendTestFileResultWithDuration(filePath, g.fileStatuses[filePath], elapsed)
-		g.logger.Debug("Sent testFileResult for %s: status=%s, duration=%.2fs", filePath, g.fileStatuses[filePath], elapsed)
+		// testFileResult event removed - using group events instead
+		g.logger.Debug("Sent group result for %s: status=%s, duration=%.2fs", filePath, g.fileStatuses[filePath], elapsed)
 	}
 }
 
@@ -501,26 +497,10 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			pkg.IsCached = true
 		}
 		
-		// Only send testFileResult for cached packages or packages with no tests
-		// For packages with actual tests, the testFileResult was already sent when tests completed
+		// testFileStart/testFileResult events removed - using group events instead
+		// Cached packages are handled by group events
 		if pkg.IsCached {
-			status := "CACH"
-			for _, file := range pkg.TestGoFiles {
-				filePath := filepath.Join(pkg.Dir, file)
-				// Only send if we haven't already sent a result for this file
-				if !g.fileStarted[filePath] {
-					g.sendTestFileStart(filePath)
-					g.sendTestFileResult(filePath, status)
-				}
-			}
-			for _, file := range pkg.XTestGoFiles {
-				filePath := filepath.Join(pkg.Dir, file)
-				// Only send if we haven't already sent a result for this file
-				if !g.fileStarted[filePath] {
-					g.sendTestFileStart(filePath)
-					g.sendTestFileResult(filePath, status)
-				}
-			}
+			g.logger.Debug("Cached package detected: %s", event.Package)
 		} else if len(pkg.TestGoFiles) == 0 && len(pkg.XTestGoFiles) == 0 {
 			// Package has no test files - this shouldn't normally happen
 			// but handle it just in case
@@ -541,10 +521,11 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 			state.Output = append(state.Output, event.Output)
 		}
 	} else {
-		// Package-level output
+		// Package-level output - now handled by group events
 		filePath := g.getFilePathForPackage(event.Package)
 		if filePath != "" {
-			g.sendStdoutChunk(filePath, event.Output)
+			// Output capture handled by group events
+			g.logger.Debug("Package output for %s: %s", event.Package, strings.TrimSpace(event.Output))
 		}
 	}
 }
@@ -849,17 +830,7 @@ func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames [
 	}
 }
 
-func (g *GoTestDefinition) sendTestFileStart(filePath string) {
-	event := map[string]interface{}{
-		"eventType": "testFileStart",
-		"payload": map[string]interface{}{
-			"filePath": filePath,
-		},
-	}
-	if err := g.ipcWriter.WriteEvent(event); err != nil {
-		g.logger.Error("Failed to send testFileStart: %v", err)
-	}
-}
+// sendTestFileStart removed - using group events instead
 
 func (g *GoTestDefinition) sendTestCase(filePath, testName, suiteName, status string, duration float64, output []string) {
 	payload := map[string]interface{}{
@@ -887,45 +858,7 @@ func (g *GoTestDefinition) sendTestCase(filePath, testName, suiteName, status st
 	}
 }
 
-func (g *GoTestDefinition) sendTestFileResult(filePath, status string) {
-	event := map[string]interface{}{
-		"eventType": "testFileResult",
-		"payload": map[string]interface{}{
-			"filePath": filePath,
-			"status":   status,
-		},
-	}
-	if err := g.ipcWriter.WriteEvent(event); err != nil {
-		g.logger.Error("Failed to send testFileResult: %v", err)
-	}
-}
-
-func (g *GoTestDefinition) sendTestFileResultWithDuration(filePath, status string, duration float64) {
-	event := map[string]interface{}{
-		"eventType": "testFileResult",
-		"payload": map[string]interface{}{
-			"filePath": filePath,
-			"status":   status,
-			"duration": duration * 1000, // Convert seconds to milliseconds
-		},
-	}
-	if err := g.ipcWriter.WriteEvent(event); err != nil {
-		g.logger.Error("Failed to send testFileResult with duration: %v", err)
-	}
-}
-
-func (g *GoTestDefinition) sendStdoutChunk(filePath, chunk string) {
-	event := map[string]interface{}{
-		"eventType": "stdoutChunk",
-		"payload": map[string]interface{}{
-			"filePath": filePath,
-			"chunk":    chunk,
-		},
-	}
-	if err := g.ipcWriter.WriteEvent(event); err != nil {
-		g.logger.Error("Failed to send stdoutChunk: %v", err)
-	}
-}
+// sendTestFileResult, sendTestFileResultWithDuration, sendStdoutChunk removed - using group events instead
 
 // NewIPCWriter creates a new IPC writer
 func NewIPCWriter(path string) (*IPCWriter, error) {

@@ -415,16 +415,7 @@ var ThreePioVitestReporter = class {
     const filePath = testModule?.filepath || testModule?.moduleId;
     if (filePath) {
       this.ensureGroupsDiscovered(filePath, []);
-
-      this.logger.ipc("send", "testFileStart", { filePath });
-      IPCSender.sendEvent({
-        eventType: "testFileStart",
-        payload: {
-          filePath
-        }
-      }).catch((error) => {
-        this.logger.error("Failed to send testFileStart from module collected", error);
-      });
+      // testFileStart event removed - using group events instead
     }
   }
   
@@ -583,18 +574,8 @@ var ThreePioVitestReporter = class {
           }
         }
       }
-      
-      this.logger.ipc("send", "testFileResult", { filePath, status, failedTests });
-      IPCSender.sendEvent({
-        eventType: "testFileResult",
-        payload: {
-          filePath,
-          status,
-          failedTests
-        }
-      }).catch((error) => {
-        this.logger.error("Failed to send testFileResult from module end", error);
-      });
+
+      // testFileResult event removed - using group events instead
     }
   }
   
@@ -678,30 +659,14 @@ var ThreePioVitestReporter = class {
         tests: []
       });
 
-      this.logger.ipc("send", "testFileStart", { filePath: file.filepath });
-      IPCSender.sendEvent({
-        eventType: "testFileStart",
-        payload: {
-          filePath: file.filepath
-        }
-      }).catch((error) => {
-        this.logger.error("Failed to send testFileStart", error);
-      });
+      // testFileStart event removed - using group events instead
     }
     this.startCapture();
   }
   onTestFileResult(file) {
     if (!this.filesStarted.has(file.filepath)) {
       this.filesStarted.add(file.filepath);
-      this.logger.ipc("send", "testFileStart", { filePath: file.filepath });
-      IPCSender.sendEvent({
-        eventType: "testFileStart",
-        payload: {
-          filePath: file.filepath
-        }
-      }).catch((error) => {
-        this.logger.error("Failed to send testFileStart", error);
-      });
+      // testFileStart event removed - using group events instead
     }
     this.stopCapture();
     if (file.tasks) {
@@ -765,18 +730,7 @@ var ThreePioVitestReporter = class {
       this.logger.error("Failed to send testGroupResult", error);
     });
 
-    // Keep legacy testFileResult for compatibility
-    this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status, failedTests });
-    IPCSender.sendEvent({
-      eventType: "testFileResult",
-      payload: {
-        filePath: file.filepath,
-        status,
-        failedTests
-      }
-    }).catch((error) => {
-      this.logger.error("Failed to send testFileResult", error);
-    });
+    // testFileResult event removed - using group events instead
     this.currentTestFile = null;
   }
   sendTestCaseEvents(filePath, tasks) {
@@ -848,17 +802,7 @@ var ThreePioVitestReporter = class {
       for (const file of files) {
         if (!this.filesStarted.has(file.filepath)) {
           this.filesStarted.add(file.filepath);
-          this.logger.ipc("send", "testFileStart", { filePath: file.filepath });
-          try {
-            await IPCSender.sendEvent({
-              eventType: "testFileStart",
-              payload: {
-                filePath: file.filepath
-              }
-            });
-          } catch (error) {
-            this.logger.error("Failed to send testFileStart", error);
-          }
+          // testFileStart event removed - using group events instead
         }
         if (file.tasks) {
           this.sendTestCaseEvents(file.filepath, file.tasks);
@@ -889,20 +833,7 @@ var ThreePioVitestReporter = class {
           collectFailedTests(file.tasks);
         }
         
-        this.logger.debug("Sending deferred test result", { file: file.filepath, status, failedTests: failedTests.length });
-        try {
-          this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status, failedTests });
-          await IPCSender.sendEvent({
-            eventType: "testFileResult",
-            payload: {
-              filePath: file.filepath,
-              status,
-              failedTests
-            }
-          });
-        } catch (error) {
-          this.logger.error("Failed to send deferred test result", error, { file: file.filepath });
-        }
+        // testFileResult event removed - using group events instead
       }
     }
     this.logger.lifecycle("Vitest adapter shutdown complete");
@@ -911,36 +842,14 @@ var ThreePioVitestReporter = class {
     if (this.captureEnabled) return;
     this.captureEnabled = true;
     this.logger.debug("Starting stdout/stderr capture", { currentFile: this.currentTestFile });
+    // Old stdout/stderr capture removed - using group events instead
+    // Output is now captured by group events (groupStdout/groupStderr)
     process.stdout.write = (chunk, ...args) => {
-      if (chunk) {
-        const chunkStr = chunk.toString();
-        const filePath = this.currentTestFile;
-        if (!filePath) return true;
-        IPCSender.sendEvent({
-          eventType: "stdoutChunk",
-          payload: {
-            filePath,
-            chunk: chunkStr
-          }
-        }).catch(() => {
-        });
-      }
+      // Silent capture - output handled by group events
       return true;
     };
     process.stderr.write = (chunk, ...args) => {
-      if (chunk) {
-        const chunkStr = chunk.toString();
-        const filePath = this.currentTestFile;
-        if (!filePath) return true;
-        IPCSender.sendEvent({
-          eventType: "stderrChunk",
-          payload: {
-            filePath,
-            chunk: chunkStr
-          }
-        }).catch(() => {
-        });
-      }
+      // Silent capture - output handled by group events
       return true;
     };
   }

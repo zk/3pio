@@ -206,13 +206,13 @@ func TestMonorepoMultiplePackagesParallel(t *testing.T) {
 				t.Error("IPC file does not contain testCase events")
 			}
 
-			// Check for test file events
-			if !strings.Contains(content, `"eventType":"testFileStart"`) {
-				t.Error("IPC file does not contain testFileStart events")
+			// Check for group events (new format)
+			if !strings.Contains(content, `"eventType":"testGroupDiscovered"`) {
+				t.Error("IPC file does not contain testGroupDiscovered events")
 			}
 
-			if !strings.Contains(content, `"eventType":"testFileResult"`) {
-				t.Error("IPC file does not contain testFileResult events")
+			if !strings.Contains(content, `"eventType":"testGroupResult"`) {
+				t.Error("IPC file does not contain testGroupResult events")
 			}
 		}
 	}

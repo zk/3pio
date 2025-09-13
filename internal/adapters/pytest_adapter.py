@@ -234,14 +234,9 @@ class ThreepioReporter:
             def write(self, text):
                 # Send to IPC if we have a current test file
                 if self.reporter.current_test_file and text:
-                    event_type = "stdoutChunk" if self.stream_type == "stdout" else "stderrChunk"
-                    try:
-                        self.reporter.send_event(event_type, {
-                            "filePath": self.reporter.current_test_file,
-                            "chunk": text
-                        })
-                    except:
-                        pass  # Silently ignore IPC errors
+                    # Old stdout/stderr chunk events removed - using group events instead
+                    # Output is now captured by group events (groupStdout/groupStderr)
+                    pass
                 
                 # Return length of text to indicate success, but DON'T write to terminal
                 # This makes the adapter completely silent like Jest/Vitest
@@ -335,12 +330,7 @@ def pytest_collectreport(report: CollectReport) -> None:
         
         _reporter.send_event("collectionError", payload)
         
-        # Also send as stderr to capture the error
-        if hasattr(report, 'longrepr') and report.longrepr:
-            _reporter.send_event("stderrChunk", {
-                "filePath": file_path,
-                "chunk": f"Collection Error:\n{str(report.longrepr)}\n"
-            })
+        # Collection error details are captured in the collectionError event
 
 
 def pytest_collection_finish(session) -> None:
@@ -366,10 +356,10 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
     if _reporter:
         file_path = _reporter.get_file_path(item)
 
-        # Send testFileStart event if this is a new file
+        # testFileStart event removed - using group events instead
         if file_path not in _reporter.test_files:
             _reporter.test_files.add(file_path)
-            _reporter.send_event("testFileStart", {"filePath": file_path})
+            # File discovery and group management handled by group events
             _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
 
             # Discover the file as a root group and start it
@@ -511,17 +501,7 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
             "totals": totals
         })
 
-        # Keep legacy testFileResult for compatibility
-        payload = {
-            "filePath": file_path,
-            "status": status
-        }
-
-        # Add failed test details for FAIL status
-        if status == "FAIL" and results.get("failed_tests"):
-            payload["failedTests"] = results["failed_tests"]
-
-        _reporter.send_event("testFileResult", payload)
+        # testFileResult event removed - using group events instead
 
 
 def pytest_unconfigure(config: Config) -> None:

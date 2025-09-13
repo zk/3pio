@@ -2,7 +2,6 @@ package report
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,87 +147,7 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	defer m.mu.Unlock()
 
 	switch e := event.(type) {
-	// File-based events are now handled by GroupManager
-	case ipc.TestFileStartEvent:
-		if m.groupManager != nil {
-			// Convert to group event
-			return m.groupManager.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
-				Payload: ipc.GroupDiscoveredPayload{
-					GroupName:    e.Payload.FilePath,
-					ParentNames:  []string{},
-				},
-			})
-		}
-		return nil
-
-	case ipc.TestCaseEvent:
-		if m.groupManager != nil {
-			// First ensure parent groups are discovered
-			if e.Payload.FilePath != "" {
-				// Discover file group
-				_ = m.groupManager.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
-					Payload: ipc.GroupDiscoveredPayload{
-						GroupName:   e.Payload.FilePath,
-						ParentNames: []string{},
-					},
-				})
-
-				// If there's a suite, discover it too
-				if e.Payload.SuiteName != "" {
-					_ = m.groupManager.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
-						Payload: ipc.GroupDiscoveredPayload{
-							GroupName:   e.Payload.SuiteName,
-							ParentNames: []string{e.Payload.FilePath},
-						},
-					})
-				}
-			}
-
-			// Now convert to group test case event
-			parentNames := []string{}
-			if e.Payload.FilePath != "" {
-				parentNames = append(parentNames, e.Payload.FilePath)
-			}
-			if e.Payload.SuiteName != "" {
-				parentNames = append(parentNames, e.Payload.SuiteName)
-			}
-			// Convert error string to TestError pointer if needed
-			var testError *ipc.TestError
-			if e.Payload.Error != "" {
-				testError = &ipc.TestError{
-					Message: e.Payload.Error,
-				}
-			}
-			return m.groupManager.ProcessTestCase(ipc.GroupTestCaseEvent{
-				Payload: ipc.TestCasePayload{
-					TestName:     e.Payload.TestName,
-					ParentNames:  parentNames,
-					Status:       string(e.Payload.Status),
-					Duration:     e.Payload.Duration,
-					Error:        testError,
-				},
-			})
-		}
-		return nil
-
-	case ipc.TestFileResultEvent:
-		if m.groupManager != nil {
-			// Convert to group result event
-			return m.groupManager.ProcessGroupResult(ipc.GroupResultEvent{
-				Payload: ipc.GroupResultPayload{
-					GroupName:    e.Payload.FilePath,
-					ParentNames:  []string{},
-					Status:       string(e.Payload.Status),
-				},
-			})
-		}
-		return nil
-
-	case ipc.StdoutChunkEvent:
-		return m.handleStdoutChunk(e)
-
-	case ipc.StderrChunkEvent:
-		return m.handleStderrChunk(e)
+	// Legacy file-based events removed - only group events are supported now
 
 	case ipc.CollectionErrorEvent:
 		return m.handleCollectionError(e)
@@ -276,176 +195,13 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	return nil
 }
 
-// Removed legacy handleTestFileStart - now handled by group manager
-// Legacy function removed
-func (m *Manager) handleTestFileStart_REMOVED(event ipc.TestFileStartEvent) error {
-	filePath := event.Payload.FilePath
+// Legacy handleTestFileStart removed
 
-	// Ensure file is registered (dynamic discovery)
-	m.ensureTestFileRegisteredInternal(filePath)
+// Legacy handleTestCase removed
 
-	// Update status to RUNNING and update timestamp
-	for i := range m.state.TestFiles {
-		if m.state.TestFiles[i].File == filePath {
-			m.state.TestFiles[i].Status = ipc.TestStatusRunning
-			m.state.TestFiles[i].Updated = time.Now()
-			break
-		}
-	}
+// Legacy handleTestFileResult removed
 
-	// Test-run.md updates now handled by group manager
-
-	return m.scheduleWrite()
-}
-
-// Removed legacy handleTestCase - now handled by group manager
-// Legacy function removed
-func (m *Manager) handleTestCase_REMOVED(event ipc.TestCaseEvent) error {
-	filePath := event.Payload.FilePath
-
-	// Ensure file is registered
-	m.ensureTestFileRegisteredInternal(filePath)
-
-	// Find the test file and add/update test case
-	normalizedPath := m.normalizePath(filePath)
-	for i := range m.state.TestFiles {
-		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
-			// Update timestamp for any test case activity
-			m.state.TestFiles[i].Updated = time.Now()
-
-			// Initialize test cases if needed
-			if m.state.TestFiles[i].TestCases == nil {
-				m.state.TestFiles[i].TestCases = make([]ipc.TestCase, 0)
-			}
-
-			// Check if test case already exists (update) or add new
-			found := false
-			for j := range m.state.TestFiles[i].TestCases {
-				tc := &m.state.TestFiles[i].TestCases[j]
-				if tc.Name == event.Payload.TestName && tc.Suite == event.Payload.SuiteName {
-					// Update existing test case
-					tc.Status = event.Payload.Status
-					tc.Duration = event.Payload.Duration
-					tc.Error = event.Payload.Error
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				// Add new test case
-				m.state.TestFiles[i].TestCases = append(m.state.TestFiles[i].TestCases, ipc.TestCase{
-					Name:     event.Payload.TestName,
-					Suite:    event.Payload.SuiteName,
-					Status:   event.Payload.Status,
-					Duration: event.Payload.Duration,
-					Error:    event.Payload.Error,
-				})
-
-				// Immediately regenerate and update the individual file report
-				// Individual file reports removed - using group reports
-			} else {
-				// Update existing test case with new information
-				for j := range m.state.TestFiles[i].TestCases {
-					if m.state.TestFiles[i].TestCases[j].Name == event.Payload.TestName &&
-						(m.state.TestFiles[i].TestCases[j].Suite == event.Payload.SuiteName ||
-							m.state.TestFiles[i].TestCases[j].Suite == "" && event.Payload.SuiteName == "") {
-						// Update test case fields
-						if event.Payload.Status != "" {
-							m.state.TestFiles[i].TestCases[j].Status = event.Payload.Status
-						}
-						if event.Payload.Duration > 0 {
-							m.state.TestFiles[i].TestCases[j].Duration = event.Payload.Duration
-						}
-						if event.Payload.Error != "" {
-							m.state.TestFiles[i].TestCases[j].Error = event.Payload.Error
-						}
-						break
-					}
-				}
-
-				// Regenerate and update the individual file report
-				// Individual file reports removed - using group reports
-			}
-			break
-		}
-	}
-
-	return m.scheduleWrite()
-}
-
-// Removed legacy handleTestFileResult - now handled by group manager
-// Legacy function removed
-func (m *Manager) handleTestFileResult_REMOVED(event ipc.TestFileResultEvent) error {
-	filePath := event.Payload.FilePath
-
-	// Update file status and counters
-	normalizedPath := m.normalizePath(filePath)
-	for i := range m.state.TestFiles {
-		if m.normalizePath(m.state.TestFiles[i].File) == normalizedPath {
-			m.state.TestFiles[i].Status = event.Payload.Status
-			m.state.TestFiles[i].Updated = time.Now()
-			m.state.FilesCompleted++
-
-			switch event.Payload.Status {
-			case ipc.TestStatusPass:
-				m.state.FilesPassed++
-			case ipc.TestStatusFail:
-				m.state.FilesFailed++
-			case ipc.TestStatusSkip:
-				m.state.FilesSkipped++
-			}
-
-			break
-		}
-	}
-
-	// Regenerate individual file report
-	// Individual file reports removed - using group reports
-
-	// Test-run.md updates now handled by group manager
-
-	// Generate structured individual file report
-	if err := m.writeIndividualFileReport(filePath); err != nil {
-		m.logger.Error("Failed to write individual file report for %s: %v", filePath, err)
-	}
-
-	return m.scheduleWrite()
-}
-
-// handleStdoutChunk handles stdout output chunks
-func (m *Manager) handleStdoutChunk(event ipc.StdoutChunkEvent) error {
-	// Write to output.log
-	if _, err := m.outputFile.WriteString(event.Payload.Chunk); err != nil {
-		m.logger.Error("Failed to write stdout to output.log: %v", err)
-	}
-
-	// Append to stdout buffer for structured reports
-	if buffer, ok := m.stdoutBuffers[event.Payload.FilePath]; ok {
-		m.stdoutBuffers[event.Payload.FilePath] = append(buffer, event.Payload.Chunk)
-		// Regenerate individual file report to include the new stdout content
-		// Individual file reports removed - using group reports
-	}
-
-	return nil
-}
-
-// handleStderrChunk handles stderr output chunks
-func (m *Manager) handleStderrChunk(event ipc.StderrChunkEvent) error {
-	// Write to output.log
-	if _, err := m.outputFile.WriteString(event.Payload.Chunk); err != nil {
-		m.logger.Error("Failed to write stderr to output.log: %v", err)
-	}
-
-	// Append to stderr buffer for structured reports
-	if buffer, ok := m.stderrBuffers[event.Payload.FilePath]; ok {
-		m.stderrBuffers[event.Payload.FilePath] = append(buffer, event.Payload.Chunk)
-		// Regenerate individual file report to include the new stderr content
-		// Individual file reports removed - using group reports
-	}
-
-	return nil
-}
+// Legacy stdout/stderr chunk handlers removed - now handled by group events
 
 // handleCollectionError handles collection error events (pytest specific)
 func (m *Manager) handleCollectionError(event ipc.CollectionErrorEvent) error {
@@ -665,49 +421,7 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 	}
 }
 
-// Removed legacy generateLegacyReport - now using group-based reporting
-// Legacy function removed
-func (m *Manager) generateLegacyReport_REMOVED(sb *strings.Builder, statusText string) {
-	// Summary (show when we have test files, hide for command errors)
-	if statusText != "ERRORED" && len(m.state.TestFiles) > 0 {
-		sb.WriteString("## Summary\n\n")
-		sb.WriteString("\n")
-		sb.WriteString(fmt.Sprintf("- Total files: %d\n", m.state.TotalFiles))
-		sb.WriteString(fmt.Sprintf("- Files completed: %d\n", m.state.FilesCompleted))
-		sb.WriteString(fmt.Sprintf("- Files passed: %d\n", m.state.FilesPassed))
-		sb.WriteString(fmt.Sprintf("- Files failed: %d\n", m.state.FilesFailed))
-		sb.WriteString(fmt.Sprintf("- Files skipped: %d\n", m.state.FilesSkipped))
-
-		// Calculate pending files
-		pendingFiles := m.state.TotalFiles - m.state.FilesCompleted
-		sb.WriteString(fmt.Sprintf("- Files pending: %d\n", pendingFiles))
-		sb.WriteString(fmt.Sprintf("- Total duration: %.2fs\n\n", m.getTotalDuration()))
-	}
-
-	// Test file results section (show for any status with test files)
-	if len(m.state.TestFiles) > 0 {
-		sb.WriteString("## Test file results\n\n")
-		sb.WriteString("| Stat | Test | Duration | Report file |\n")
-		sb.WriteString("| ---- | ---- | -------- | ----------- |\n")
-		for _, tf := range m.state.TestFiles {
-			statusIcon := getTestFileStatusText(tf.Status)
-			filename := filepath.Base(tf.File)
-
-			// Calculate total duration for this test file
-			var totalDuration float64
-			for _, tc := range tf.TestCases {
-				if tc.Duration > 0 {
-					totalDuration += tc.Duration
-				}
-			}
-			// Convert milliseconds to seconds with 2 decimal places
-			durationStr := fmt.Sprintf("%.2fs", totalDuration/1000.0)
-
-			reportPath := fmt.Sprintf("./reports/%s.md", sanitizePathForFilesystem(tf.File))
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", statusIcon, filename, durationStr, reportPath))
-		}
-	}
-}
+// Legacy generateLegacyReport removed
 
 // generateGroupReportSection generates a hierarchical report section for a group
 func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGroup, indent int) {
@@ -829,118 +543,9 @@ func getTestFileStatusText(status ipc.TestStatus) string {
 	}
 }
 
-// Removed legacy updateTestRunReport - now handled by group manager
-// Legacy function removed
-func (m *Manager) updateTestRunReport_REMOVED() {
-	m.state.UpdatedAt = time.Now()
-	report := m.generateMarkdownReport()
+// Legacy updateTestRunReport removed
 
-	reportPath := filepath.Join(m.runDir, "test-run.md")
-	if err := os.WriteFile(reportPath, []byte(report), 0644); err != nil {
-		m.logger.Error("Failed to write test-run.md: %v", err)
-	}
-}
-
-// Removed legacy generateIndividualFileReport - now using group-based reporting
-// Legacy function removed
-func (m *Manager) generateIndividualFileReport_REMOVED(tf ipc.TestFile) string {
-	var sb strings.Builder
-
-	// Extract filename from full path for title
-	filename := filepath.Base(tf.File)
-
-	// YAML frontmatter
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("test_file: %s\n", tf.File))
-	sb.WriteString(fmt.Sprintf("created: %s\n", tf.Created.UTC().Format("2006-01-02T15:04:05.000Z")))
-	sb.WriteString(fmt.Sprintf("updated: %s\n", tf.Updated.UTC().Format("2006-01-02T15:04:05.000Z")))
-
-	// Map internal status to spec status
-	var statusText string
-	switch tf.Status {
-	case ipc.TestStatusPending:
-		statusText = "PENDING"
-	case ipc.TestStatusRunning:
-		statusText = "RUNNING"
-	case ipc.TestStatusPass, ipc.TestStatusFail, ipc.TestStatusSkip:
-		statusText = "COMPLETED"
-	default:
-		if tf.ExecutionError != "" {
-			statusText = "ERRORED"
-		} else {
-			statusText = "COMPLETED"
-		}
-	}
-	sb.WriteString(fmt.Sprintf("status: %s\n", statusText))
-	sb.WriteString("---\n\n")
-
-	// Title
-	sb.WriteString(fmt.Sprintf("# Test results for `%s`\n\n", filename))
-
-	// Test case results section
-	if len(tf.TestCases) > 0 {
-		sb.WriteString("## Test case results\n\n")
-		currentSuite := ""
-		for _, tc := range tf.TestCases {
-			// Group by suite if present
-			if tc.Suite != "" && tc.Suite != currentSuite {
-				if currentSuite != "" {
-					sb.WriteString("\n")
-				}
-				currentSuite = tc.Suite
-			}
-
-			// Test case line as a list item
-			icon := getTestCaseIcon(tc.Status)
-			sb.WriteString(fmt.Sprintf("- %s %s", icon, tc.Name))
-
-			// Always show duration, even if 0ms
-			// Round to nearest millisecond for display
-			if tc.Duration >= 0 {
-				roundedDuration := math.Round(tc.Duration)
-				sb.WriteString(fmt.Sprintf(" (%.0fms)", roundedDuration))
-			}
-			sb.WriteString("\n")
-
-			// Test failure error (not execution error)
-			if tc.Error != "" && tc.Status == ipc.TestStatusFail {
-				sb.WriteString("```\n")
-				sb.WriteString(tc.Error)
-				sb.WriteString("\n```\n")
-			}
-		}
-	}
-
-	// Add spacing after test results before next section
-	if len(tf.TestCases) > 0 {
-		sb.WriteString("\n")
-	}
-
-	// Execution error section (only if execution error occurred)
-	if tf.ExecutionError != "" {
-		sb.WriteString("## Error\n\n")
-		sb.WriteString(tf.ExecutionError)
-		sb.WriteString("\n\n")
-	}
-
-	// stdout/stderr section (only if content exists)
-	stdoutContent := strings.Join(m.stdoutBuffers[tf.File], "")
-	stderrContent := strings.Join(m.stderrBuffers[tf.File], "")
-
-	if stdoutContent != "" || stderrContent != "" {
-		sb.WriteString("## stdout/stderr\n\n")
-		sb.WriteString("```\n")
-		if stdoutContent != "" {
-			sb.WriteString(stdoutContent)
-		}
-		if stderrContent != "" {
-			sb.WriteString(stderrContent)
-		}
-		sb.WriteString("\n```\n\n")
-	}
-
-	return sb.String()
-}
+// Legacy generateIndividualFileReport removed
 
 // writeIndividualFileReport writes the structured report for a single test file
 func (m *Manager) writeIndividualFileReport(filePath string) error {
@@ -1064,12 +669,7 @@ func getTestCaseIcon(status ipc.TestStatus) string {
 	}
 }
 
-// Removed legacy updateIndividualFileReport - now using group-based reporting
-// Legacy function removed
-func (m *Manager) updateIndividualFileReport_REMOVED(filePath string) {
-	// Find the test file in state
-	// Legacy file report update removed - handled by group manager
-}
+// Legacy updateIndividualFileReport removed
 
 // GetRootGroups returns root groups from the group manager for console display
 func (m *Manager) GetRootGroups() []*TestGroup {
