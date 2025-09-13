@@ -682,9 +682,9 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	}
 	content += "\n"
 
-	// Test case results section
-	content += "## Test case results\n\n"
+	// Test case results section - only show if there are test cases
 	if len(group.TestCases) > 0 {
+		content += "## Test case results\n\n"
 		for _, tc := range group.TestCases {
 			icon := "✓"
 			if tc.Status == TestStatusFail {
@@ -709,10 +709,8 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 				content += "\n```\n"
 			}
 		}
-	} else {
-		content += "_No direct test cases at this level_\n"
+		content += "\n"
 	}
-	content += "\n"
 	
 	// Subgroups
 	if len(group.Subgroups) > 0 {

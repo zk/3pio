@@ -613,9 +613,6 @@ updated: 2025-02-15T12:31:11.000Z
 - Subgroups failed: 2
 - Subgroups skipped 1
 
-## Test case results
-
-_No direct test cases at this level_
 
 ## Subgroups
 
