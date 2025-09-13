@@ -581,13 +581,14 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	// Use the ParentNames field which already contains the hierarchy
 	parentPath := group.ParentNames
 
-	// Header - use full hierarchical name for non-root groups
-	if len(parentPath) > 0 {
-		fullPath := strings.Join(append(parentPath, group.Name), " > ")
-		content += fmt.Sprintf("# Results for `%s`\n\n", fullPath)
-	} else {
+	// Header - use different formats based on group type
+	if len(parentPath) == 0 {
 		// Root group (file)
 		content += fmt.Sprintf("# Test results for `%s`\n\n", group.Name)
+	} else {
+		// All non-root groups show full hierarchical path
+		fullPath := strings.Join(append(parentPath, group.Name), " > ")
+		content += fmt.Sprintf("# Results for `%s`\n\n", fullPath)
 	}
 
 	// Metadata (YAML frontmatter)
@@ -603,10 +604,16 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 
 	content += fmt.Sprintf("status: %s\n", group.Status)
 
-	// Format duration in seconds with decimal places
+	// Format duration - use milliseconds for leaf nodes, seconds for larger groups
 	if group.Duration > 0 {
-		seconds := group.Duration.Seconds()
-		content += fmt.Sprintf("duration: %.2fs\n", seconds)
+		if len(group.Subgroups) == 0 && len(group.TestCases) <= 10 {
+			// Leaf node with few tests - use milliseconds
+			content += fmt.Sprintf("duration: %dms\n", group.Duration.Milliseconds())
+		} else {
+			// Larger group - use seconds
+			seconds := group.Duration.Seconds()
+			content += fmt.Sprintf("duration: %.2fs\n", seconds)
+		}
 	}
 
 	content += fmt.Sprintf("created: %s\n", group.Created.Format(time.RFC3339))
@@ -616,7 +623,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	// Summary section - show both direct tests and subgroup counts
 	content += "## Summary\n\n"
 
-	// Direct test statistics
+	// Direct test statistics - use exact format from migration plan
 	if group.Stats.TotalTests > 0 {
 		content += fmt.Sprintf("- Total tests: %d\n", group.Stats.TotalTests)
 		content += fmt.Sprintf("- Tests passed: %d\n", group.Stats.PassedTests)

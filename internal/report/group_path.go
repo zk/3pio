@@ -47,32 +47,35 @@ func SanitizeGroupName(name string) string {
 	if name == "" {
 		return "_empty_"
 	}
-	
-	// Step 1: Replace path separators with underscores
+
+	// Step 1: Convert to lowercase (as per migration plan)
+	name = strings.ToLower(name)
+
+	// Step 2: Replace path separators with underscores
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
-	
-	// Step 2: Replace invalid filesystem characters
+
+	// Step 3: Replace invalid filesystem characters
 	name = invalidCharsPattern.ReplaceAllString(name, "_")
-	
-	// Step 3: Collapse multiple spaces/underscores to single underscore
+
+	// Step 4: Collapse multiple spaces/underscores to single underscore
 	name = multiSpacePattern.ReplaceAllString(name, "_")
 	
-	// Step 4: Remove leading/trailing dots and spaces
+	// Step 5: Remove leading/trailing dots and spaces
 	name = trimPattern.ReplaceAllString(name, "")
-	
-	// Step 5: Handle Windows reserved names
+
+	// Step 6: Handle Windows reserved names
 	upperName := strings.ToUpper(name)
 	if windowsReservedNames[upperName] {
 		name = "_" + name + "_"
 	}
-	
-	// Step 6: Ensure name is not empty after sanitization
+
+	// Step 7: Ensure name is not empty after sanitization
 	if name == "" {
 		name = "_empty_"
 	}
-	
-	// Step 7: Truncate if too long
+
+	// Step 8: Truncate if too long
 	if len(name) > MaxComponentLength {
 		// Keep first 90 chars and add hash suffix
 		hash := sha256.Sum256([]byte(name))
