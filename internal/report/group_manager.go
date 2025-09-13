@@ -581,17 +581,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	// Use the ParentNames field which already contains the hierarchy
 	parentPath := group.ParentNames
 
-	// Header - use different formats based on group type
-	if len(parentPath) == 0 {
-		// Root group (file)
-		content += fmt.Sprintf("# Test results for `%s`\n\n", group.Name)
-	} else {
-		// All non-root groups show full hierarchical path
-		fullPath := strings.Join(append(parentPath, group.Name), " > ")
-		content += fmt.Sprintf("# Results for `%s`\n\n", fullPath)
-	}
-
-	// Metadata (YAML frontmatter)
+	// Metadata (YAML frontmatter) - MUST come first
 	content += "---\n"
 	content += fmt.Sprintf("group_name: %s\n", group.Name)
 
@@ -613,6 +603,16 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	content += fmt.Sprintf("created: %s\n", group.Created.Format(time.RFC3339))
 	content += fmt.Sprintf("updated: %s\n", group.Updated.Format(time.RFC3339))
 	content += "---\n\n"
+
+	// Header - use different formats based on group type
+	if len(parentPath) == 0 {
+		// Root group (file)
+		content += fmt.Sprintf("# Test results for `%s`\n\n", group.Name)
+	} else {
+		// All non-root groups show full hierarchical path
+		fullPath := strings.Join(append(parentPath, group.Name), " > ")
+		content += fmt.Sprintf("# Results for `%s`\n\n", fullPath)
+	}
 	
 	// Summary section - show direct tests OR subgroups, not both aggregated counts
 	content += "## Summary\n\n"
