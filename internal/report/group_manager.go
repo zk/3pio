@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,26 +40,57 @@ func NewGroupManager(runDir string, ipcPath string, logger *logger.FileLogger) *
 	}
 }
 
+// makeRelativePath converts an absolute path to a relative path if it's a file path
+func (gm *GroupManager) makeRelativePath(name string) string {
+	// Only convert if it looks like an absolute file path
+	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") {
+		// Not a path, return as-is (e.g., test names, suite names)
+		return name
+	}
+
+	// Try to make relative to current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		if relPath, err := filepath.Rel(cwd, name); err == nil {
+			// Ensure relative paths start with ./
+			if !strings.HasPrefix(relPath, ".") && !strings.HasPrefix(relPath, "/") {
+				relPath = "./" + relPath
+			}
+			return relPath
+		}
+	}
+
+	// If we can't make it relative, return as-is
+	return name
+}
+
 // ProcessGroupDiscovered handles a group discovery event
 func (gm *GroupManager) ProcessGroupDiscovered(event ipc.GroupDiscoveredEvent) error {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
 	payload := event.Payload
-	groupID := GenerateGroupID(payload.GroupName, payload.ParentNames)
-	
+
+	// Convert absolute paths to relative paths for file groups
+	groupName := gm.makeRelativePath(payload.GroupName)
+	parentNames := make([]string, len(payload.ParentNames))
+	for i, name := range payload.ParentNames {
+		parentNames[i] = gm.makeRelativePath(name)
+	}
+
+	groupID := GenerateGroupID(groupName, parentNames)
+
 	// Check if group already exists
 	if _, exists := gm.groups[groupID]; exists {
 		// Group already discovered, this is idempotent
 		return nil
 	}
-	
+
 	// Create the new group
 	group := &TestGroup{
 		ID:          groupID,
-		Name:        payload.GroupName,
-		ParentNames: payload.ParentNames,
-		Depth:       len(payload.ParentNames),
+		Name:        groupName,
+		ParentNames: parentNames,
+		Depth:       len(parentNames),
 		Status:      TestStatusPending,
 		Created:     time.Now(),
 		Updated:     time.Now(),
@@ -90,7 +122,15 @@ func (gm *GroupManager) ProcessGroupStart(event ipc.GroupStartEvent) error {
 	defer gm.mu.Unlock()
 
 	payload := event.Payload
-	groupID := GenerateGroupID(payload.GroupName, payload.ParentNames)
+
+	// Convert absolute paths to relative paths
+	groupName := gm.makeRelativePath(payload.GroupName)
+	parentNames := make([]string, len(payload.ParentNames))
+	for i, name := range payload.ParentNames {
+		parentNames[i] = gm.makeRelativePath(name)
+	}
+
+	groupID := GenerateGroupID(groupName, parentNames)
 	
 	group, exists := gm.groups[groupID]
 	if !exists {
@@ -99,8 +139,8 @@ func (gm *GroupManager) ProcessGroupStart(event ipc.GroupStartEvent) error {
 		err := gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 			EventType: string(ipc.EventTypeGroupDiscovered),
 			Payload: ipc.GroupDiscoveredPayload{
-				GroupName:   payload.GroupName,
-				ParentNames: payload.ParentNames,
+				GroupName:   groupName,
+				ParentNames: parentNames,
 			},
 		})
 		gm.mu.Lock()
@@ -128,7 +168,15 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 	defer gm.mu.Unlock()
 
 	payload := event.Payload
-	groupID := GenerateGroupID(payload.GroupName, payload.ParentNames)
+
+	// Convert absolute paths to relative paths
+	groupName := gm.makeRelativePath(payload.GroupName)
+	parentNames := make([]string, len(payload.ParentNames))
+	for i, name := range payload.ParentNames {
+		parentNames[i] = gm.makeRelativePath(name)
+	}
+
+	groupID := GenerateGroupID(groupName, parentNames)
 	
 	group, exists := gm.groups[groupID]
 	if !exists {
@@ -186,19 +234,25 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	defer gm.mu.Unlock()
 
 	payload := event.Payload
-	
+
+	// Convert absolute paths to relative paths
+	parentNames := make([]string, len(payload.ParentNames))
+	for i, name := range payload.ParentNames {
+		parentNames[i] = gm.makeRelativePath(name)
+	}
+
 	// The test's parent is the full parent hierarchy
-	parentID := GenerateGroupIDFromPath(payload.ParentNames)
+	parentID := GenerateGroupIDFromPath(parentNames)
 	
 	// Find or create the parent group
 	var parentGroup *TestGroup
-	if len(payload.ParentNames) > 0 {
+	if len(parentNames) > 0 {
 		var exists bool
 		parentGroup, exists = gm.groups[parentID]
 		if !exists {
 			// Auto-discover parent group hierarchy
 			gm.mu.Unlock()
-			err := gm.ensureGroupHierarchy(payload.ParentNames)
+			err := gm.ensureGroupHierarchy(parentNames)
 			gm.mu.Lock()
 			if err != nil {
 				return err
@@ -213,7 +267,7 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	
 	// Create the test case
 	testCase := TestCase{
-		ID:        GenerateTestCaseID(payload.TestName, payload.ParentNames),
+		ID:        GenerateTestCaseID(payload.TestName, parentNames),
 		GroupID:   parentID,
 		Name:      payload.TestName,
 		StartTime: time.Now(),
@@ -522,38 +576,88 @@ func (gm *GroupManager) generateGroupReport(group *TestGroup) error {
 
 // formatGroupReport formats a group's data as a markdown report
 func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
-	// This is a simplified version - the full implementation would match
-	// the existing report format from the current manager
 	var content string
-	
-	// Header
-	content += fmt.Sprintf("# Test Report: %s\n\n", group.Name)
-	
-	// Metadata
+
+	// Use the ParentNames field which already contains the hierarchy
+	parentPath := group.ParentNames
+
+	// Header - use full hierarchical name for non-root groups
+	if len(parentPath) > 0 {
+		fullPath := strings.Join(append(parentPath, group.Name), " > ")
+		content += fmt.Sprintf("# Results for `%s`\n\n", fullPath)
+	} else {
+		// Root group (file)
+		content += fmt.Sprintf("# Test results for `%s`\n\n", group.Name)
+	}
+
+	// Metadata (YAML frontmatter)
 	content += "---\n"
-	content += fmt.Sprintf("group: %s\n", group.Name)
-	content += fmt.Sprintf("path: %s\n", BuildHierarchicalPath(group))
+	content += fmt.Sprintf("group_name: %s\n", group.Name)
+
+	// Parent path as slash-separated list for frontmatter
+	if len(parentPath) > 0 {
+		content += fmt.Sprintf("parent_path: %s\n", strings.Join(parentPath, "/"))
+	} else {
+		content += "parent_path:\n"
+	}
+
 	content += fmt.Sprintf("status: %s\n", group.Status)
+
+	// Format duration in seconds with decimal places
+	if group.Duration > 0 {
+		seconds := group.Duration.Seconds()
+		content += fmt.Sprintf("duration: %.2fs\n", seconds)
+	}
+
 	content += fmt.Sprintf("created: %s\n", group.Created.Format(time.RFC3339))
 	content += fmt.Sprintf("updated: %s\n", group.Updated.Format(time.RFC3339))
-	if group.Duration > 0 {
-		content += fmt.Sprintf("duration: %s\n", group.Duration)
-	}
 	content += "---\n\n"
 	
-	// Statistics
+	// Summary section - show both direct tests and subgroup counts
+	content += "## Summary\n\n"
+
+	// Direct test statistics
 	if group.Stats.TotalTests > 0 {
-		content += "## Summary\n\n"
-		content += fmt.Sprintf("- Total Tests: %d\n", group.Stats.TotalTests)
-		content += fmt.Sprintf("- Passed: %d\n", group.Stats.PassedTests)
-		content += fmt.Sprintf("- Failed: %d\n", group.Stats.FailedTests)
-		content += fmt.Sprintf("- Skipped: %d\n", group.Stats.SkippedTests)
-		content += "\n"
+		content += fmt.Sprintf("- Total tests: %d\n", group.Stats.TotalTests)
+		content += fmt.Sprintf("- Tests passed: %d\n", group.Stats.PassedTests)
+		content += fmt.Sprintf("- Tests failed: %d\n", group.Stats.FailedTests)
+		if group.Stats.SkippedTests > 0 {
+			content += fmt.Sprintf("- Tests skipped: %d\n", group.Stats.SkippedTests)
+		}
 	}
-	
-	// Test Cases
+
+	// Subgroup statistics
+	if len(group.Subgroups) > 0 {
+		passedSubgroups := 0
+		failedSubgroups := 0
+		skippedSubgroups := 0
+		for _, sg := range group.Subgroups {
+			switch sg.Status {
+			case TestStatusPass:
+				passedSubgroups++
+			case TestStatusFail:
+				failedSubgroups++
+			case TestStatusSkip:
+				skippedSubgroups++
+			}
+		}
+
+		content += fmt.Sprintf("- Subgroups: %d\n", len(group.Subgroups))
+		if passedSubgroups > 0 {
+			content += fmt.Sprintf("- Subgroups passed: %d\n", passedSubgroups)
+		}
+		if failedSubgroups > 0 {
+			content += fmt.Sprintf("- Subgroups failed: %d\n", failedSubgroups)
+		}
+		if skippedSubgroups > 0 {
+			content += fmt.Sprintf("- Subgroups skipped: %d\n", skippedSubgroups)
+		}
+	}
+	content += "\n"
+
+	// Test case results section
+	content += "## Test case results\n\n"
 	if len(group.TestCases) > 0 {
-		content += "## Test Cases\n\n"
 		for _, tc := range group.TestCases {
 			icon := "✓"
 			if tc.Status == TestStatusFail {
@@ -561,62 +665,96 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 			} else if tc.Status == TestStatusSkip {
 				icon = "○"
 			}
-			
+
 			content += fmt.Sprintf("- %s %s", icon, tc.Name)
 			if tc.Duration > 0 {
 				content += fmt.Sprintf(" (%dms)", tc.Duration.Milliseconds())
 			}
 			content += "\n"
-			
-			if tc.Error != nil {
-				content += "  ```\n"
-				content += fmt.Sprintf("  %s\n", tc.Error.Message)
+
+			// Error details indented under the test
+			if tc.Error != nil && tc.Status == TestStatusFail {
+				content += "```\n"
+				content += tc.Error.Message
 				if tc.Error.Stack != "" {
-					content += fmt.Sprintf("  %s\n", tc.Error.Stack)
+					content += "\n" + tc.Error.Stack
 				}
-				content += "  ```\n"
+				content += "\n```\n"
 			}
 		}
-		content += "\n"
+	} else {
+		content += "_No direct test cases at this level_\n"
 	}
+	content += "\n"
 	
 	// Subgroups
 	if len(group.Subgroups) > 0 {
 		content += "## Subgroups\n\n"
+		content += "| Status | Name | Tests | Duration | Report |\n"
+		content += "|--------|------|-------|----------|--------|\n"
+
 		for _, subgroup := range group.Subgroups {
 			relPath := GetRelativeReportPath(subgroup, gm.runDir)
-			icon := "✓"
-			if subgroup.Status == TestStatusFail {
-				icon = "✕"
-			} else if subgroup.Status == TestStatusSkip {
-				icon = "○"
-			} else if subgroup.Status == TestStatusRunning {
-				icon = "⚡"
-			} else if subgroup.Status == TestStatusPending {
-				icon = "⏳"
-			}
-			
-			content += fmt.Sprintf("- %s [%s](%s)", icon, subgroup.Name, relPath)
+
+			// Status column
+			statusStr := string(subgroup.Status)
+
+			// Name column
+			nameStr := subgroup.Name
+
+			// Tests column - show breakdown of test results
+			var testsStr string
 			if subgroup.Stats.TotalTests > 0 {
-				content += fmt.Sprintf(" (%d tests)", subgroup.Stats.TotalTests)
+				parts := []string{}
+				if subgroup.Stats.PassedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", subgroup.Stats.PassedTests))
+				}
+				if subgroup.Stats.FailedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", subgroup.Stats.FailedTests))
+				}
+				if subgroup.Stats.SkippedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", subgroup.Stats.SkippedTests))
+				}
+				testsStr = strings.Join(parts, ", ")
+			} else {
+				testsStr = "0 tests"
 			}
-			content += "\n"
+
+			// Duration column
+			durationStr := "-"
+			if subgroup.Duration > 0 {
+				durationStr = fmt.Sprintf("%.1fs", subgroup.Duration.Seconds())
+			}
+
+			// Report link column
+			reportStr := fmt.Sprintf("./%s", relPath)
+
+			content += fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+				statusStr, nameStr, testsStr, durationStr, reportStr)
 		}
 		content += "\n"
 	}
-	
-	// Output
+
+	// stdout/stderr section
 	if group.Stdout != "" || group.Stderr != "" {
-		content += "## Output\n\n"
-		if group.Stdout != "" {
-			content += "### stdout\n```\n"
-			content += group.Stdout
-			content += "\n```\n\n"
-		}
-		if group.Stderr != "" {
-			content += "### stderr\n```\n"
-			content += group.Stderr
-			content += "\n```\n\n"
+		content += "## stdout/stderr\n"
+
+		// Combined output in single code block as per migration plan
+		if group.Stdout != "" || group.Stderr != "" {
+			content += "```\n"
+			if group.Stdout != "" {
+				content += group.Stdout
+				if !strings.HasSuffix(group.Stdout, "\n") {
+					content += "\n"
+				}
+			}
+			if group.Stderr != "" {
+				content += group.Stderr
+				if !strings.HasSuffix(group.Stderr, "\n") {
+					content += "\n"
+				}
+			}
+			content += "```\n"
 		}
 	}
 	
