@@ -614,21 +614,47 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	content += fmt.Sprintf("updated: %s\n", group.Updated.Format(time.RFC3339))
 	content += "---\n\n"
 	
-	// Summary section - show both direct tests and subgroup counts
+	// Summary section - show direct tests OR subgroups, not both aggregated counts
 	content += "## Summary\n\n"
 
-	// Direct test statistics - use exact format from migration plan
-	if group.Stats.TotalTests > 0 {
+	// Only show direct test statistics if there are direct test cases
+	if len(group.TestCases) > 0 {
 		content += fmt.Sprintf("- Total tests: %d\n", group.Stats.TotalTests)
 		content += fmt.Sprintf("- Tests passed: %d\n", group.Stats.PassedTests)
 		content += fmt.Sprintf("- Tests failed: %d\n", group.Stats.FailedTests)
 		if group.Stats.SkippedTests > 0 {
 			content += fmt.Sprintf("- Tests skipped: %d\n", group.Stats.SkippedTests)
 		}
-	}
 
-	// Subgroup statistics
-	if len(group.Subgroups) > 0 {
+		// Also show subgroup counts if we have both direct tests and subgroups
+		if len(group.Subgroups) > 0 {
+			passedSubgroups := 0
+			failedSubgroups := 0
+			skippedSubgroups := 0
+			for _, sg := range group.Subgroups {
+				switch sg.Status {
+				case TestStatusPass:
+					passedSubgroups++
+				case TestStatusFail:
+					failedSubgroups++
+				case TestStatusSkip:
+					skippedSubgroups++
+				}
+			}
+
+			content += fmt.Sprintf("- Subgroups: %d\n", len(group.Subgroups))
+			if passedSubgroups > 0 {
+				content += fmt.Sprintf("- Subgroups passed: %d\n", passedSubgroups)
+			}
+			if failedSubgroups > 0 {
+				content += fmt.Sprintf("- Subgroups failed: %d\n", failedSubgroups)
+			}
+			if skippedSubgroups > 0 {
+				content += fmt.Sprintf("- Subgroups skipped: %d\n", skippedSubgroups)
+			}
+		}
+	} else if len(group.Subgroups) > 0 {
+		// Only show subgroup statistics when there are no direct tests
 		passedSubgroups := 0
 		failedSubgroups := 0
 		skippedSubgroups := 0
