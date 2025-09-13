@@ -101,10 +101,32 @@ func GenerateGroupPath(group *TestGroup, runDir string) string {
 	// Sanitize each component
 	components := make([]string, 0, len(hierarchy)+2)
 	components = append(components, runDir, "reports")
-	
+
 	for _, part := range hierarchy {
-		sanitized := SanitizeGroupName(part)
-		components = append(components, sanitized)
+		// Check if this part is a file path (contains directory separators)
+		if strings.Contains(part, "/") || strings.Contains(part, "\\") {
+			// For file paths, preserve directory structure
+			// Clean up leading "./" if present
+			cleanPath := strings.TrimPrefix(part, "./")
+			cleanPath = strings.TrimPrefix(cleanPath, ".\\")
+
+			// Split into directory components and sanitize each separately
+			pathParts := strings.Split(cleanPath, "/")
+			if strings.Contains(cleanPath, "\\") {
+				pathParts = strings.Split(cleanPath, "\\")
+			}
+
+			for _, pathPart := range pathParts {
+				if pathPart != "" {
+					sanitized := SanitizeGroupName(pathPart)
+					components = append(components, sanitized)
+				}
+			}
+		} else {
+			// For non-path names, sanitize normally
+			sanitized := SanitizeGroupName(part)
+			components = append(components, sanitized)
+		}
 	}
 	
 	// Build the path
@@ -132,10 +154,32 @@ func GenerateGroupPathFromHierarchy(hierarchy []string, runDir string) string {
 	// Sanitize each component
 	components := make([]string, 0, len(hierarchy)+2)
 	components = append(components, runDir, "reports")
-	
+
 	for _, part := range hierarchy {
-		sanitized := SanitizeGroupName(part)
-		components = append(components, sanitized)
+		// Check if this part is a file path (contains directory separators)
+		if strings.Contains(part, "/") || strings.Contains(part, "\\") {
+			// For file paths, preserve directory structure
+			// Clean up leading "./" if present
+			cleanPath := strings.TrimPrefix(part, "./")
+			cleanPath = strings.TrimPrefix(cleanPath, ".\\")
+
+			// Split into directory components and sanitize each separately
+			pathParts := strings.Split(cleanPath, "/")
+			if strings.Contains(cleanPath, "\\") {
+				pathParts = strings.Split(cleanPath, "\\")
+			}
+
+			for _, pathPart := range pathParts {
+				if pathPart != "" {
+					sanitized := SanitizeGroupName(pathPart)
+					components = append(components, sanitized)
+				}
+			}
+		} else {
+			// For non-path names, sanitize normally
+			sanitized := SanitizeGroupName(part)
+			components = append(components, sanitized)
+		}
 	}
 	
 	// Build the path

@@ -514,8 +514,6 @@ func GenerateGroupPath(group *TestGroup) string {
 
 **Report Content Structure**:
 ```markdown
-# src_components_button_test_js/button_rendering/with_props.md
-
 ---
 group_name: with props
 parent_path: src_components_button_test_js/button_rendering
@@ -546,8 +544,6 @@ console.log: Click handler triggered
 
 **Example: Group with Both Direct Tests and Nested Subgroups**:
 ```markdown
-# src_components_button_test_js/button_rendering/index.md
-
 ---
 group_name: Button rendering
 parent_path: src_components_button_test_js
@@ -591,8 +587,6 @@ console.log: Testing button component
 
 **Example: Group with Only Subgroups (No Direct Tests)**:
 ```markdown
-# src_components_app_test_js/index.md
-
 ---
 group_name: src/components/App.test.js
 parent_path:
@@ -606,8 +600,10 @@ updated: 2025-02-15T12:31:11.000Z
 
 ## Summary
 
-- Subgroups: 3
-- Subgroups passed: 3
+- Subgroups: 5
+- Subgroups passed: 2
+- Subgroups failed: 2
+- Subgroups skipped 1
 
 ## Test case results
 
@@ -616,10 +612,12 @@ _No direct test cases at this level_
 ## Subgroups
 
 | Status | Name | Tests | Duration | Report |
-|--------|------|-------|----------|--------|
-| PASS | App Component | 8 passed | 2.1s | ./app_component.md |
-| PASS | Navigation | 4 passed | 1.8s | ./navigation.md |
-| PASS | State Management | 3 passed | 1.3s | ./state_management.md |
+| ------ | ---- | ------ | ------ | ------- |
+| PASS | Database Integration | 5 passed | 2.3s | ./database_integration.md |
+| FAIL | API Integration | 3 passed, 2 failed | 3.1s | ./api_integration.md |
+| PASS | Cache Integration | 4 passed | 1.8s | ./cache_integration.md |
+| FAIL | Queue Integration | 1 passed, 1 failed, 1 skipped | 1.5s | ./queue_integration.md |
+| SKIP | State Management | 4 skipped | 1.3s | ./state_management.md |
 
 ## stdout/stderr
 ```
@@ -630,8 +628,6 @@ All tests completed successfully
 
 **Example: Group with Failed Subgroups**:
 ```markdown
-# src_integration_test_js/index.md
-
 ---
 group_name: src/integration.test.js
 status: FAIL
@@ -666,12 +662,11 @@ updated: 2025-02-15T12:31:11.000Z
 | FAIL | API Integration | 3 passed, 2 failed | 3.1s | ./api_integration.md |
 | PASS | Cache Integration | 4 passed | 1.8s | ./cache_integration.md |
 | FAIL | Queue Integration | 1 passed, 1 failed, 1 skipped | 1.5s | ./queue_integration.md |
+| SKIP | State Management | 4 skipped | 1.3s | ./state_management.md |
 ```
 
 **Leaf Node Report Example (Class with Multiple Tests)**:
 ```markdown
-# test_math_py/testmathoperations.md
-
 ---
 group_name: TestMathOperations
 parent_path: test_math_py

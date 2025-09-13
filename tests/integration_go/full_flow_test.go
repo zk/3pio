@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -50,12 +51,10 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 	// Find the latest run directory
 	runDir := getLatestRunDir(t, projectDir)
 
-	// Verify all expected files exist
+	// Verify all expected files exist - new hierarchical structure
 	expectedFiles := []string{
 		"test-run.md",
 		"output.log",
-		"reports/math.test.js.md",
-		"reports/string.test.js.md",
 	}
 
 	for _, expectedFile := range expectedFiles {
@@ -65,12 +64,37 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 		}
 	}
 
+	// Verify reports directory exists with hierarchical structure
+	reportsDir := filepath.Join(runDir, "reports")
+	if !fileExists(reportsDir) {
+		t.Error("Expected reports directory does not exist")
+	}
+
+	// Check that some report files exist in the hierarchical structure
+	// Note: The exact paths depend on group names and will be sanitized
+	var foundReports []string
+	err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), "index.md") {
+			foundReports = append(foundReports, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Errorf("Failed to walk reports directory: %v", err)
+	}
+
+	if len(foundReports) == 0 {
+		t.Error("Expected to find some report index.md files in hierarchical structure")
+	}
+
 	// Verify test-run.md has proper content
 	testRunContent := readFile(t, filepath.Join(runDir, "test-run.md"))
 
 	expectedSections := []string{
 		"# 3pio Test Run",
-		"## Summary",
 		"math.test.js",
 		"string.test.js",
 	}

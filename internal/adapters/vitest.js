@@ -244,6 +244,8 @@ var ThreePioVitestReporter = class {
   discoveredGroups = /* @__PURE__ */ new Map();
   groupStarts = /* @__PURE__ */ new Map();
   fileGroups = /* @__PURE__ */ new Map();
+  // Track test results for accurate suite totals
+  suiteTestResults = /* @__PURE__ */ new Map(); // Map<suiteName, {passed: number, failed: number, skipped: number}>
   constructor() {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
@@ -473,6 +475,21 @@ var ThreePioVitestReporter = class {
 
       // Send test case event with group hierarchy
       this.logger.ipc("send", "testCase", { testName: testCase.name, parentNames, status });
+
+      // Build error object if test failed
+      let errorObj = null;
+      if (result.errors && result.errors.length > 0) {
+        const firstError = result.errors[0];
+        errorObj = {
+          message: firstError.message || String(firstError),
+          stack: firstError.stack || '',
+          expected: firstError.expected || '',
+          actual: firstError.actual || '',
+          location: '', // Could extract from stack trace if needed
+          errorType: firstError.name || 'Error'
+        };
+      }
+
       IPCSender.sendEvent({
         eventType: "testCase",
         payload: {
@@ -480,7 +497,7 @@ var ThreePioVitestReporter = class {
           parentNames: parentNames,
           status: status,
           duration: diagnostic?.duration,
-          error: result.errors?.map(e => e.message || String(e)).join('\n')
+          error: errorObj
         }
       }).catch((error) => {
         this.logger.error("Failed to send testCase event", error);
@@ -586,6 +603,20 @@ var ThreePioVitestReporter = class {
         // Send test case event
         const testStatus = child.result?.state === 'failed' ? 'FAIL' : 
                           child.result?.state === 'skipped' ? 'SKIP' : 'PASS';
+        // Build error object if test failed
+        let errorObj = null;
+        if (child.result?.errors && child.result.errors.length > 0) {
+          const firstError = child.result.errors[0];
+          errorObj = {
+            message: firstError.message || String(firstError),
+            stack: firstError.stack || '',
+            expected: firstError.expected || '',
+            actual: firstError.actual || '',
+            location: '',
+            errorType: firstError.name || 'Error'
+          };
+        }
+
         const testCase = {
           eventType: "testCase",
           payload: {
@@ -594,7 +625,7 @@ var ThreePioVitestReporter = class {
             suiteName: suiteName,
             status: testStatus,
             duration: child.result?.duration,
-            error: child.result?.errors?.[0]?.message || null
+            error: errorObj
           }
         };
         
@@ -734,6 +765,11 @@ var ThreePioVitestReporter = class {
     this.currentTestFile = null;
   }
   sendTestCaseEvents(filePath, tasks) {
+    this.logger.debug("sendTestCaseEvents called", {
+      filePath,
+      taskCount: tasks.length,
+      taskTypes: tasks.map(t => t.type)
+    });
     for (const task of tasks) {
       if (task.type === "test") {
         const test = task;
@@ -744,9 +780,19 @@ var ThreePioVitestReporter = class {
         } else if (test.result?.state === "skip" || test.mode === "skip") {
           status = "SKIP";
         }
-        const error = test.result?.errors?.map(
-          (e) => typeof e === "string" ? e : e.message || String(e)
-        ).join("\n\n");
+        // Build error object if test failed
+        let error = null;
+        if (test.result?.errors && test.result.errors.length > 0) {
+          const firstError = test.result.errors[0];
+          error = {
+            message: typeof firstError === "string" ? firstError : (firstError.message || String(firstError)),
+            stack: firstError.stack || '',
+            expected: firstError.expected || '',
+            actual: firstError.actual || '',
+            location: '',
+            errorType: firstError.name || 'Error'
+          };
+        }
         
         // Debug: Log the full test result object
         this.logger.debug("Test result details", {
@@ -762,8 +808,14 @@ var ThreePioVitestReporter = class {
         const suiteChain = this.extractHierarchyFromTask(test, filePath);
         const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
 
-        // Ensure groups are discovered
+        // Ensure groups are discovered and started
         this.ensureGroupsDiscovered(filePath, suiteChain);
+
+        // Start all parent groups
+        for (let i = 0; i <= suiteChain.length; i++) {
+          const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+          this.ensureGroupStarted(hierarchy);
+        }
 
         this.logger.testFlow("Sending test case event", test.name, {
           suite: suiteName,
@@ -771,6 +823,19 @@ var ThreePioVitestReporter = class {
           duration: test.result?.duration,
           parentNames: parentNames
         });
+        // Track test result for suite totals
+        if (parentNames.length > 1) {
+          const suiteName = parentNames[parentNames.length - 1];
+          if (!this.suiteTestResults.has(suiteName)) {
+            this.suiteTestResults.set(suiteName, { passed: 0, failed: 0, skipped: 0, total: 0 });
+          }
+          const results = this.suiteTestResults.get(suiteName);
+          results.total++;
+          if (status === 'PASS') results.passed++;
+          else if (status === 'FAIL') results.failed++;
+          else if (status === 'SKIP') results.skipped++;
+        }
+
         IPCSender.sendEvent({
           eventType: "testCase",
           payload: {
@@ -785,9 +850,67 @@ var ThreePioVitestReporter = class {
         });
       } else if (task.type === "suite") {
         const suite = task;
+
+        // Extract hierarchy for this suite
+        const suiteChain = this.extractHierarchyFromTask(suite, filePath);
+        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain.slice(0, -1)); // Remove the suite itself from parents
+
+        // Send group start event for the suite
+        this.ensureGroupsDiscovered(filePath, suiteChain);
+        this.ensureGroupStarted([filePath, ...suiteChain]);
+
         if (suite.tasks) {
           this.sendTestCaseEvents(filePath, suite.tasks);
         }
+
+        // Send group result event for the suite
+        // Calculate suite status based on test results
+        // The tasks have already been processed and sent, so their state might be removed
+        // Instead, count from what we know we sent
+        // For suites, we need to count based on the actual test results we already sent
+        // This is a limitation when processing in onFinished fallback mode
+        const failedCount = 0;  // Will be calculated from actual test results
+        const skippedCount = 0;
+        const passedCount = 0;
+        const totalCount = suite.tasks ? suite.tasks.length : 0;
+
+        // Debug counting
+        this.logger.debug("Suite task counting", {
+          suiteName: suite.name,
+          failedCount,
+          skippedCount,
+          passedCount,
+          totalCount,
+          hasTasks: !!suite.tasks,
+          tasksLength: suite.tasks?.length
+        });
+
+        let suiteStatus = 'PASS';
+        if (failedCount > 0) {
+          suiteStatus = 'FAIL';
+        } else if (skippedCount === totalCount && totalCount > 0) {
+          suiteStatus = 'SKIP';
+        }
+        const suiteDuration = suite.result?.duration || 0;
+        const suiteTotals = {
+          total: suite.tasks ? this.countTests(suite.tasks) : 0,
+          passed: suite.tasks ? this.countTestsByStatus(suite.tasks, 'passed') : 0,
+          failed: suite.tasks ? this.countTestsByStatus(suite.tasks, 'failed') : 0,
+          skipped: suite.tasks ? this.countTestsByStatus(suite.tasks, 'skipped') : 0
+        };
+
+        IPCSender.sendEvent({
+          eventType: "testGroupResult",
+          payload: {
+            groupName: suite.name,
+            parentNames: parentNames,
+            status: suiteStatus,
+            duration: suiteDuration,
+            totals: suiteTotals
+          }
+        }).catch((error) => {
+          this.logger.error("Failed to send testGroupResult for suite", error);
+        });
       }
     }
   }
@@ -805,7 +928,55 @@ var ThreePioVitestReporter = class {
           // testFileStart event removed - using group events instead
         }
         if (file.tasks) {
-          this.sendTestCaseEvents(file.filepath, file.tasks);
+          // In onFinished, file.tasks typically contains one suite representing the describe block
+          // Check if we have a single suite that contains all tests
+          if (file.tasks.length === 1 && file.tasks[0].type === 'suite') {
+            // Send suite-level group events
+            const suite = file.tasks[0];
+            const suiteHierarchy = [file.filepath, suite.name];
+
+            // Ensure suite is discovered and started
+            this.ensureGroupsDiscovered(file.filepath, [suite.name]);
+            this.ensureGroupStarted(suiteHierarchy);
+
+            // Process the tests in the suite
+            if (suite.tasks) {
+              this.sendTestCaseEvents(file.filepath, suite.tasks);
+            }
+
+            // Send suite result based on tracked test results
+            const trackedResults = this.suiteTestResults.get(suite.name) || { passed: 0, failed: 0, skipped: 0, total: 0 };
+            let suiteStatus = 'PASS';
+            if (trackedResults.failed > 0) {
+              suiteStatus = 'FAIL';
+            } else if (trackedResults.skipped === trackedResults.total && trackedResults.total > 0) {
+              suiteStatus = 'SKIP';
+            }
+            const suiteDuration = suite.result?.duration || 0;
+
+            const suiteTotals = {
+              total: trackedResults.total,
+              passed: trackedResults.passed,
+              failed: trackedResults.failed,
+              skipped: trackedResults.skipped
+            };
+
+            IPCSender.sendEvent({
+              eventType: "testGroupResult",
+              payload: {
+                groupName: suite.name,
+                parentNames: [file.filepath],
+                status: suiteStatus,
+                duration: suiteDuration,
+                totals: suiteTotals
+              }
+            }).catch((error) => {
+              this.logger.error("Failed to send testGroupResult for suite", error);
+            });
+          } else {
+            // Multiple suites or direct tests
+            this.sendTestCaseEvents(file.filepath, file.tasks);
+          }
         }
         let status = "PASS";
         if (file.result?.state === "fail") {
@@ -832,8 +1003,48 @@ var ThreePioVitestReporter = class {
           };
           collectFailedTests(file.tasks);
         }
-        
-        // testFileResult event removed - using group events instead
+
+        // Send group start event for the file
+        this.ensureGroupStarted([file.filepath]);
+
+        // Send group result event for the file
+        const fileDuration = file.result?.duration || 0;
+
+        // Calculate file totals from all tracked suite results
+        let fileTotals = { total: 0, passed: 0, failed: 0, skipped: 0 };
+
+        // If we have a single suite, use its totals
+        if (file.tasks && file.tasks.length === 1 && file.tasks[0].type === 'suite') {
+          const suite = file.tasks[0];
+          const trackedResults = this.suiteTestResults.get(suite.name);
+          if (trackedResults) {
+            fileTotals = trackedResults;
+          }
+        } else {
+          // Otherwise count all tests recursively
+          fileTotals = {
+            total: file.tasks ? this.countTests(file.tasks) : 0,
+            passed: file.tasks ? this.countTestsByStatus(file.tasks, 'passed') : 0,
+            failed: file.tasks ? this.countTestsByStatus(file.tasks, 'failed') : 0,
+            skipped: file.tasks ? this.countTestsByStatus(file.tasks, 'skipped') : 0
+          };
+        }
+
+        const totals = fileTotals;
+
+        this.logger.ipc("send", "testGroupResult", { groupName: file.filepath, status, totals });
+        IPCSender.sendEvent({
+          eventType: "testGroupResult",
+          payload: {
+            groupName: file.filepath,
+            parentNames: [],
+            status: status,
+            duration: fileDuration,
+            totals: totals
+          }
+        }).catch((error) => {
+          this.logger.error("Failed to send testGroupResult", error);
+        });
       }
     }
     this.logger.lifecycle("Vitest adapter shutdown complete");
@@ -859,6 +1070,44 @@ var ThreePioVitestReporter = class {
     this.logger.debug("Stopping stdout/stderr capture");
     process.stdout.write = this.originalStdoutWrite;
     process.stderr.write = this.originalStderrWrite;
+  }
+
+  // Helper method to count total tests in a task tree
+  countTests(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === "test") {
+        count++;
+      } else if (task.tasks) {
+        count += this.countTests(task.tasks);
+      }
+    }
+    return count;
+  }
+
+  // Helper method to count tests by status in a task tree
+  countTestsByStatus(tasks, status) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === "test") {
+        // Debug: Log what we're checking
+        if (task.name && task.name.includes("fail")) {
+          this.logger.debug("Checking test status", {
+            name: task.name,
+            hasResult: !!task.result,
+            state: task.result?.state,
+            lookingFor: status,
+            matches: task.result?.state === status
+          });
+        }
+        if (task.result?.state === status) {
+          count++;
+        }
+      } else if (task.tasks) {
+        count += this.countTestsByStatus(task.tasks, status);
+      }
+    }
+    return count;
   }
 };
 export {

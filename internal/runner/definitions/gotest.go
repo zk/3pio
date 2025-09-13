@@ -554,12 +554,34 @@ func (g *GoTestDefinition) getFilePathForTest(packageName, testName string) stri
 // getFilePathForPackage maps a package to its first test file
 func (g *GoTestDefinition) getFilePathForPackage(packageName string) string {
 	if pkg, ok := g.packageMap[packageName]; ok {
+		var absolutePath string
 		if len(pkg.TestGoFiles) > 0 {
-			return filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
+			absolutePath = filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
+		} else if len(pkg.XTestGoFiles) > 0 {
+			absolutePath = filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
+		} else {
+			return ""
 		}
-		if len(pkg.XTestGoFiles) > 0 {
-			return filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
+
+		// Convert to relative path
+		cwd, err := os.Getwd()
+		if err != nil {
+			// If we can't get cwd, return the absolute path
+			return absolutePath
 		}
+
+		relPath, err := filepath.Rel(cwd, absolutePath)
+		if err != nil {
+			// If we can't get relative path, return the absolute path
+			return absolutePath
+		}
+
+		// Always use "./" prefix for consistency
+		if !strings.HasPrefix(relPath, ".") && !strings.HasPrefix(relPath, "/") {
+			relPath = "./" + relPath
+		}
+
+		return relPath
 	}
 	return ""
 }
@@ -574,22 +596,35 @@ func (g *GoTestDefinition) buildTestToFileMap() error {
 	
 	for pkgName, pkg := range g.packageMap {
 		// Determine the representative file for this package
-		var representativeFile string
+		var absolutePath string
 		if len(pkg.TestGoFiles) > 0 {
-			representativeFile = filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
+			absolutePath = filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
 		} else if len(pkg.XTestGoFiles) > 0 {
-			representativeFile = filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
+			absolutePath = filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
 		} else {
 			continue
 		}
-		
+
+		// Convert to relative path
+		representativeFile := absolutePath
+		cwd, err := os.Getwd()
+		if err == nil {
+			if relPath, err := filepath.Rel(cwd, absolutePath); err == nil {
+				// Always use "./" prefix for consistency
+				if !strings.HasPrefix(relPath, ".") && !strings.HasPrefix(relPath, "/") {
+					relPath = "./" + relPath
+				}
+				representativeFile = relPath
+			}
+		}
+
 		// Get all tests in the package
 		tests, err := g.listTestsInPackage(pkg.Dir)
 		if err != nil {
 			g.logger.Debug("Failed to list tests in package %s: %v", pkgName, err)
 			continue
 		}
-		
+
 		// Map all tests to the representative file
 		// This is a limitation of Go's test runner - we can't determine file-level granularity
 		for _, test := range tests {

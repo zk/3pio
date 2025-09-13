@@ -43,6 +43,7 @@ type Orchestrator struct {
 	lastCollected  int             // Track last collection count to avoid duplicates
 	fileStartTimes map[string]time.Time // Track start time for each file
 	fileFailedTests map[string][]string // Track failed test names by file
+	completedFiles map[string]bool // Track which files have shown their final PASS/FAIL status
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -74,6 +75,7 @@ func New(config Config) (*Orchestrator, error) {
 		displayedFiles: make(map[string]bool),
 		fileStartTimes: make(map[string]time.Time),
 		fileFailedTests: make(map[string][]string),
+		completedFiles: make(map[string]bool),
 	}, nil
 }
 
@@ -349,6 +351,12 @@ func (o *Orchestrator) Run() error {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
 
+	// If we didn't get GroupResult events, compute stats and display results from the report manager
+	if o.totalFiles == 0 {
+		o.computeStatsFromReportManager()
+		o.displayFinalResults()
+	}
+
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
 
@@ -477,6 +485,16 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		status := convertStringToTestStatus(e.Payload.Status)
 		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status)
 
+		// Update file counters for top-level groups (files)
+		if len(e.Payload.ParentNames) == 0 {
+			o.totalFiles++
+			if e.Payload.Status == "PASS" {
+				o.passedFiles++
+			} else if e.Payload.Status == "FAIL" {
+				o.failedFiles++
+			}
+		}
+
 	// Legacy file-based events removed - only group events are supported
 
 	case ipc.GroupTestCaseEvent:
@@ -534,26 +552,15 @@ func (o *Orchestrator) GetExitCode() int {
 
 // displayGroupRunning displays RUNNING status for a group that just started
 func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []string) {
-	// Build hierarchical path
-	var parts []string
-	if len(parentNames) == 0 {
-		// Root group (file)
-		parts = append(parts, o.getRelativePath(groupName))
-	} else {
-		// Add parent names first
-		for i, parentName := range parentNames {
-			if i == 0 {
-				parts = append(parts, o.getRelativePath(parentName))
-			} else {
-				parts = append(parts, parentName)
-			}
-		}
-		// Add this group's name
-		parts = append(parts, groupName)
+	// Only display RUNNING status for top-level groups (files)
+	// Subgroups will only be shown if they have failures
+	if len(parentNames) > 0 {
+		return
 	}
 
-	hierarchicalPath := strings.Join(parts, " > ")
-	fmt.Printf("%-8s %s\n", "RUNNING", hierarchicalPath)
+	// Build path for top-level group
+	relativePath := o.getRelativePath(groupName)
+	fmt.Printf("%-8s %s\n", "RUNNING", relativePath)
 }
 
 // displayGroupResult displays the result of a completed group
@@ -566,18 +573,34 @@ func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string
 		return
 	}
 
-	// Only display top-level groups (files) to avoid duplicates
+	// Only display top-level groups (files) once
 	if len(parentNames) == 0 {
+		// Check if we've already displayed the final result for this file
+		if o.completedFiles[groupName] {
+			return
+		}
+		o.completedFiles[groupName] = true
 		o.displayGroupHierarchy(group, 0)
 	}
 }
 
 // displayGroupHierarchy displays a group and its children with hierarchical indentation
 func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int) {
-	// Build the hierarchical path for display
-	hierarchicalPath := o.buildHierarchicalPath(group)
+	// Skip groups without test cases
+	if !group.HasTestCases() {
+		return
+	}
 
-	// Display group status with hierarchical path
+	// Only display top-level groups (files) in main output
+	// Subgroups will only be shown if they have failures
+	if len(group.ParentNames) > 0 {
+		return // Don't display subgroups at this level
+	}
+
+	// Build simple path for file
+	filePath := o.getRelativePath(group.Name)
+
+	// Display group status
 	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
 
 	// Get duration for this group
@@ -591,18 +614,61 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		delete(o.fileStartTimes, groupID) // Clean up
 	}
 
-	// Display the group result line
-	fmt.Printf("%-8s %s%s\n", statusStr, hierarchicalPath, durationStr)
+	// Display the file result
+	fmt.Printf("%-8s %s%s\n", statusStr, filePath, durationStr)
 
-	// Show report path for failed groups
+	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
-		relativePath := o.getRelativePath(group.Name)
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(relativePath))
+		// Show report path
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(filePath))
 		fmt.Printf("  See %s\n", reportPath)
+
+		// Display failed subgroups and tests
+		o.displayFailedSubgroups(group, "")
+	}
+}
+
+// displayFailedSubgroups recursively displays subgroups that contain failures
+func (o *Orchestrator) displayFailedSubgroups(group *report.TestGroup, parentPath string) {
+	// Build current path
+	var currentPath string
+	if parentPath == "" {
+		// For the root, use the relative file path
+		currentPath = o.getRelativePath(group.Name)
+	} else {
+		// For subgroups, append to parent path
+		currentPath = parentPath + " > " + group.Name
 	}
 
-	// Display child test failures inline (matching the plan's format)
-	if group.Status == report.TestStatusFail {
+	// Check direct test failures in this group
+	hasDirectFailures := false
+	for _, testCase := range group.TestCases {
+		if testCase.Status == report.TestStatusFail {
+			hasDirectFailures = true
+			break
+		}
+	}
+
+	// If this subgroup has direct test failures, show it
+	if hasDirectFailures && parentPath != "" {
+		// Show the subgroup path for non-root groups
+		fmt.Printf("  FAIL   %s\n", currentPath)
+
+		// Show the failed tests
+		for _, testCase := range group.TestCases {
+			if testCase.Status == report.TestStatusFail {
+				fmt.Printf("    x %s\n", testCase.Name)
+				if testCase.Error != nil && testCase.Error.Message != "" {
+					// Show first line of error
+					lines := strings.Split(strings.TrimSpace(testCase.Error.Message), "\n")
+					if len(lines) > 0 {
+						fmt.Printf("      %s\n", lines[0])
+					}
+				}
+			}
+		}
+	} else if hasDirectFailures && parentPath == "" {
+		// For root groups, just show the failed tests without the group header
 		for _, testCase := range group.TestCases {
 			if testCase.Status == report.TestStatusFail {
 				fmt.Printf("  x %s\n", testCase.Name)
@@ -614,6 +680,13 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 					}
 				}
 			}
+		}
+	}
+
+	// Recursively check subgroups
+	for _, subgroup := range group.Subgroups {
+		if subgroup.HasFailures() {
+			o.displayFailedSubgroups(subgroup, currentPath)
 		}
 	}
 }
@@ -725,6 +798,36 @@ func convertReportStatusToIPC(status report.TestStatus) ipc.TestStatus {
 		return ipc.TestStatusRunning
 	default:
 		return ipc.TestStatusPending
+	}
+}
+
+// computeStatsFromReportManager computes test statistics from the report manager
+// This is a fallback when GroupResult events are not sent
+func (o *Orchestrator) computeStatsFromReportManager() {
+	// Get all root groups (files) from the report manager
+	rootGroups := o.reportManager.GetRootGroups()
+	for _, group := range rootGroups {
+		// Only count groups that have test cases
+		if group.HasTestCases() {
+			o.totalFiles++
+			if group.Status == report.TestStatusPass {
+				o.passedFiles++
+			} else if group.Status == report.TestStatusFail {
+				o.failedFiles++
+			}
+		}
+	}
+}
+
+// displayFinalResults displays the final test results when GroupResult events are not sent
+func (o *Orchestrator) displayFinalResults() {
+	// Get all root groups (files) from the report manager
+	rootGroups := o.reportManager.GetRootGroups()
+	for _, group := range rootGroups {
+		// Only display groups that have test cases
+		if group.HasTestCases() {
+			o.displayGroupHierarchy(group, 0)
+		}
 	}
 }
 

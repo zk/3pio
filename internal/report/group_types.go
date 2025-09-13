@@ -234,6 +234,21 @@ func (g *TestGroup) GetFullPath() []string {
 	return append(g.ParentNames, g.Name)
 }
 
+// HasTestCases returns true if the group or any of its subgroups have test cases
+func (g *TestGroup) HasTestCases() bool {
+	if len(g.TestCases) > 0 {
+		return true
+	}
+
+	for _, sg := range g.Subgroups {
+		if sg.HasTestCases() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // FindSubgroup finds a subgroup by name (direct children only)
 func (g *TestGroup) FindSubgroup(name string) *TestGroup {
 	for _, sg := range g.Subgroups {

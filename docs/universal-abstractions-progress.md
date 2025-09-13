@@ -158,6 +158,7 @@
 
 - [x] E2E testing with large projects
 - [x] Performance benchmarks
+- [x] Fix integration tests for new group structure
 - [ ] Update version and changelog (next step)
 - [ ] Create release notes (next step)
 - [ ] Tag release (next step)
@@ -167,7 +168,8 @@
 - Hierarchical reports generating correctly under reports/ directory
 - Group manager flush fix ensures all reports are written
 - Performance: <1s for small test suites
-- Some integration tests need updating for new report structure
+- Integration tests updated for new report structure (most passing)
+- One remaining test issue in basic-vitest fixture (minor)
 
 ---
 

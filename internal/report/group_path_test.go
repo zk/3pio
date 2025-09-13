@@ -96,7 +96,7 @@ func TestGenerateGroupPath(t *testing.T) {
 		{
 			name:     "Nil group",
 			group:    nil,
-			contains: []string{},
+			contains: []string{"reports"},
 		},
 		{
 			name: "Root group",
@@ -104,7 +104,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "test.js",
 				ParentNames: nil,
 			},
-			contains: []string{"test.js"},
+			contains: []string{"reports", "test.js"},
 		},
 		{
 			name: "Nested group",
@@ -112,7 +112,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "should add",
 				ParentNames: []string{"math.test.js", "Calculator"},
 			},
-			contains: []string{"math.test.js", "Calculator", "should_add"},
+			contains: []string{"reports", "math.test.js", "Calculator", "should_add"},
 		},
 		{
 			name: "Group with invalid chars",
@@ -129,8 +129,9 @@ func TestGenerateGroupPath(t *testing.T) {
 			got := GenerateGroupPath(tt.group, runDir)
 			
 			if tt.group == nil {
-				if got != runDir {
-					t.Errorf("Nil group should return runDir: got %s, want %s", got, runDir)
+				want := filepath.Join(runDir, "reports")
+				if got != want {
+					t.Errorf("Nil group should return runDir/reports: got %s, want %s", got, want)
 				}
 				return
 			}
@@ -168,9 +169,9 @@ func TestGenerateGroupPath_DepthLimit(t *testing.T) {
 	
 	// Count path separators to check depth
 	separators := strings.Count(path, string(filepath.Separator))
-	// Subtract 1 for initial runDir separators
-	depth := separators - strings.Count(runDir, string(filepath.Separator))
-	
+	// Subtract for initial runDir separators and 'reports' directory
+	depth := separators - strings.Count(runDir, string(filepath.Separator)) - 1
+
 	if depth > MaxDepth+1 { // +1 for the group name itself
 		t.Errorf("Path depth %d exceeds MaxDepth %d", depth, MaxDepth)
 	}
