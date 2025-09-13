@@ -492,20 +492,23 @@ func GenerateGroupPath(group *TestGroup) string {
 ├── test-run.md                         # Main report
 ├── output.log                          # Complete stdout/stderr
 └── reports/                            # Hierarchical test reports
-    ├── github_com_user_project/
-    │   └── math.md                     # Contains all tests in math package
+    ├── github_com_zk_3pio_cmd_3pio/    # Directory for Go package group
+    │   └── index.md                    # Contains all tests in this package
     ├── src_components_button_test_js/  # Directory for file group
     │   ├── index.md                    # File-level tests (outside describes)
-    │   ├── button_rendering.md         # Tests directly in this describe + links to nested
-    │   └── button_rendering/
-    │       ├── with_props.md          # Tests in this nested describe
-    │       └── without_props.md       # Tests in this nested describe
+    │   └── button_rendering/           # Directory for nested describe group
+    │       ├── index.md               # Tests directly in this describe
+    │       ├── with_props/            # Directory for nested subgroup
+    │       │   └── index.md          # Tests in this nested describe
+    │       └── without_props/         # Directory for nested subgroup
+    │           └── index.md          # Tests in this nested describe
     └── test_math_py/                   # Directory for file group
         ├── index.md                     # File-level tests (outside classes)
-        └── testmathoperations.md       # All test methods in class
+        └── testmathoperations/          # Directory for class group
+            └── index.md                 # All test methods in class
 ```
 
-**Important**: To avoid filesystem conflicts between files and directories with the same name, every group becomes a directory. Direct tests at any level are stored in `index.md` within that directory.
+**Important**: Every group becomes a directory with its sanitized name. The report for that group is always stored as `index.md` within that directory. This avoids filesystem conflicts and provides a consistent structure.
 
 **Key Principle**: Every group gets a report file that:
 - Lists all direct test cases (if any)
@@ -722,16 +725,16 @@ Running mathematical operations tests...
 
 #### 2.5 Practical Examples of Name Transformation
 
-| Original Name | Sanitized Path |
-|--------------|----------------|
-| `github.com/user/project/pkg` | `github_com_user_project_pkg/` |
-| `src/components/Button.test.js` | `src_components_button_test_js/` |
-| `should render <Button /> correctly` | `should_render__lt_button__gt__correctly.md` |
-| `handles "quotes" and 'apostrophes'` | `handles__dq_quotes_dq__and_apostrophes.md` |
-| `works with C:\Windows\Path` | `works_with_c__windows_path.md` |
-| `test with/**/glob?patterns` | `test_with__star__star__glob_q_patterns.md` |
-| `CON` (Windows reserved) | `con_reserved.md` |
-| `Very Long Path/That/Exceeds/260/Characters/...` | `[8char-hash]_...characters_test.md` (truncated) |
+| Original Name | Sanitized Directory Path |
+|--------------|-------------------------|
+| `github.com/user/project/pkg` | `github_com_user_project_pkg/index.md` |
+| `src/components/Button.test.js` | `src_components_button_test_js/index.md` |
+| `should render <Button /> correctly` | `should_render__lt_button__gt__correctly/index.md` |
+| `handles "quotes" and 'apostrophes'` | `handles__dq_quotes_dq__and_apostrophes/index.md` |
+| `works with C:\Windows\Path` | `works_with_c__windows_path/index.md` |
+| `test with/**/glob?patterns` | `test_with__star__star__glob_q_patterns/index.md` |
+| `CON` (Windows reserved) | `con_reserved/index.md` |
+| `Very Long Path/That/Exceeds/260/Characters/...` | `[8char-hash]_...characters_test/index.md` (truncated) |
 
 
 #### 2.7 Update Report Templates
