@@ -604,16 +604,10 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 
 	content += fmt.Sprintf("status: %s\n", group.Status)
 
-	// Format duration - use milliseconds for leaf nodes, seconds for larger groups
+	// Format duration - use seconds for all groups consistently
 	if group.Duration > 0 {
-		if len(group.Subgroups) == 0 && len(group.TestCases) <= 10 {
-			// Leaf node with few tests - use milliseconds
-			content += fmt.Sprintf("duration: %dms\n", group.Duration.Milliseconds())
-		} else {
-			// Larger group - use seconds
-			seconds := group.Duration.Seconds()
-			content += fmt.Sprintf("duration: %.2fs\n", seconds)
-		}
+		seconds := group.Duration.Seconds()
+		content += fmt.Sprintf("duration: %.2fs\n", seconds)
 	}
 
 	content += fmt.Sprintf("created: %s\n", group.Created.Format(time.RFC3339))

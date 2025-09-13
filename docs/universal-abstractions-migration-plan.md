@@ -671,7 +671,7 @@ updated: 2025-02-15T12:31:11.000Z
 group_name: TestMathOperations
 parent_path: test_math_py
 status: FAIL
-duration: 150ms
+duration: 0.15s
 created: 2025-02-15T12:30:00.000Z
 updated: 2025-02-15T12:31:11.000Z
 ---
