@@ -41,6 +41,8 @@ type Orchestrator struct {
 	totalFiles     int
 	displayedFiles map[string]bool // Track which files we've already displayed
 	lastCollected  int             // Track last collection count to avoid duplicates
+	fileStartTimes map[string]time.Time // Track start time for each file
+	fileFailedTests map[string][]string // Track failed test names by file
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -70,6 +72,8 @@ func New(config Config) (*Orchestrator, error) {
 		logger:         config.Logger,
 		command:        config.Command,
 		displayedFiles: make(map[string]bool),
+		fileStartTimes: make(map[string]time.Time),
+		fileFailedTests: make(map[string][]string),
 	}, nil
 }
 
@@ -128,8 +132,35 @@ func (o *Orchestrator) Run() error {
 	// Get output parser for the runner
 	parser := o.runnerManager.GetParser(runnerDef.GetAdapterFileName())
 
+	// Determine runner name from adapter file
+	adapterFile := runnerDef.GetAdapterFileName()
+	var detectedRunner string
+	switch adapterFile {
+	case "jest.js":
+		detectedRunner = "jest"
+	case "vitest.js":
+		detectedRunner = "vitest"
+	case "pytest_adapter.py":
+		detectedRunner = "pytest"
+	case "":
+		detectedRunner = "go test"
+	default:
+		detectedRunner = "unknown"
+	}
+
+	// Build modified command for logging
+	var modifiedCommand string
+	if adapterFile == "" {
+		// Native runner
+		testCommandSlice := runnerDef.BuildCommand(o.command, "")
+		modifiedCommand = strings.Join(testCommandSlice, " ")
+	} else {
+		// Will be set after adapter extraction
+		modifiedCommand = "" // Placeholder, will update after adapter extraction
+	}
+
 	// Create report manager
-	o.reportManager, err = report.NewManager(o.runDir, parser, o.logger)
+	o.reportManager, err = report.NewManager(o.runDir, parser, o.logger, detectedRunner, modifiedCommand)
 	if err != nil {
 		return fmt.Errorf("failed to create report manager: %w", err)
 	}
@@ -164,6 +195,10 @@ func (o *Orchestrator) Run() error {
 		}
 		testCommandSlice = runnerDef.BuildCommand(o.command, adapterPath)
 		o.logger.Debug("Adapter path: %s", adapterPath)
+		
+		// Update modified command now that we have the actual command
+		modifiedCommand = strings.Join(testCommandSlice, " ")
+		o.reportManager.UpdateModifiedCommand(modifiedCommand)
 	}
 
 	o.logger.Debug("Executing command: %v", testCommandSlice)
@@ -332,27 +367,17 @@ func (o *Orchestrator) Run() error {
 		}
 		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
 		fmt.Printf("Test failures! %s\n", randomExclamation)
+	} else if o.passedFiles > 0 {
+		// Success message
+		fmt.Println("Splendid! All tests passed successfully")
 	}
 
-	// Format results summary
-	var resultParts []string
-	if o.failedFiles > 0 {
-		resultParts = append(resultParts, fmt.Sprintf("%d failed", o.failedFiles))
-	}
-	if o.passedFiles > 0 {
-		resultParts = append(resultParts, fmt.Sprintf(" %d passed", o.passedFiles))
-	}
-	if o.totalFiles > 0 {
-		resultParts = append(resultParts, fmt.Sprintf(" %d total", o.totalFiles))
-	}
-
-	if len(resultParts) > 0 {
-		fmt.Printf("Results: %s\n", strings.Join(resultParts, ","))
-	}
+	// Format results summary in new format
+	fmt.Printf("Results:     %d passed, %d total\n", o.passedFiles, o.totalFiles)
 
 	// Calculate and display elapsed time
 	elapsed := time.Since(o.startTime).Seconds()
-	fmt.Printf("Time:        %.3fs\n", elapsed)
+	fmt.Printf("Total time:  %.3fs\n", elapsed)
 
 	// Return command error if there was one
 	if commandErr != nil {
@@ -384,6 +409,35 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 		return filePath
 	}
 	return absPath
+}
+
+// sanitizePathForFilesystem sanitizes a file path to preserve directory structure
+// while preventing directory traversal and filesystem issues
+func sanitizePathForFilesystem(filePath string) string {
+	// Clean the path to normalize it
+	cleanPath := filepath.Clean(filePath)
+
+	// Remove any leading slash or dot-slash
+	cleanPath = strings.TrimPrefix(cleanPath, "/")
+	cleanPath = strings.TrimPrefix(cleanPath, "./")
+
+	// Handle paths that start with ".." by replacing with "_UP"
+	parts := strings.Split(cleanPath, string(filepath.Separator))
+	for i, part := range parts {
+		if part == ".." {
+			parts[i] = "_UP"
+		}
+	}
+	cleanPath = strings.Join(parts, string(filepath.Separator))
+
+	// For JS/TS files, keep the extension as part of the name
+	// For other files like Go, remove the extension
+	ext := filepath.Ext(cleanPath)
+	if ext != ".js" && ext != ".jsx" && ext != ".ts" && ext != ".tsx" && ext != ".mjs" && ext != ".cjs" {
+		cleanPath = strings.TrimSuffix(cleanPath, ext)
+	}
+
+	return cleanPath
 }
 
 // getRelativePath converts a file path to a relative path starting with ./
@@ -423,6 +477,20 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 
 		relativePath := o.getRelativePath(normalizedPath)
 		fmt.Printf("RUNNING  %s\n", relativePath)
+		// Track start time for duration calculation
+		o.fileStartTimes[normalizedPath] = time.Now()
+
+	case ipc.TestCaseEvent:
+		// Track failed tests for later display
+		if e.Payload.Status == ipc.TestStatusFail {
+			normalizedPath := o.normalizePath(e.Payload.FilePath)
+			testName := e.Payload.TestName
+			// Format the test name with a failure indicator
+			if e.Payload.SuiteName != "" {
+				testName = e.Payload.SuiteName + " > " + testName
+			}
+			o.fileFailedTests[normalizedPath] = append(o.fileFailedTests[normalizedPath], testName)
+		}
 
 	case ipc.TestFileResultEvent:
 		// Normalize path for deduplication - use absolute path as key
@@ -449,25 +517,33 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			status = "SKIP    "
 		}
 
-		fmt.Printf("%s %s\n", status, relativePath)
-
-		// Display failed test details using actual data
+		// Calculate duration if we have a start time
+		durationStr := ""
+		if startTime, ok := o.fileStartTimes[normalizedPath]; ok {
+			duration := time.Since(startTime).Seconds()
+			durationStr = fmt.Sprintf(" (%.2fs)", duration)
+			delete(o.fileStartTimes, normalizedPath) // Clean up
+		}
+		
+		// For failed tests, don't print duration on same line since report path goes on next line
 		if e.Payload.Status == ipc.TestStatusFail {
-			// Show actual failed tests if available
-			if len(e.Payload.FailedTests) > 0 {
-				for _, failedTest := range e.Payload.FailedTests {
-					duration := ""
-					if failedTest.Duration > 0 {
-						duration = fmt.Sprintf(" (%.0f ms)", failedTest.Duration)
-					}
-					fmt.Printf("    ✕ %s%s\n", failedTest.Name, duration)
+			fmt.Printf("%s %s\n", status, relativePath)
+			
+			// Display failed test names if we have them
+			if failedTests, ok := o.fileFailedTests[normalizedPath]; ok && len(failedTests) > 0 {
+				for _, testName := range failedTests {
+					fmt.Printf("  ✕ %s\n", testName)
 				}
 			}
+		} else {
+			fmt.Printf("%s %s%s\n", status, relativePath, durationStr)
+		}
 
-			// Use the actual file name for the log reference
-			logFileName := filepath.Base(normalizedPath)
-			fmt.Printf("  See .3pio/runs/%s/reports/%s.md\n", o.runID, strings.TrimSuffix(logFileName, filepath.Ext(logFileName)))
-			fmt.Println("    ")
+		// Display failed test report path
+		if e.Payload.Status == ipc.TestStatusFail {
+			// Use the relative path to generate the correct report path with directory structure
+			reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(relativePath))
+			fmt.Printf("  See %s\n", reportPath)
 		}
 
 		o.totalFiles++

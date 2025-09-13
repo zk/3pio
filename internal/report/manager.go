@@ -15,10 +15,12 @@ import (
 
 // Manager handles report generation and file I/O
 type Manager struct {
-	runDir       string
-	state        *ipc.TestRunState
-	outputParser runner.OutputParser
-	logger       Logger
+	runDir          string
+	state           *ipc.TestRunState
+	outputParser    runner.OutputParser
+	logger          Logger
+	detectedRunner  string // e.g., "vitest", "jest", "go test", "pytest"
+	modifiedCommand string // The actual command executed with adapter
 
 	// File handles for incremental writing
 	fileHandles map[string]*os.File
@@ -43,7 +45,7 @@ type Logger interface {
 }
 
 // NewManager creates a new report manager
-func NewManager(runDir string, parser runner.OutputParser, logger Logger) (*Manager, error) {
+func NewManager(runDir string, parser runner.OutputParser, logger Logger, detectedRunner string, modifiedCommand string) (*Manager, error) {
 	if logger == nil {
 		logger = &noopLogger{}
 	}
@@ -67,18 +69,27 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger) (*Mana
 	}
 
 	return &Manager{
-		runDir:        runDir,
-		outputParser:  parser,
-		logger:        logger,
-		fileHandles:   make(map[string]*os.File),
-		fileBuffers:   make(map[string][]string),
-		debouncers:    make(map[string]*time.Timer),
-		outputFile:    outputFile,
-		stdoutBuffers: make(map[string][]string),
-		stderrBuffers: make(map[string][]string),
-		debounceTime:  100 * time.Millisecond,
-		maxWaitTime:   500 * time.Millisecond,
+		runDir:          runDir,
+		outputParser:    parser,
+		logger:          logger,
+		detectedRunner:  detectedRunner,
+		modifiedCommand: modifiedCommand,
+		fileHandles:     make(map[string]*os.File),
+		fileBuffers:     make(map[string][]string),
+		debouncers:      make(map[string]*time.Timer),
+		outputFile:      outputFile,
+		stdoutBuffers:   make(map[string][]string),
+		stderrBuffers:   make(map[string][]string),
+		debounceTime:    100 * time.Millisecond,
+		maxWaitTime:     500 * time.Millisecond,
 	}, nil
+}
+
+// UpdateModifiedCommand updates the modified command after adapter extraction
+func (m *Manager) UpdateModifiedCommand(command string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.modifiedCommand = command
 }
 
 // Initialize sets up the initial test run state
@@ -483,6 +494,8 @@ func (m *Manager) generateMarkdownReport() string {
 	sb.WriteString("---\n")
 	sb.WriteString(fmt.Sprintf("run_id: %s\n", runID))
 	sb.WriteString(fmt.Sprintf("run_path: %s\n", m.runDir))
+	sb.WriteString(fmt.Sprintf("detected_runner: %s\n", m.detectedRunner))
+	sb.WriteString(fmt.Sprintf("modified_command: %s\n", m.modifiedCommand))
 	sb.WriteString(fmt.Sprintf("created: %s\n", m.state.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z")))
 	sb.WriteString(fmt.Sprintf("updated: %s\n", m.state.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z")))
 	sb.WriteString(fmt.Sprintf("status: %s\n", statusText))
@@ -520,13 +533,24 @@ func (m *Manager) generateMarkdownReport() string {
 	// Test file results section (show for any status with test files)
 	if len(m.state.TestFiles) > 0 {
 		sb.WriteString("## Test file results\n\n")
-		sb.WriteString("| Stat | Test | Report file |\n")
-		sb.WriteString("| ---- | ---- | ----------- |\n")
+		sb.WriteString("| Stat | Test | Duration | Report file |\n")
+		sb.WriteString("| ---- | ---- | -------- | ----------- |\n")
 		for _, tf := range m.state.TestFiles {
 			statusIcon := getTestFileStatusText(tf.Status)
 			filename := filepath.Base(tf.File)
+			
+			// Calculate total duration for this test file
+			var totalDuration float64
+			for _, tc := range tf.TestCases {
+				if tc.Duration > 0 {
+					totalDuration += tc.Duration
+				}
+			}
+			// Convert milliseconds to seconds with 2 decimal places
+			durationStr := fmt.Sprintf("%.2fs", totalDuration/1000.0)
+			
 			reportPath := fmt.Sprintf("./reports/%s.md", sanitizePathForFilesystem(tf.File))
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", statusIcon, filename, reportPath))
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", statusIcon, filename, durationStr, reportPath))
 		}
 	}
 
@@ -756,6 +780,17 @@ func sanitizePathForFilesystem(filePath string) string {
 				cleanPath = relPath
 			}
 		}
+	}
+
+	// Remove specific extensions while preserving JS/TS extensions
+	// This ensures the report path matches what we show in console output
+	ext := filepath.Ext(cleanPath)
+	switch ext {
+	case ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs":
+		// Keep JavaScript/TypeScript extensions
+	case ".go", ".py", ".rb", ".java", ".c", ".cpp", ".rs":
+		// Remove other language extensions
+		cleanPath = strings.TrimSuffix(cleanPath, ext)
 	}
 
 	// Handle paths that start with ".." by replacing with "_UP"

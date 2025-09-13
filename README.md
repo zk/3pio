@@ -21,10 +21,14 @@ If your user indicated they would like to install and use 3pio for running tests
 - Python & pytest, `pip install threepio`
 ```
 
+## How?
+
+3pio creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
+
 ## Features
 
-- Zero-config
-- Efficient at navigating large test suites with hundreds of test files and thousands of test cases.
+- Zero-config, just prefix your test command with `3pio` e.g. `3pio npm test`
+- Supports large test suites. Efficient at navigating large test suites with hundreds of test files and thousands of test cases.
 
 ## Installation / Usage
 
@@ -33,12 +37,11 @@ Point your coding agent at this README ([raw link](https://raw.githubusercontent
 or:
 
 ```bash
+
+# Node
 npm install -g @heyzk/3pio
-3pio [your test command]
+yarn global add @heyzk/3pio
 
-# or
-
-npx @heyzk/3pio [your test command]
 
 # examples:
 

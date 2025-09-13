@@ -25,6 +25,16 @@ type GoTestDefinition struct {
 	currentFile  string
 	mu           sync.RWMutex
 	ipcWriter    *IPCWriter
+	
+	// File timing tracking
+	fileStarted    map[string]bool    // Track if we've sent testFileStart for a file
+	fileStartTimes map[string]time.Time // Track when first test in file started
+	fileTestCounts map[string]int     // Track number of tests per file
+	fileTestsDone  map[string]int     // Track completed tests per file
+	fileStatuses   map[string]string  // Track overall status per file (PASS/FAIL)
+	
+	// Package-level tracking
+	packageTestFiles map[string][]string // Map of package to its test files
 }
 
 // PackageInfo holds information about a Go package
@@ -66,10 +76,16 @@ type IPCWriter struct {
 // NewGoTestDefinition creates a new Go test runner definition
 func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 	return &GoTestDefinition{
-		logger:        logger,
-		packageMap:    make(map[string]*PackageInfo),
-		testStates:    make(map[string]*TestState),
-		testToFileMap: make(map[string]string),
+		logger:           logger,
+		packageMap:       make(map[string]*PackageInfo),
+		testStates:       make(map[string]*TestState),
+		testToFileMap:    make(map[string]string),
+		fileStarted:      make(map[string]bool),
+		fileStartTimes:   make(map[string]time.Time),
+		fileTestCounts:   make(map[string]int),
+		fileTestsDone:    make(map[string]int),
+		fileStatuses:     make(map[string]string),
+		packageTestFiles: make(map[string][]string),
 	}
 }
 
@@ -133,20 +149,20 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 	}
 	
 	// Run go list to get package info
+	start := time.Now()
 	packageMap, err := g.runGoList(patterns)
 	if err != nil {
 		g.logger.Debug("Failed to run go list: %v", err)
 		return []string{}, nil // Return empty for dynamic discovery
 	}
+	g.logger.Debug("go list completed in %v", time.Since(start))
 	
 	// Store package map for later use
 	g.packageMap = packageMap
 	
-	// Build test-to-file mapping
-	if err := g.buildTestToFileMap(); err != nil {
-		g.logger.Debug("Failed to build test-to-file map: %v", err)
-		// Continue anyway, will fall back to package-based mapping
-	}
+	// Skip building test-to-file mapping as it's expensive (calls go test -list per package)
+	// We'll use package-based mapping which is sufficient for most cases
+	g.logger.Debug("Skipping buildTestToFileMap to avoid performance overhead")
 	
 	// Extract all test files
 	var testFiles []string
@@ -258,17 +274,10 @@ func (g *GoTestDefinition) handlePackageStart(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	
-	// Map package to files
-	if pkg, ok := g.packageMap[event.Package]; ok {
-		// Send testFileStart for each test file in the package
-		for _, file := range pkg.TestGoFiles {
-			filePath := filepath.Join(pkg.Dir, file)
-			g.sendTestFileStart(filePath)
-		}
-		for _, file := range pkg.XTestGoFiles {
-			filePath := filepath.Join(pkg.Dir, file)
-			g.sendTestFileStart(filePath)
-		}
+	// Don't send testFileStart here - we'll send it when the first test from a file runs
+	// Just ensure the package mapping is ready
+	if _, ok := g.packageMap[event.Package]; !ok {
+		g.logger.Debug("Package %s started but not in packageMap", event.Package)
 	}
 }
 
@@ -285,6 +294,23 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 		Output:    []string{},
 		IsPaused:  false,
 	}
+	
+	// Get the file path for this test
+	filePath := g.getFilePathForTest(event.Package, event.Test)
+	if filePath == "" {
+		return
+	}
+	
+	// Check if this is the first test from this file
+	if !g.fileStarted[filePath] {
+		g.fileStarted[filePath] = true
+		g.fileStartTimes[filePath] = event.Time
+		g.sendTestFileStart(filePath)
+		g.logger.Debug("Sent testFileStart for %s at %v", filePath, event.Time)
+	}
+	
+	// Increment expected test count for this file
+	g.fileTestCounts[filePath]++
 }
 
 // handleTestPause processes test pause events
@@ -361,6 +387,34 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	
 	// Clean up state
 	delete(g.testStates, key)
+	
+	// Track file completion
+	g.fileTestsDone[filePath]++
+	
+	// Update file status based on test result
+	if event.Action == "fail" {
+		g.fileStatuses[filePath] = "FAIL"
+	} else if g.fileStatuses[filePath] != "FAIL" {
+		// Only update to PASS/SKIP if not already failed
+		if event.Action == "pass" {
+			g.fileStatuses[filePath] = "PASS"
+		} else if event.Action == "skip" && g.fileStatuses[filePath] != "PASS" {
+			g.fileStatuses[filePath] = "SKIP"
+		}
+	}
+	
+	// Check if all tests for this file are complete
+	if g.fileTestsDone[filePath] >= g.fileTestCounts[filePath] && g.fileTestCounts[filePath] > 0 {
+		// Calculate duration
+		var elapsed float64
+		if startTime, ok := g.fileStartTimes[filePath]; ok {
+			elapsed = event.Time.Sub(startTime).Seconds()
+		}
+		
+		// Send testFileResult
+		g.sendTestFileResultWithDuration(filePath, g.fileStatuses[filePath], elapsed)
+		g.logger.Debug("Sent testFileResult for %s: status=%s, duration=%.2fs", filePath, g.fileStatuses[filePath], elapsed)
+	}
 }
 
 // handlePackageResult processes package result events
@@ -377,19 +431,30 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			pkg.IsCached = true
 		}
 		
-		// Send testFileResult for each test file
-		status := pkg.Status
+		// Only send testFileResult for cached packages or packages with no tests
+		// For packages with actual tests, the testFileResult was already sent when tests completed
 		if pkg.IsCached {
-			status = "CACH"
-		}
-		
-		for _, file := range pkg.TestGoFiles {
-			filePath := filepath.Join(pkg.Dir, file)
-			g.sendTestFileResult(filePath, status)
-		}
-		for _, file := range pkg.XTestGoFiles {
-			filePath := filepath.Join(pkg.Dir, file)
-			g.sendTestFileResult(filePath, status)
+			status := "CACH"
+			for _, file := range pkg.TestGoFiles {
+				filePath := filepath.Join(pkg.Dir, file)
+				// Only send if we haven't already sent a result for this file
+				if !g.fileStarted[filePath] {
+					g.sendTestFileStart(filePath)
+					g.sendTestFileResult(filePath, status)
+				}
+			}
+			for _, file := range pkg.XTestGoFiles {
+				filePath := filepath.Join(pkg.Dir, file)
+				// Only send if we haven't already sent a result for this file
+				if !g.fileStarted[filePath] {
+					g.sendTestFileStart(filePath)
+					g.sendTestFileResult(filePath, status)
+				}
+			}
+		} else if len(pkg.TestGoFiles) == 0 && len(pkg.XTestGoFiles) == 0 {
+			// Package has no test files - this shouldn't normally happen
+			// but handle it just in case
+			g.logger.Debug("Package %s has no test files", event.Package)
 		}
 	}
 }
@@ -414,6 +479,27 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 	}
 }
 
+// getFilePathForTest maps a test to its source file using the test-to-file map
+func (g *GoTestDefinition) getFilePathForTest(packageName, testName string) string {
+	// First try the direct mapping
+	key := fmt.Sprintf("%s/%s", packageName, testName)
+	if filePath, ok := g.testToFileMap[key]; ok {
+		return filePath
+	}
+	
+	// For subtests, try the parent test
+	if strings.Contains(testName, "/") {
+		parentTest := strings.Split(testName, "/")[0]
+		parentKey := fmt.Sprintf("%s/%s", packageName, parentTest)
+		if filePath, ok := g.testToFileMap[parentKey]; ok {
+			return filePath
+		}
+	}
+	
+	// Fall back to package-based mapping
+	return g.getFilePathForPackage(packageName)
+}
+
 // getFilePathForPackage maps a package to its first test file
 func (g *GoTestDefinition) getFilePathForPackage(packageName string) string {
 	if pkg, ok := g.packageMap[packageName]; ok {
@@ -431,47 +517,49 @@ func (g *GoTestDefinition) getFilePathForPackage(packageName string) string {
 func (g *GoTestDefinition) buildTestToFileMap() error {
 	g.logger.Debug("Building test-to-file mapping")
 	
+	// Note: Go tests operate at the package level, not file level.
+	// Since we can't reliably determine which test belongs to which file,
+	// we'll report at the package level using the first test file as representative.
+	
 	for pkgName, pkg := range g.packageMap {
-		// Process regular test files
-		for _, file := range pkg.TestGoFiles {
-			filePath := filepath.Join(pkg.Dir, file)
-			tests, err := g.listTestsInFile(filePath, pkgName)
-			if err != nil {
-				g.logger.Debug("Failed to list tests in %s: %v", filePath, err)
-				continue
-			}
-			
-			for _, test := range tests {
-				key := fmt.Sprintf("%s/%s", pkgName, test)
-				g.testToFileMap[key] = filePath
-				g.logger.Debug("Mapped test %s to file %s", key, filePath)
-			}
+		// Determine the representative file for this package
+		var representativeFile string
+		if len(pkg.TestGoFiles) > 0 {
+			representativeFile = filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
+		} else if len(pkg.XTestGoFiles) > 0 {
+			representativeFile = filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
+		} else {
+			continue
 		}
 		
-		// Process external test files
-		for _, file := range pkg.XTestGoFiles {
-			filePath := filepath.Join(pkg.Dir, file)
-			tests, err := g.listTestsInFile(filePath, pkgName+"_test")
-			if err != nil {
-				g.logger.Debug("Failed to list tests in %s: %v", filePath, err)
-				continue
-			}
-			
-			for _, test := range tests {
-				key := fmt.Sprintf("%s_test/%s", pkgName, test)
-				g.testToFileMap[key] = filePath
-				g.logger.Debug("Mapped test %s to file %s", key, filePath)
-			}
+		// Get all tests in the package
+		tests, err := g.listTestsInPackage(pkg.Dir)
+		if err != nil {
+			g.logger.Debug("Failed to list tests in package %s: %v", pkgName, err)
+			continue
 		}
+		
+		// Map all tests to the representative file
+		// This is a limitation of Go's test runner - we can't determine file-level granularity
+		for _, test := range tests {
+			key := fmt.Sprintf("%s/%s", pkgName, test)
+			g.testToFileMap[key] = representativeFile
+			g.logger.Debug("Mapped test %s to representative file %s", key, representativeFile)
+		}
+		
+		// Store all test files for this package so we can report them as part of the package
+		g.packageTestFiles[pkgName] = append(g.packageTestFiles[pkgName], pkg.TestGoFiles...)
+		g.packageTestFiles[pkgName] = append(g.packageTestFiles[pkgName], pkg.XTestGoFiles...)
 	}
 	
 	return nil
 }
 
-// listTestsInFile runs go test -list to get all tests in a specific file
-func (g *GoTestDefinition) listTestsInFile(filePath string, packageName string) ([]string, error) {
-	// Run go test -list for the specific file
-	cmd := exec.Command("go", "test", "-list", ".", filePath)
+
+// listTestsInPackage runs go test -list to get all tests in a package
+func (g *GoTestDefinition) listTestsInPackage(pkgDir string) ([]string, error) {
+	// Run go test -list for the package directory
+	cmd := exec.Command("go", "test", "-list", ".", pkgDir)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -584,7 +672,7 @@ func (g *GoTestDefinition) sendTestCase(filePath, testName, suiteName, status st
 		"filePath": filePath,
 		"testName": testName,
 		"status":   status,
-		"duration": duration,
+		"duration": duration * 1000, // Convert seconds to milliseconds
 	}
 	
 	if suiteName != "" {
@@ -615,6 +703,20 @@ func (g *GoTestDefinition) sendTestFileResult(filePath, status string) {
 	}
 	if err := g.ipcWriter.WriteEvent(event); err != nil {
 		g.logger.Error("Failed to send testFileResult: %v", err)
+	}
+}
+
+func (g *GoTestDefinition) sendTestFileResultWithDuration(filePath, status string, duration float64) {
+	event := map[string]interface{}{
+		"eventType": "testFileResult",
+		"payload": map[string]interface{}{
+			"filePath": filePath,
+			"status":   status,
+			"duration": duration * 1000, // Convert seconds to milliseconds
+		},
+	}
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testFileResult with duration: %v", err)
 	}
 }
 

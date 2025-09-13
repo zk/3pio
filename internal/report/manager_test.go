@@ -36,7 +36,7 @@ func TestManager_Initialize(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestManager_HandleTestFileStartEvent(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestManager_HandleStdoutChunkEvent(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestManager_HandleTestCaseEvent(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestManager_HandleTestFileResultEvent(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestManager_TestCaseFormatting(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestManager_HandleRunCompleteEvent(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestManager_Debouncing(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestManager_NoDuplicateTestBoundaries(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -667,7 +667,7 @@ func TestManager_TestCaseOutputAssociation(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Create manager
-	manager, err := NewManager(tempDir, nil, nil)
+	manager, err := NewManager(tempDir, nil, nil, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -860,7 +860,7 @@ func TestManager_TestResultsInLogFiles(t *testing.T) {
 	logger := &mockLogger{}
 	parser := runner.NewJestOutputParser()
 
-	manager, err := NewManager(tempDir, parser, logger)
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
