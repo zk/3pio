@@ -239,6 +239,11 @@ var ThreePioVitestReporter = class {
   captureEnabled = false;
   logger;
   filesStarted = /* @__PURE__ */ new Set();
+
+  // Group tracking for universal abstractions
+  discoveredGroups = /* @__PURE__ */ new Map();
+  groupStarts = /* @__PURE__ */ new Map();
+  fileGroups = /* @__PURE__ */ new Map();
   constructor() {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
@@ -254,12 +259,110 @@ var ThreePioVitestReporter = class {
       "=================================="
     ]);
   }
+
+  // Group management helper methods
+  getGroupId(hierarchy) {
+    return hierarchy.join(':');
+  }
+
+  extractHierarchyFromTask(task, filePath) {
+    if (!task) return [];
+
+    const suites = [];
+    let current = task;
+
+    // Walk up parent chain to collect suite names
+    while (current) {
+      if (current.type === 'suite' && current.name) {
+        suites.unshift(current.name);
+      }
+      current = current.parent || current.suite;
+    }
+
+    return suites;
+  }
+
+  buildHierarchyFromFile(filePath, suiteChain = []) {
+    const hierarchy = [filePath];
+    if (suiteChain && suiteChain.length > 0) {
+      hierarchy.push(...suiteChain);
+    }
+    return hierarchy;
+  }
+
+  discoverGroups(filePath, suiteChain = []) {
+    const groups = [];
+
+    // First, the file itself is a group
+    groups.push({
+      hierarchy: [filePath],
+      name: filePath,
+      parentNames: []
+    });
+
+    // Then each level of suites creates a nested group
+    if (suiteChain && suiteChain.length > 0) {
+      for (let i = 0; i < suiteChain.length; i++) {
+        const parentNames = [filePath, ...suiteChain.slice(0, i)];
+        const groupName = suiteChain[i];
+        groups.push({
+          hierarchy: [...parentNames, groupName],
+          name: groupName,
+          parentNames: parentNames
+        });
+      }
+    }
+
+    return groups;
+  }
+
+  ensureGroupsDiscovered(filePath, suiteChain = []) {
+    const groups = this.discoverGroups(filePath, suiteChain);
+
+    for (const group of groups) {
+      const groupId = this.getGroupId(group.hierarchy);
+      if (!this.discoveredGroups.has(groupId)) {
+        this.discoveredGroups.set(groupId, group);
+        this.logger.ipc("send", "testGroupDiscovered", { groupName: group.name, parentNames: group.parentNames });
+        IPCSender.sendEvent({
+          eventType: 'testGroupDiscovered',
+          payload: {
+            groupName: group.name,
+            parentNames: group.parentNames
+          }
+        }).catch((error) => {
+          this.logger.error("Failed to send testGroupDiscovered event", error);
+        });
+      }
+    }
+  }
+
+  ensureGroupStarted(hierarchy) {
+    const groupId = this.getGroupId(hierarchy);
+    if (!this.groupStarts.has(groupId)) {
+      this.groupStarts.set(groupId, Date.now());
+
+      const group = this.discoveredGroups.get(groupId);
+      if (group) {
+        this.logger.ipc("send", "testGroupStart", { groupName: group.name, parentNames: group.parentNames });
+        IPCSender.sendEvent({
+          eventType: 'testGroupStart',
+          payload: {
+            groupName: group.name,
+            parentNames: group.parentNames
+          }
+        }).catch((error) => {
+          this.logger.error("Failed to send testGroupStart event", error);
+        });
+      }
+    }
+  }
   onInit(ctx) {
     this.logger.lifecycle("Test run initializing");
     const ipcPath = process.env.THREEPIO_IPC_PATH || /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
     this.logger.info("IPC communication channel ready", { path: ipcPath });
     this.logger.initComplete({ ipcPath });
-    
+
     // Send collection start event
     IPCSender.sendEvent({
       eventType: "collectionStart",
@@ -302,15 +405,17 @@ var ThreePioVitestReporter = class {
   }
   
   onTestModuleCollected(testModule) {
-    this.logger.info("[V3] onTestModuleCollected called", { 
+    this.logger.info("[V3] onTestModuleCollected called", {
       moduleId: testModule?.moduleId,
       filepath: testModule?.filepath,
-      name: testModule?.name 
+      name: testModule?.name
     });
-    
-    // Send testFileStart event when module is collected (queued for execution)
+
+    // Discover the file as a root group
     const filePath = testModule?.filepath || testModule?.moduleId;
     if (filePath) {
+      this.ensureGroupsDiscovered(filePath, []);
+
       this.logger.ipc("send", "testFileStart", { filePath });
       IPCSender.sendEvent({
         eventType: "testFileStart",
@@ -344,8 +449,8 @@ var ThreePioVitestReporter = class {
     const result = testCase?.result?.();
     const diagnostic = testCase?.diagnostic?.();
     const filePath = testCase?.module?.moduleId || testCase?.filepath;
-    
-    this.logger.info("[V3] onTestCaseResult called", { 
+
+    this.logger.info("[V3] onTestCaseResult called", {
       name: testCase?.name,
       fullName: testCase?.fullName,
       result: result,
@@ -355,26 +460,50 @@ var ThreePioVitestReporter = class {
       diagnostic: diagnostic,
       duration: diagnostic?.duration
     });
-    
-    // Send IPC event for test case result with duration from diagnostic
+
+    // Send IPC event for test case result with group hierarchy
     if (result && filePath) {
-      const status = result.state === 'passed' ? 'PASS' : 
-                     result.state === 'failed' ? 'FAIL' : 
+      // Extract hierarchy for this test case
+      const suiteChain = this.extractHierarchyFromTask(testCase, filePath);
+      const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+
+      // Ensure all parent groups are discovered and started
+      this.ensureGroupsDiscovered(filePath, suiteChain);
+
+      // Start all parent groups
+      for (let i = 0; i <= suiteChain.length; i++) {
+        const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+        this.ensureGroupStarted(hierarchy);
+      }
+
+      const status = result.state === 'passed' ? 'PASS' :
+                     result.state === 'failed' ? 'FAIL' :
                      result.state === 'skipped' ? 'SKIP' : 'UNKNOWN';
-      
+
+      // Send test case event with group hierarchy
+      this.logger.ipc("send", "testCase", { testName: testCase.name, parentNames, status });
       IPCSender.sendEvent({
         eventType: "testCase",
         payload: {
-          filePath: filePath,
           testName: testCase.name,
-          suiteName: testCase.suite?.name,
-          status,
-          duration: diagnostic?.duration,  // Get duration from diagnostic()
+          parentNames: parentNames,
+          status: status,
+          duration: diagnostic?.duration,
           error: result.errors?.map(e => e.message || String(e)).join('\n')
         }
       }).catch((error) => {
         this.logger.error("Failed to send testCase event", error);
       });
+
+      // Track test in file group
+      const fileGroup = this.fileGroups.get(filePath);
+      if (fileGroup) {
+        fileGroup.tests.push({
+          name: testCase.name,
+          status: status,
+          duration: diagnostic?.duration
+        });
+      }
     }
   }
   
@@ -535,8 +664,20 @@ var ThreePioVitestReporter = class {
   onTestFileStart(file) {
     this.logger.testFlow("Starting test file", file.filepath);
     this.currentTestFile = file.filepath;
+
     if (!this.filesStarted.has(file.filepath)) {
       this.filesStarted.add(file.filepath);
+
+      // Discover the file as a root group and start it
+      this.ensureGroupsDiscovered(file.filepath, []);
+      this.ensureGroupStarted([file.filepath]);
+
+      // Store file group info
+      this.fileGroups.set(file.filepath, {
+        startTime: Date.now(),
+        tests: []
+      });
+
       this.logger.ipc("send", "testFileStart", { filePath: file.filepath });
       IPCSender.sendEvent({
         eventType: "testFileStart",
@@ -598,7 +739,33 @@ var ThreePioVitestReporter = class {
       collectFailedTests(file.tasks);
     }
     
+    // Send GroupResult for the file
+    const fileGroup = this.fileGroups.get(file.filepath);
+    const fileDuration = fileGroup?.startTime ? Date.now() - fileGroup.startTime : undefined;
+
+    const totals = {
+      total: failedTests.length + (testStats.tests || 0),
+      passed: (testStats.tests || 0) - failedTests.length,
+      failed: failedTests.length,
+      skipped: 0 // TODO: Extract from file.tasks if available
+    };
+
     this.logger.testFlow("Test file completed", file.filepath, { status, ...testStats, failedTests: failedTests.length });
+    this.logger.ipc("send", "testGroupResult", { groupName: file.filepath, status, totals });
+    IPCSender.sendEvent({
+      eventType: "testGroupResult",
+      payload: {
+        groupName: file.filepath,
+        parentNames: [],
+        status: status,
+        duration: fileDuration,
+        totals: totals
+      }
+    }).catch((error) => {
+      this.logger.error("Failed to send testGroupResult", error);
+    });
+
+    // Keep legacy testFileResult for compatibility
     this.logger.ipc("send", "testFileResult", { filePath: file.filepath, status, failedTests });
     IPCSender.sendEvent({
       eventType: "testFileResult",
@@ -637,17 +804,24 @@ var ThreePioVitestReporter = class {
           fullResult: JSON.stringify(test.result)
         });
         
+        // Extract hierarchy for this test case
+        const suiteChain = this.extractHierarchyFromTask(test, filePath);
+        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+
+        // Ensure groups are discovered
+        this.ensureGroupsDiscovered(filePath, suiteChain);
+
         this.logger.testFlow("Sending test case event", test.name, {
           suite: suiteName,
           status,
-          duration: test.result?.duration
+          duration: test.result?.duration,
+          parentNames: parentNames
         });
         IPCSender.sendEvent({
           eventType: "testCase",
           payload: {
-            filePath,
             testName: test.name,
-            suiteName,
+            parentNames: parentNames,
             status,
             duration: test.result?.duration,
             error

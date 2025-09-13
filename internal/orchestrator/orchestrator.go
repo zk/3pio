@@ -464,6 +464,19 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			o.lastCollected = e.Payload.Collected
 		}
 
+	case ipc.GroupStartEvent:
+		// Track group start time for duration calculation
+		groupID := report.GenerateGroupID(e.Payload.GroupName, e.Payload.ParentNames)
+		o.fileStartTimes[groupID] = time.Now()
+
+		// Display RUNNING status for the group
+		o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
+
+	case ipc.GroupResultEvent:
+		// Display hierarchical output when a group completes
+		status := convertStringToTestStatus(e.Payload.Status)
+		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status)
+
 	case ipc.TestFileStartEvent:
 		// Normalize path for deduplication - use absolute path as key
 		normalizedPath := o.normalizePath(e.Payload.FilePath)
@@ -481,19 +494,35 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		o.fileStartTimes[normalizedPath] = time.Now()
 
 	case ipc.TestCaseEvent:
-		// Track failed tests for later display
+		// Track failed tests for later display - use legacy suiteName approach
 		if e.Payload.Status == ipc.TestStatusFail {
 			normalizedPath := o.normalizePath(e.Payload.FilePath)
 			testName := e.Payload.TestName
-			// Format the test name with a failure indicator
+			// Use suiteName if available
 			if e.Payload.SuiteName != "" {
 				testName = e.Payload.SuiteName + " > " + testName
 			}
 			o.fileFailedTests[normalizedPath] = append(o.fileFailedTests[normalizedPath], testName)
 		}
 
+	case ipc.GroupTestCaseEvent:
+		// Track failed tests for hierarchical display
+		if e.Payload.Status == "FAIL" {
+			// Use the first parent name as file path (should be the file)
+			if len(e.Payload.ParentNames) > 0 {
+				normalizedPath := o.normalizePath(e.Payload.ParentNames[0])
+				testName := e.Payload.TestName
+				// Use parent names to build full hierarchy (skip file path)
+				if len(e.Payload.ParentNames) > 1 {
+					suiteNames := e.Payload.ParentNames[1:]
+					testName = strings.Join(suiteNames, " > ") + " > " + testName
+				}
+				o.fileFailedTests[normalizedPath] = append(o.fileFailedTests[normalizedPath], testName)
+			}
+		}
+
 	case ipc.TestFileResultEvent:
-		// Normalize path for deduplication - use absolute path as key
+		// Handle file-level results for compatibility, but prefer group-based display
 		normalizedPath := o.normalizePath(e.Payload.FilePath)
 
 		// Skip if already displayed this result event for this file
@@ -502,48 +531,27 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		}
 		o.displayedFiles[normalizedPath+":result"] = true
 
-		relativePath := o.getRelativePath(normalizedPath)
-
-		// Format status with proper spacing
-		var status string
-		switch e.Payload.Status {
-		case ipc.TestStatusPass:
-			status = "PASS    "
-			o.passedFiles++
-		case ipc.TestStatusFail:
-			status = "FAIL    "
-			o.failedFiles++
-		default:
-			status = "SKIP    "
-		}
-
-		// Calculate duration if we have a start time
-		durationStr := ""
-		if startTime, ok := o.fileStartTimes[normalizedPath]; ok {
-			duration := time.Since(startTime).Seconds()
-			durationStr = fmt.Sprintf(" (%.2fs)", duration)
-			delete(o.fileStartTimes, normalizedPath) // Clean up
-		}
-		
-		// For failed tests, don't print duration on same line since report path goes on next line
-		if e.Payload.Status == ipc.TestStatusFail {
-			fmt.Printf("%s %s\n", status, relativePath)
-			
-			// Display failed test names if we have them
-			if failedTests, ok := o.fileFailedTests[normalizedPath]; ok && len(failedTests) > 0 {
-				for _, testName := range failedTests {
-					fmt.Printf("  ✕ %s\n", testName)
+		// Check if we have group data for hierarchical display
+		if groups := o.reportManager.GetRootGroups(); len(groups) > 0 {
+			// Look for a completed group matching this file
+			var matchedGroup *report.TestGroup
+			for _, group := range groups {
+				if group.Name == normalizedPath && group.IsComplete() {
+					matchedGroup = group
+					break
 				}
 			}
-		} else {
-			fmt.Printf("%s %s%s\n", status, relativePath, durationStr)
-		}
 
-		// Display failed test report path
-		if e.Payload.Status == ipc.TestStatusFail {
-			// Use the relative path to generate the correct report path with directory structure
-			reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(relativePath))
-			fmt.Printf("  See %s\n", reportPath)
+			if matchedGroup != nil {
+				// Use hierarchical display for completed groups
+				o.displayGroupHierarchy(matchedGroup, 0)
+			} else {
+				// Fallback to legacy display if no completed group found
+				o.displayLegacyFileResult(e)
+			}
+		} else {
+			// Fallback to legacy file-based display
+			o.displayLegacyFileResult(e)
 		}
 
 		o.totalFiles++
@@ -581,6 +589,248 @@ func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 // GetExitCode returns the exit code from the test run
 func (o *Orchestrator) GetExitCode() int {
 	return o.exitCode
+}
+
+// displayGroupRunning displays RUNNING status for a group that just started
+func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []string) {
+	// Build hierarchical path
+	var parts []string
+	if len(parentNames) == 0 {
+		// Root group (file)
+		parts = append(parts, o.getRelativePath(groupName))
+	} else {
+		// Add parent names first
+		for i, parentName := range parentNames {
+			if i == 0 {
+				parts = append(parts, o.getRelativePath(parentName))
+			} else {
+				parts = append(parts, parentName)
+			}
+		}
+		// Add this group's name
+		parts = append(parts, groupName)
+	}
+
+	hierarchicalPath := strings.Join(parts, " > ")
+	fmt.Printf("%-8s %s\n", "RUNNING", hierarchicalPath)
+}
+
+// displayGroupResult displays the result of a completed group
+func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string, status ipc.TestStatus) {
+	groupID := report.GenerateGroupID(groupName, parentNames)
+
+	// Get the group from the report manager
+	group, exists := o.reportManager.GetGroup(groupID)
+	if !exists {
+		return
+	}
+
+	// Only display top-level groups (files) to avoid duplicates
+	if len(parentNames) == 0 {
+		o.displayGroupHierarchy(group, 0)
+	}
+}
+
+// displayGroupHierarchy displays a group and its children with hierarchical indentation
+func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int) {
+	// Build the hierarchical path for display
+	hierarchicalPath := o.buildHierarchicalPath(group)
+
+	// Display group status with hierarchical path
+	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+
+	// Get duration for this group
+	durationStr := ""
+	groupID := group.ID
+	if startTime, ok := o.fileStartTimes[groupID]; ok {
+		duration := time.Since(startTime).Seconds()
+		if duration > 0.01 { // Only show if > 10ms
+			durationStr = fmt.Sprintf(" (%.2fs)", duration)
+		}
+		delete(o.fileStartTimes, groupID) // Clean up
+	}
+
+	// Display the group result line
+	fmt.Printf("%-8s %s%s\n", statusStr, hierarchicalPath, durationStr)
+
+	// Show report path for failed groups
+	if group.Status == report.TestStatusFail {
+		relativePath := o.getRelativePath(group.Name)
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(relativePath))
+		fmt.Printf("  See %s\n", reportPath)
+	}
+
+	// Display child test failures inline (matching the plan's format)
+	if group.Status == report.TestStatusFail {
+		for _, testCase := range group.TestCases {
+			if testCase.Status == report.TestStatusFail {
+				fmt.Printf("  x %s\n", testCase.Name)
+				if testCase.Error != nil && testCase.Error.Message != "" {
+					// Show first line of error
+					lines := strings.Split(strings.TrimSpace(testCase.Error.Message), "\n")
+					if len(lines) > 0 {
+						fmt.Printf("    %s\n", lines[0])
+					}
+				}
+			}
+		}
+	}
+}
+
+// displayLegacyFileResult displays file results using the legacy format
+func (o *Orchestrator) displayLegacyFileResult(e ipc.TestFileResultEvent) {
+	normalizedPath := o.normalizePath(e.Payload.FilePath)
+	relativePath := o.getRelativePath(normalizedPath)
+
+	// Format status with proper spacing
+	var status string
+	switch e.Payload.Status {
+	case ipc.TestStatusPass:
+		status = "PASS    "
+		o.passedFiles++
+	case ipc.TestStatusFail:
+		status = "FAIL    "
+		o.failedFiles++
+	default:
+		status = "SKIP    "
+	}
+
+	// Calculate duration if we have a start time
+	durationStr := ""
+	if startTime, ok := o.fileStartTimes[normalizedPath]; ok {
+		duration := time.Since(startTime).Seconds()
+		durationStr = fmt.Sprintf(" (%.2fs)", duration)
+		delete(o.fileStartTimes, normalizedPath) // Clean up
+	}
+
+	// For failed tests, don't print duration on same line since report path goes on next line
+	if e.Payload.Status == ipc.TestStatusFail {
+		fmt.Printf("%s %s\n", status, relativePath)
+
+		// Display failed test names if we have them
+		if failedTests, ok := o.fileFailedTests[normalizedPath]; ok && len(failedTests) > 0 {
+			for _, testName := range failedTests {
+				fmt.Printf("  ✕ %s\n", testName)
+			}
+		}
+	} else {
+		fmt.Printf("%s %s%s\n", status, relativePath, durationStr)
+	}
+
+	// Display failed test report path
+	if e.Payload.Status == ipc.TestStatusFail {
+		// Use the relative path to generate the correct report path with directory structure
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s.md", o.runID, sanitizePathForFilesystem(relativePath))
+		fmt.Printf("  See %s\n", reportPath)
+	}
+}
+
+// getTestCaseConsoleIcon returns an icon for individual test cases in console output
+func getTestCaseConsoleIcon(status ipc.TestStatus) string {
+	switch status {
+	case ipc.TestStatusPass:
+		return "✓"
+	case ipc.TestStatusFail:
+		return "x"
+	case ipc.TestStatusSkip:
+		return "o"
+	default:
+		return "-" // Running or unknown
+	}
+}
+
+// getTestFileConsoleIcon returns an icon for file-level status in console output
+func getTestFileConsoleIcon(status ipc.TestStatus) string {
+	switch status {
+	case ipc.TestStatusPass:
+		return "✓"
+	case ipc.TestStatusFail:
+		return "x"
+	case ipc.TestStatusSkip:
+		return "o"
+	default:
+		return "-"
+	}
+}
+
+// getGroupStatusString returns a status string for groups in console output
+func getGroupStatusString(status ipc.TestStatus) string {
+	switch status {
+	case ipc.TestStatusPass:
+		return "PASS"
+	case ipc.TestStatusFail:
+		return "FAIL"
+	case ipc.TestStatusSkip:
+		return "SKIP"
+	case ipc.TestStatusRunning:
+		return "RUNNING"
+	default:
+		return "PENDING"
+	}
+}
+
+// buildHierarchicalPath builds the full hierarchical path for a group
+func (o *Orchestrator) buildHierarchicalPath(group *report.TestGroup) string {
+	// Build the full path from parent names + group name
+	var parts []string
+
+	// Start with file path (first parent or the group itself if root)
+	if len(group.ParentNames) == 0 {
+		// This is a root group (file)
+		parts = append(parts, o.getRelativePath(group.Name))
+	} else {
+		// Add all parent names
+		for i, parentName := range group.ParentNames {
+			if i == 0 {
+				// First parent is usually the file path
+				parts = append(parts, o.getRelativePath(parentName))
+			} else {
+				// Other parents are group names
+				parts = append(parts, parentName)
+			}
+		}
+		// Add this group's name
+		parts = append(parts, group.Name)
+	}
+
+	// Join with " > " separator as specified in the plan
+	return strings.Join(parts, " > ")
+}
+
+// convertStringToTestStatus converts a string status to ipc.TestStatus
+func convertStringToTestStatus(status string) ipc.TestStatus {
+	switch status {
+	case "PASS":
+		return ipc.TestStatusPass
+	case "FAIL":
+		return ipc.TestStatusFail
+	case "SKIP":
+		return ipc.TestStatusSkip
+	case "PENDING":
+		return ipc.TestStatusPending
+	case "RUNNING":
+		return ipc.TestStatusRunning
+	default:
+		return ipc.TestStatusPending
+	}
+}
+
+// convertReportStatusToIPC converts report.TestStatus to ipc.TestStatus
+func convertReportStatusToIPC(status report.TestStatus) ipc.TestStatus {
+	switch status {
+	case report.TestStatusPass:
+		return ipc.TestStatusPass
+	case report.TestStatusFail:
+		return ipc.TestStatusFail
+	case report.TestStatusSkip:
+		return ipc.TestStatusSkip
+	case report.TestStatusPending:
+		return ipc.TestStatusPending
+	case report.TestStatusRunning:
+		return ipc.TestStatusRunning
+	default:
+		return ipc.TestStatusPending
+	}
 }
 
 // generateRunID generates a unique run identifier

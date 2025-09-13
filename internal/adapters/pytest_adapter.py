@@ -27,7 +27,7 @@ _reporter: Optional['ThreepioReporter'] = None
 
 class ThreepioReporter:
     """pytest reporter that sends test events via IPC."""
-    
+
     def __init__(self, ipc_path: str):
         self.ipc_path = ipc_path
         self.test_files = set()
@@ -37,6 +37,12 @@ class ThreepioReporter:
         self.original_stderr = sys.stderr
         self.capture_enabled = False
         self.debug_log_path = Path.cwd() / ".3pio" / "debug.log"
+
+        # Group tracking for universal abstractions
+        self.discovered_groups = set()
+        self.group_starts = set()
+        self.file_groups = {}
+
         self._ensure_debug_log_dir()
         self._log_startup()
         
@@ -96,6 +102,99 @@ class ThreepioReporter:
         """Log a debug message."""
         if os.environ.get("THREEPIO_DEBUG") == "1":
             self._log("DEBUG", message)
+
+    def get_group_id(self, hierarchy):
+        """Generate a unique ID for a group path."""
+        return ':'.join(hierarchy)
+
+    def parse_test_hierarchy(self, nodeid: str):
+        """Parse pytest nodeid into hierarchy components."""
+        parts = nodeid.split('::')
+        file_path = parts[0]
+
+        if len(parts) == 2:
+            # Simple function test: test_file.py::test_function
+            return file_path, [], parts[1]
+        elif len(parts) == 3:
+            # Class-based test: test_file.py::TestClass::test_method
+            class_name = parts[1]
+            test_name = parts[2]
+            return file_path, [class_name], test_name
+        else:
+            # Fallback for other formats
+            test_name = parts[-1]
+            suite_chain = parts[1:-1] if len(parts) > 2 else []
+            return file_path, suite_chain, test_name
+
+    def build_hierarchy_from_file(self, file_path: str, suite_chain=None):
+        """Build complete hierarchy from file and suite structure."""
+        if suite_chain is None:
+            suite_chain = []
+        hierarchy = [file_path]
+        if suite_chain:
+            hierarchy.extend(suite_chain)
+        return hierarchy
+
+    def discover_groups(self, file_path: str, suite_chain=None):
+        """Discover all groups in a hierarchy."""
+        if suite_chain is None:
+            suite_chain = []
+
+        groups = []
+
+        # First, the file itself is a group
+        groups.append({
+            'hierarchy': [file_path],
+            'name': file_path,
+            'parent_names': []
+        })
+
+        # Then each level of suites creates a nested group
+        if suite_chain:
+            for i in range(len(suite_chain)):
+                parent_names = [file_path] + suite_chain[:i]
+                group_name = suite_chain[i]
+                groups.append({
+                    'hierarchy': parent_names + [group_name],
+                    'name': group_name,
+                    'parent_names': parent_names
+                })
+
+        return groups
+
+    def ensure_groups_discovered(self, file_path: str, suite_chain=None):
+        """Send GroupDiscovered events for new groups."""
+        if suite_chain is None:
+            suite_chain = []
+
+        groups = self.discover_groups(file_path, suite_chain)
+
+        for group in groups:
+            group_id = self.get_group_id(group['hierarchy'])
+            if group_id not in self.discovered_groups:
+                self.discovered_groups.add(group_id)
+                self._log_debug(f"Discovering group: {group['name']} (parents: {group['parent_names']})")
+                self.send_event('testGroupDiscovered', {
+                    'groupName': group['name'],
+                    'parentNames': group['parent_names']
+                })
+
+    def ensure_group_started(self, hierarchy):
+        """Send GroupStart event if not already started."""
+        group_id = self.get_group_id(hierarchy)
+        if group_id not in self.group_starts:
+            self.group_starts.add(group_id)
+
+            # Find the group info from discovered groups
+            groups = self.discover_groups(hierarchy[0], hierarchy[1:])
+            for group in groups:
+                if self.get_group_id(group['hierarchy']) == group_id:
+                    self._log_debug(f"Starting group: {group['name']}")
+                    self.send_event('testGroupStart', {
+                        'groupName': group['name'],
+                        'parentNames': group['parent_names']
+                    })
+                    break
     
     def get_file_path(self, item: Item) -> str:
         """Extract the test file path from a test item."""
@@ -263,16 +362,26 @@ def pytest_collection_finish(session) -> None:
 def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
     """Called when running a single test."""
     global _reporter
-    
+
     if _reporter:
         file_path = _reporter.get_file_path(item)
-        
+
         # Send testFileStart event if this is a new file
         if file_path not in _reporter.test_files:
             _reporter.test_files.add(file_path)
             _reporter.send_event("testFileStart", {"filePath": file_path})
             _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
-            
+
+            # Discover the file as a root group and start it
+            _reporter.ensure_groups_discovered(file_path, [])
+            _reporter.ensure_group_started([file_path])
+
+            # Store file group info
+            _reporter.file_groups[file_path] = {
+                'start_time': time.time(),
+                'tests': []
+            }
+
             # Update the file path for capturing (capture already started in pytest_configure)
             _reporter.current_test_file = file_path
         elif _reporter.current_test_file != file_path:
@@ -291,13 +400,13 @@ def pytest_runtest_logreport(report: TestReport) -> None:
     if report.when != 'call':
         return
     
-    # Extract file path from nodeid (format: path/to/test.py::TestClass::test_method)
-    file_path = report.nodeid.split('::')[0]
-    
+    # Parse the test hierarchy from nodeid
+    file_path, suite_chain, test_name = _reporter.parse_test_hierarchy(report.nodeid)
+
     # Initialize results for file if needed
     if file_path not in _reporter.test_results:
         _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
-    
+
     # Determine test status
     if report.passed:
         status = "PASS"
@@ -310,26 +419,26 @@ def pytest_runtest_logreport(report: TestReport) -> None:
         _reporter.test_results[file_path]["skipped"] += 1
     else:
         status = "UNKNOWN"
-    
-    # Extract test name
-    test_parts = report.nodeid.split('::')
-    if len(test_parts) > 1:
-        test_name = '::'.join(test_parts[1:])
-    else:
-        test_name = report.nodeid
-    
-    # Build test case payload
+
+    # Ensure all parent groups are discovered and started
+    _reporter.ensure_groups_discovered(file_path, suite_chain)
+
+    # Start all parent groups in the hierarchy
+    for i in range(len(suite_chain) + 1):
+        hierarchy = [file_path] + suite_chain[:i]
+        _reporter.ensure_group_started(hierarchy)
+
+    # Build complete hierarchy for this test case
+    parent_names = _reporter.build_hierarchy_from_file(file_path, suite_chain)
+
+    # Build test case payload with group hierarchy
     payload = {
-        "filePath": file_path,
         "testName": test_name,
+        "parentNames": parent_names,
         "status": status,
         "duration": report.duration * 1000 if hasattr(report, 'duration') else 0  # Convert to milliseconds
     }
-    
-    # Add suite name if test is in a class
-    if len(test_parts) > 2:
-        payload["suiteName"] = test_parts[1]
-    
+
     # Add error information for failures
     if report.failed:
         if hasattr(report, 'longrepr') and report.longrepr:
@@ -339,8 +448,18 @@ def pytest_runtest_logreport(report: TestReport) -> None:
             "name": test_name,
             "duration": report.duration * 1000 if hasattr(report, 'duration') else 0
         })
-    
-    # Send test case event
+
+    # Track test in file group
+    if file_path in _reporter.file_groups:
+        _reporter.file_groups[file_path]['tests'].append({
+            'name': test_name,
+            'status': status,
+            'duration': report.duration * 1000 if hasattr(report, 'duration') else 0
+        })
+
+    _reporter._log_debug(f"Sending test case: {test_name} with parents: {parent_names}")
+
+    # Send test case event with group hierarchy
     _reporter.send_event("testCase", payload)
 
 
@@ -353,10 +472,11 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
     
     _reporter._log_info(f"Session finished with exit status: {exitstatus}")
     
-    # Send testFileResult events for all test files
+    # Send group result events for all test files
     for file_path in _reporter.test_files:
         results = _reporter.test_results.get(file_path, {})
-        
+        file_group = _reporter.file_groups.get(file_path, {})
+
         # Determine overall file status
         if results.get("failed", 0) > 0:
             status = "FAIL"
@@ -366,16 +486,41 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
             status = "SKIP"
         else:
             status = "UNKNOWN"
-        
+
+        # Calculate duration
+        duration = None
+        if 'start_time' in file_group:
+            duration = (time.time() - file_group['start_time']) * 1000  # Convert to milliseconds
+
+        # Calculate totals for the file group
+        totals = {
+            'total': results.get("passed", 0) + results.get("failed", 0) + results.get("skipped", 0),
+            'passed': results.get("passed", 0),
+            'failed': results.get("failed", 0),
+            'skipped': results.get("skipped", 0)
+        }
+
+        _reporter._log_debug(f"Sending group result for file: {file_path} (status: {status})")
+
+        # Send GroupResult for the file
+        _reporter.send_event("testGroupResult", {
+            "groupName": file_path,
+            "parentNames": [],
+            "status": status,
+            "duration": duration,
+            "totals": totals
+        })
+
+        # Keep legacy testFileResult for compatibility
         payload = {
             "filePath": file_path,
             "status": status
         }
-        
+
         # Add failed test details for FAIL status
         if status == "FAIL" and results.get("failed_tests"):
             payload["failedTests"] = results["failed_tests"]
-        
+
         _reporter.send_event("testFileResult", payload)
 
 

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This plan outlines the migration from 3pio's current file-centric model to a universal group abstraction that better supports diverse test runners and languages. The new model introduces a flexible hierarchy: **Test Run** → **Groups** (with optional nested subgroups) → **Test Cases**.
+This plan outlines the migration from 3pio's current file-centric model to a universal group abstraction that better supports diverse test runners and languages. The new model introduces a flexible hierarchy: **Test Run** > **Groups** (with optional nested subgroups) > **Test Cases**.
 
 ## Goals
 
@@ -41,7 +41,7 @@ Test Run
 |------------|--------|------------|
 | Jest | `describe("Button Component")` | "Button Component" |
 | pytest | `class TestButton` | "TestButton" |
-| Go | `func TestButton` with `t.Run("Component")` | "TestButton" → "Component" |
+| Go | `func TestButton` with `t.Run("Component")` | "TestButton" > "Component" |
 | Vitest | `describe("API tests")` | "API tests" |
 
 No standardization or transformation - each runner's natural naming is preserved.
@@ -187,7 +187,7 @@ type TestCase struct {
 
 #### 2.1.2 Report Regeneration Strategy
 - **When a group completes**: Regenerate its own report file with final statistics
-- **Parent update logic**: 
+- **Parent update logic**:
   - Check if this was the last pending child of parent
   - If yes: Parent is now complete → mark complete and regenerate parent report (recursive)
   - If no: Parent remains incomplete → no parent update needed
@@ -221,7 +221,7 @@ The CLI (Report Manager) generates deterministic IDs from the group names provid
 func generateGroupId(groupName string, parentNames []string) string {
     // Build full path from root to this group
     fullPath := append(parentNames, groupName)
-    
+
     // Generate deterministic ID from full path
     pathString := strings.Join(fullPath, ":")
     hash := sha256.Sum256([]byte(pathString))
@@ -240,12 +240,12 @@ func generateGroupId(groupName string, parentNames []string) string {
 // Adapter only sends names, not IDs
 function sendGroupHierarchy(testObject) {
   const fullPath = extractFullPath(testObject); // ['file.test.js', 'Parent Suite', 'Child Suite']
-  
+
   // Send discovery events for each level
   for (let i = 0; i < fullPath.length; i++) {
     const groupName = fullPath[i];
     const parentNames = fullPath.slice(0, i); // All ancestors
-    
+
     sendEvent({
       eventType: 'testGroupDiscovered',
       payload: {
@@ -317,7 +317,7 @@ send_event({
 
 if class_name:
     send_event({
-        "eventType": "testGroupDiscovered", 
+        "eventType": "testGroupDiscovered",
         "payload": {
             "groupName": class_name,
             "parentNames": [file_path]
@@ -412,7 +412,7 @@ This approach ensures consistent group identification across parallel workers wi
 func SanitizeGroupName(name string) string {
     // Convert to lowercase
     name = strings.ToLower(name)
-    
+
     // Replace filesystem-unsafe characters
     replacements := map[string]string{
         " ":  "_",     // Spaces to underscores
@@ -430,30 +430,30 @@ func SanitizeGroupName(name string) string {
         "\t": "_tab",  // Tab
         "-":  "_",     // Normalize hyphens to underscores
     }
-    
+
     // Apply replacements
     safe := name
     for old, new := range replacements {
         safe = strings.ReplaceAll(safe, old, new)
     }
-    
+
     // Universal handling - replace common separators
     safe = strings.ReplaceAll(safe, "/", "_")
     safe = strings.ReplaceAll(safe, ".", "_")
-    
+
     // Enforce length limit for all groups
     if len(safe) > 100 {
         safe = safe[:97] + "..."
     }
-    
+
     // Remove leading/trailing dots and spaces
     safe = strings.Trim(safe, ". ")
-    
+
     // Ensure non-empty
     if safe == "" {
         safe = "unnamed"
     }
-    
+
     return safe
 }
 
@@ -461,16 +461,16 @@ func GenerateGroupPath(group *TestGroup) string {
     // For nested groups, create hierarchical paths
     parts := []string{}
     current := group
-    
+
     for current != nil {
         sanitized := SanitizeGroupName(current.Name)
         parts = append([]string{sanitized}, parts...)
         current = current.Parent
     }
-    
+
     // Build full path
     fullPath := filepath.Join(parts...)
-    
+
     // Only enforce 260 character limit on Windows
     if runtime.GOOS == "windows" && len(fullPath) > 260 {
         // Truncate from left side, preserve rightmost (most specific) parts
@@ -479,7 +479,7 @@ func GenerateGroupPath(group *TestGroup) string {
         truncated := fullPath[len(fullPath)-250:]
         fullPath = hashPrefix + "_" + truncated
     }
-    
+
     return fullPath
 }
 ```
@@ -492,12 +492,12 @@ func GenerateGroupPath(group *TestGroup) string {
 ├── test-run.md                         # Main report
 ├── output.log                          # Complete stdout/stderr
 └── reports/                            # Hierarchical test reports
-    ├── github_com_user_project/        
+    ├── github_com_user_project/
     │   └── math.md                     # Contains all tests in math package
     ├── src_components_button_test_js/  # Directory for file group
     │   ├── index.md                    # File-level tests (outside describes)
     │   ├── button_rendering.md         # Tests directly in this describe + links to nested
-    │   └── button_rendering/           
+    │   └── button_rendering/
     │       ├── with_props.md          # Tests in this nested describe
     │       └── without_props.md       # Tests in this nested describe
     └── test_math_py/                   # Directory for file group
@@ -525,7 +525,7 @@ created: 2025-02-15T12:30:00.000Z
 updated: 2025-02-15T12:31:11.000Z
 ---
 
-# Test results for `with props`
+# Results for `button.test.js > button rendering > with props`
 
 ## Test case results
 
@@ -557,14 +557,15 @@ created: 2025-02-15T12:30:00.000Z
 updated: 2025-02-15T12:31:11.000Z
 ---
 
-# Test results for `Button rendering`
+# Results for `button.test.js > button rendering`
 
 ## Summary
 
-- Total tests: 4
-- Tests passed: 3
+- Total tests: 2
+- Tests passed: 1
 - Tests failed: 1
 - Subgroups: 2
+- Subgroups passed: 2
 
 ## Test case results
 
@@ -579,8 +580,8 @@ Expected disabled attribute to be present
 
 | Status | Name | Tests | Duration | Report |
 |--------|------|-------|----------|--------|
-| PASS | with props | 3 passed | 45ms | [→](with_props.md) |
-| PASS | without props | 3 passed | 38ms | [→](without_props.md) |
+| PASS | with props | 3 passed | 45ms | ./with_props.md |
+| PASS | without props | 3 passed | 38ms | ./without_props.md |
 
 ## stdout/stderr
 ```
@@ -594,21 +595,19 @@ console.log: Testing button component
 
 ---
 group_name: src/components/App.test.js
-parent_path: 
+parent_path:
 status: PASS
 duration: 5.2s
 created: 2025-02-15T12:30:00.000Z
 updated: 2025-02-15T12:31:11.000Z
 ---
 
-# Test results for `src/components/App.test.js`
+# Test results for `App.test.js`
 
 ## Summary
 
-- Total tests: 15 (via subgroups)
-- Tests passed: 15
-- Tests failed: 0
 - Subgroups: 3
+- Subgroups passed: 3
 
 ## Test case results
 
@@ -618,9 +617,9 @@ _No direct test cases at this level_
 
 | Status | Name | Tests | Duration | Report |
 |--------|------|-------|----------|--------|
-| PASS | App Component | 8 passed | 2.1s | [→](app_component.md) |
-| PASS | Navigation | 4 passed | 1.8s | [→](navigation.md) |
-| PASS | State Management | 3 passed | 1.3s | [→](state_management.md) |
+| PASS | App Component | 8 passed | 2.1s | ./app_component.md |
+| PASS | Navigation | 4 passed | 1.8s | ./navigation.md |
+| PASS | State Management | 3 passed | 1.3s | ./state_management.md |
 
 ## stdout/stderr
 ```
@@ -635,22 +634,23 @@ All tests completed successfully
 
 ---
 group_name: src/integration.test.js
-parent_path: 
 status: FAIL
 duration: 8.7s
 created: 2025-02-15T12:30:00.000Z
 updated: 2025-02-15T12:31:11.000Z
 ---
 
-# Test results for `src/integration.test.js`
+# Results for `integration.test.js`
 
 ## Summary
 
-- Total tests: 19 (3 direct + 16 in subgroups)
-- Tests passed: 14
-- Tests failed: 3
-- Tests skipped: 2
+- Total tests: 3
+- Tests passed: 2
+- Tests failed: 0
+- Tests skipped: 1
 - Subgroups: 4
+- Subgroups passed: 2
+- Subgroups failed: 2
 
 ## Test case results
 
@@ -662,10 +662,10 @@ updated: 2025-02-15T12:31:11.000Z
 
 | Status | Name | Tests | Duration | Report |
 |--------|------|-------|----------|--------|
-| PASS | Database Integration | 5 passed | 2.3s | [→](database_integration.md) |
-| FAIL | API Integration | 3 passed, 2 failed | 3.1s | [→](api_integration.md) |
-| PASS | Cache Integration | 4 passed | 1.8s | [→](cache_integration.md) |
-| FAIL | Queue Integration | 1 passed, 1 failed, 1 skipped | 1.5s | [→](queue_integration.md) |
+| PASS | Database Integration | 5 passed | 2.3s | ./database_integration.md |
+| FAIL | API Integration | 3 passed, 2 failed | 3.1s | ./api_integration.md |
+| PASS | Cache Integration | 4 passed | 1.8s | ./cache_integration.md |
+| FAIL | Queue Integration | 1 passed, 1 failed, 1 skipped | 1.5s | ./queue_integration.md |
 ```
 
 **Leaf Node Report Example (Class with Multiple Tests)**:
@@ -681,7 +681,7 @@ created: 2025-02-15T12:30:00.000Z
 updated: 2025-02-15T12:31:11.000Z
 ---
 
-# Test results for `TestMathOperations`
+# Results for `TestMathOperations`
 
 ## Summary
 
@@ -770,13 +770,13 @@ Full report: .3pio/runs/20250912T125741-funky-gestahl/test-run.md
 Beginning test execution now...
 
 RUNNING  ./src/components/Button.test.js
-RUNNING  ./src/components/Button.test.js → Button rendering
-RUNNING  ./src/components/Button.test.js → Button rendering → with props
-PASS     ./src/components/Button.test.js → Button rendering → with props (45ms)
-PASS     ./src/components/Button.test.js → Button rendering → without props (38ms)
-PASS     ./src/components/Button.test.js → Button rendering (83ms)
-RUNNING  ./src/components/Button.test.js → Button events
-FAIL     ./src/components/Button.test.js → Button events (125ms)
+RUNNING  ./src/components/Button.test.js > Button rendering
+RUNNING  ./src/components/Button.test.js > Button rendering > with props
+PASS     ./src/components/Button.test.js > Button rendering > with props (45ms)
+PASS     ./src/components/Button.test.js > Button rendering > without props (38ms)
+PASS     ./src/components/Button.test.js > Button rendering (83ms)
+RUNNING  ./src/components/Button.test.js > Button events
+FAIL     ./src/components/Button.test.js > Button events (125ms)
   See .3pio/runs/20250912T125741-funky-gestahl/reports/src_components_button_test_js/button_events/index.md
 PASS     ./src/components/Button.test.js (208ms)
 
@@ -785,7 +785,7 @@ Total time:  2.345s
 ```
 
 #### 3.2 Dynamic Group Display
-- Show hierarchical path with `→` separator
+- Show hierarchical path with `>` separator
 - Display timing for each group completion
 - Link to failed group reports
 - Aggregate statistics at the end
@@ -812,7 +812,7 @@ class ThreePioJestReporter {
   onTestStart(test) {
     // Send file as primary group
     this.sendGroupStart(test.path);
-    
+
     // Extract describe blocks as subgroups - use names as-is
     // describe("Button Component") → group name: "Button Component"
     test.ancestorTitles.forEach((title, depth) => {
@@ -843,7 +843,7 @@ def pytest_runtest_protocol(item, nextitem):
 
 #### 5.1 Deployment Strategy
 1. Full switchover to new group model
-2. All adapters updated simultaneously  
+2. All adapters updated simultaneously
 3. New event schema becomes the standard
 4. Breaking change accepted - early stage project
 
@@ -872,7 +872,6 @@ func TestMixedGroupTypes(t *testing.T) {
 
 #### 6.1 Documentation Updates
 - Architecture docs with new model
-- Migration guide for adapter writers
 - User-facing changelog
 - API documentation for new events
 
@@ -948,7 +947,7 @@ var windowsReservedNames = map[string]bool{
 
 func IsReservedName(name string) bool {
     upper := strings.ToUpper(name)
-    return windowsReservedNames[upper] || 
+    return windowsReservedNames[upper] ||
            windowsReservedNames[strings.TrimSuffix(upper, path.Ext(upper))]
 }
 ```
@@ -969,14 +968,14 @@ func HandleSpecialTestNames(name string) string {
         "works with 日本語": "works-with-japanese",
         "supports émojis 🎉": "supports-emojis",
     }
-    
+
     // Apply pattern-based replacements
     for pattern, replacement := range patterns {
         if strings.Contains(name, pattern) {
             return replacement
         }
     }
-    
+
     return name
 }
 ```
@@ -1014,21 +1013,3 @@ func HandleSpecialTestNames(name string) string {
 
 ### Risk: Flat Hierarchy Runners
 **Mitigation**: Graceful fallback to single-level groups for runners without hierarchy support
-
-## Timeline
-
-- **Weeks 1-2**: Foundation & data structures
-- **Weeks 2-3**: Report Manager updates
-- **Week 3**: Console output formatter
-- **Weeks 3-4**: Test runner adaptations
-- **Weeks 4-5**: Testing & migration
-- **Weeks 5-6**: Documentation & rollout
-
-Total estimated time: 6 weeks for complete migration
-
-## Next Steps
-
-1. Review and approve plan
-2. Create feature branch `feature/universal-abstractions`
-3. Begin Phase 1 implementation
-4. Set up tracking dashboard for migration progress

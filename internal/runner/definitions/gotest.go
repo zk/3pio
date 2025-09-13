@@ -25,16 +25,21 @@ type GoTestDefinition struct {
 	currentFile  string
 	mu           sync.RWMutex
 	ipcWriter    *IPCWriter
-	
+
 	// File timing tracking
 	fileStarted    map[string]bool    // Track if we've sent testFileStart for a file
 	fileStartTimes map[string]time.Time // Track when first test in file started
 	fileTestCounts map[string]int     // Track number of tests per file
 	fileTestsDone  map[string]int     // Track completed tests per file
 	fileStatuses   map[string]string  // Track overall status per file (PASS/FAIL)
-	
+
 	// Package-level tracking
 	packageTestFiles map[string][]string // Map of package to its test files
+
+	// Group tracking for universal abstractions
+	discoveredGroups map[string]bool // Track discovered groups to avoid duplicates
+	groupStarts      map[string]bool // Track started groups
+	fileGroups       map[string]*FileGroupInfo // Track file-level group info
 }
 
 // PackageInfo holds information about a Go package
@@ -54,6 +59,19 @@ type TestState struct {
 	StartTime time.Time
 	Output    []string
 	IsPaused  bool
+}
+
+// FileGroupInfo tracks group information for a file
+type FileGroupInfo struct {
+	StartTime time.Time
+	Tests     []TestInfo
+}
+
+// TestInfo tracks individual test information within a file group
+type TestInfo struct {
+	Name     string
+	Status   string
+	Duration float64
 }
 
 // GoTestEvent represents a single event from go test -json output
@@ -86,6 +104,9 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		fileTestsDone:    make(map[string]int),
 		fileStatuses:     make(map[string]string),
 		packageTestFiles: make(map[string][]string),
+		discoveredGroups: make(map[string]bool),
+		groupStarts:      make(map[string]bool),
+		fileGroups:       make(map[string]*FileGroupInfo),
 	}
 }
 
@@ -306,6 +327,17 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 		g.fileStarted[filePath] = true
 		g.fileStartTimes[filePath] = event.Time
 		g.sendTestFileStart(filePath)
+
+		// Discover the file as a root group and start it
+		g.ensureGroupsDiscovered(filePath, []string{})
+		g.ensureGroupStarted([]string{filePath})
+
+		// Store file group info
+		g.fileGroups[filePath] = &FileGroupInfo{
+			StartTime: event.Time,
+			Tests:     []TestInfo{},
+		}
+
 		g.logger.Debug("Sent testFileStart for %s at %v", filePath, event.Time)
 	}
 	
@@ -373,24 +405,39 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	// Determine status
 	status := strings.ToUpper(event.Action)
 	
-	// Handle subtests - extract suite name if present
-	var suiteName string
-	testName = event.Test
-	if strings.Contains(testName, "/") {
-		parts := strings.SplitN(testName, "/", 2)
-		suiteName = parts[0]
-		testName = parts[1]
+	// Parse the test hierarchy (handle subtests with "/" separator)
+	suiteChain, finalTestName := g.parseTestHierarchy(event.Test)
+
+	// Ensure all parent groups are discovered and started
+	g.ensureGroupsDiscovered(filePath, suiteChain)
+
+	// Start all parent groups in the hierarchy
+	for i := 0; i <= len(suiteChain); i++ {
+		hierarchy := append([]string{filePath}, suiteChain[:i]...)
+		g.ensureGroupStarted(hierarchy)
 	}
-	
-	// Send test case event
-	g.sendTestCase(filePath, testName, suiteName, status, event.Elapsed, state.Output)
+
+	// Build complete hierarchy for this test case
+	parentNames := g.buildHierarchyFromFile(filePath, suiteChain)
+
+	// Send test case event with group hierarchy
+	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, state.Output)
 	
 	// Clean up state
 	delete(g.testStates, key)
 	
+	// Track test in file group
+	if fileGroup, ok := g.fileGroups[filePath]; ok {
+		fileGroup.Tests = append(fileGroup.Tests, TestInfo{
+			Name:     finalTestName,
+			Status:   status,
+			Duration: event.Elapsed,
+		})
+	}
+
 	// Track file completion
 	g.fileTestsDone[filePath]++
-	
+
 	// Update file status based on test result
 	if event.Action == "fail" {
 		g.fileStatuses[filePath] = "FAIL"
@@ -410,8 +457,31 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		if startTime, ok := g.fileStartTimes[filePath]; ok {
 			elapsed = event.Time.Sub(startTime).Seconds()
 		}
-		
-		// Send testFileResult
+
+		// Calculate totals for the file group
+		fileGroup := g.fileGroups[filePath]
+		totals := map[string]interface{}{
+			"total":   len(fileGroup.Tests),
+			"passed":  0,
+			"failed":  0,
+			"skipped": 0,
+		}
+
+		for _, test := range fileGroup.Tests {
+			switch test.Status {
+			case "PASS":
+				totals["passed"] = totals["passed"].(int) + 1
+			case "FAIL":
+				totals["failed"] = totals["failed"].(int) + 1
+			case "SKIP":
+				totals["skipped"] = totals["skipped"].(int) + 1
+			}
+		}
+
+		// Send GroupResult for the file
+		g.sendGroupResult(filePath, []string{}, g.fileStatuses[filePath], elapsed, totals)
+
+		// Keep legacy testFileResult for compatibility
 		g.sendTestFileResultWithDuration(filePath, g.fileStatuses[filePath], elapsed)
 		g.logger.Debug("Sent testFileResult for %s: status=%s, duration=%.2fs", filePath, g.fileStatuses[filePath], elapsed)
 	}
@@ -582,6 +652,66 @@ func (g *GoTestDefinition) listTestsInPackage(pkgDir string) ([]string, error) {
 	return tests, nil
 }
 
+// Group management helper methods
+
+func (g *GoTestDefinition) getGroupId(hierarchy []string) string {
+	return strings.Join(hierarchy, ":")
+}
+
+func (g *GoTestDefinition) parseTestHierarchy(testName string) (suiteChain []string, finalTestName string) {
+	if strings.Contains(testName, "/") {
+		parts := strings.Split(testName, "/")
+		return parts[:len(parts)-1], parts[len(parts)-1]
+	}
+	return []string{}, testName
+}
+
+func (g *GoTestDefinition) buildHierarchyFromFile(filePath string, suiteChain []string) []string {
+	hierarchy := []string{filePath}
+	hierarchy = append(hierarchy, suiteChain...)
+	return hierarchy
+}
+
+func (g *GoTestDefinition) ensureGroupsDiscovered(filePath string, suiteChain []string) {
+	// First, the file itself is a group
+	fileHierarchy := []string{filePath}
+	fileGroupId := g.getGroupId(fileHierarchy)
+	if !g.discoveredGroups[fileGroupId] {
+		g.discoveredGroups[fileGroupId] = true
+		g.sendGroupDiscovered(filePath, []string{})
+	}
+
+	// Then each level of suites creates a nested group
+	for i := range suiteChain {
+		parentNames := append([]string{filePath}, suiteChain[:i]...)
+		groupName := suiteChain[i]
+		hierarchy := append(parentNames, groupName)
+		groupId := g.getGroupId(hierarchy)
+
+		if !g.discoveredGroups[groupId] {
+			g.discoveredGroups[groupId] = true
+			g.sendGroupDiscovered(groupName, parentNames)
+		}
+	}
+}
+
+func (g *GoTestDefinition) ensureGroupStarted(hierarchy []string) {
+	groupId := g.getGroupId(hierarchy)
+	if !g.groupStarts[groupId] {
+		g.groupStarts[groupId] = true
+
+		if len(hierarchy) == 1 {
+			// File group
+			g.sendGroupStart(hierarchy[0], []string{})
+		} else {
+			// Subtest group
+			groupName := hierarchy[len(hierarchy)-1]
+			parentNames := hierarchy[:len(hierarchy)-1]
+			g.sendGroupStart(groupName, parentNames)
+		}
+	}
+}
+
 // extractPackagePatterns extracts package patterns from go test arguments
 func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 	var patterns []string
@@ -654,6 +784,70 @@ func (g *GoTestDefinition) parseGoListOutput(output []byte) (map[string]*Package
 }
 
 // IPC event sending methods
+
+func (g *GoTestDefinition) sendGroupDiscovered(groupName string, parentNames []string) {
+	event := map[string]interface{}{
+		"eventType": "testGroupDiscovered",
+		"payload": map[string]interface{}{
+			"groupName":   groupName,
+			"parentNames": parentNames,
+		},
+	}
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testGroupDiscovered: %v", err)
+	}
+}
+
+func (g *GoTestDefinition) sendGroupStart(groupName string, parentNames []string) {
+	event := map[string]interface{}{
+		"eventType": "testGroupStart",
+		"payload": map[string]interface{}{
+			"groupName":   groupName,
+			"parentNames": parentNames,
+		},
+	}
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testGroupStart: %v", err)
+	}
+}
+
+func (g *GoTestDefinition) sendGroupResult(groupName string, parentNames []string, status string, duration float64, totals map[string]interface{}) {
+	event := map[string]interface{}{
+		"eventType": "testGroupResult",
+		"payload": map[string]interface{}{
+			"groupName":   groupName,
+			"parentNames": parentNames,
+			"status":      status,
+			"duration":    duration * 1000, // Convert seconds to milliseconds
+			"totals":      totals,
+		},
+	}
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testGroupResult: %v", err)
+	}
+}
+
+func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames []string, status string, duration float64, output []string) {
+	payload := map[string]interface{}{
+		"testName":    testName,
+		"parentNames": parentNames,
+		"status":      status,
+		"duration":    duration * 1000, // Convert seconds to milliseconds
+	}
+
+	if status == "FAIL" && len(output) > 0 {
+		payload["error"] = strings.Join(output, "")
+	}
+
+	event := map[string]interface{}{
+		"eventType": "testCase",
+		"payload":   payload,
+	}
+
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testCase: %v", err)
+	}
+}
 
 func (g *GoTestDefinition) sendTestFileStart(filePath string) {
 	event := map[string]interface{}{

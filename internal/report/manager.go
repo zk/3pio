@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zk/3pio/internal/ipc"
+	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/runner"
 )
 
@@ -48,9 +49,9 @@ type Logger interface {
 }
 
 // NewManager creates a new report manager
-func NewManager(runDir string, parser runner.OutputParser, logger Logger, detectedRunner string, modifiedCommand string) (*Manager, error) {
-	if logger == nil {
-		logger = &noopLogger{}
+func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRunner string, modifiedCommand string) (*Manager, error) {
+	if lg == nil {
+		lg = &noopLogger{}
 	}
 
 	// Create run directory
@@ -71,16 +72,29 @@ func NewManager(runDir string, parser runner.OutputParser, logger Logger, detect
 		return nil, fmt.Errorf("failed to create output.log: %w", err)
 	}
 
-	// TODO: Create GroupManager for hierarchical test organization
-	// For now, we'll just log group events without processing them
+	// Initialize GroupManager for hierarchical test organization
+	// Cast the logger to FileLogger if possible, otherwise create a new one
+	var fileLogger *logger.FileLogger
+	if fl, ok := lg.(*logger.FileLogger); ok {
+		fileLogger = fl
+	} else {
+		// Create a new file logger if cast fails
+		var err error
+		fileLogger, err = logger.NewFileLogger()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create file logger for group manager: %w", err)
+		}
+	}
+
+	groupManager := NewGroupManager(runDir, "", fileLogger)
 
 	return &Manager{
 		runDir:          runDir,
 		outputParser:    parser,
-		logger:          logger,
+		logger:          lg,
 		detectedRunner:  detectedRunner,
 		modifiedCommand: modifiedCommand,
-		groupManager:    nil, // TODO: Initialize when ready
+		groupManager:    groupManager,
 		fileHandles:     make(map[string]*os.File),
 		fileBuffers:     make(map[string][]string),
 		debouncers:      make(map[string]*time.Timer),
@@ -557,8 +571,75 @@ func (m *Manager) generateMarkdownReport() string {
 		sb.WriteString("\n```\n\n")
 	}
 
+	// Check if we should use group-based or legacy reporting
+	useGroupReporting := m.groupManager != nil && len(m.groupManager.GetRootGroups()) > 0
+
+	if useGroupReporting {
+		// Generate hierarchical summary and results using group data
+		m.generateGroupBasedReport(&sb, statusText)
+	} else {
+		// Fall back to legacy file-based reporting
+		m.generateLegacyReport(&sb, statusText)
+	}
+
+	return sb.String()
+}
+
+// generateGroupBasedReport generates summary and results using hierarchical group data
+func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText string) {
+	// Summary section with group-based statistics
+	if statusText != "ERRORED" {
+		sb.WriteString("## Summary\n\n")
+		sb.WriteString("\n")
+
+		// Calculate statistics from group data
+		rootGroups := m.groupManager.GetRootGroups()
+		totalFiles := len(rootGroups)
+		completedFiles := 0
+		passedFiles := 0
+		failedFiles := 0
+		skippedFiles := 0
+		var totalDuration float64
+
+		for _, group := range rootGroups {
+			if group.IsComplete() {
+				completedFiles++
+				switch group.Status {
+				case TestStatusPass:
+					passedFiles++
+				case TestStatusFail:
+					failedFiles++
+				case TestStatusSkip:
+					skippedFiles++
+				}
+			}
+			totalDuration += group.Duration.Seconds()
+		}
+
+		pendingFiles := totalFiles - completedFiles
+
+		sb.WriteString(fmt.Sprintf("- Total files: %d\n", totalFiles))
+		sb.WriteString(fmt.Sprintf("- Files completed: %d\n", completedFiles))
+		sb.WriteString(fmt.Sprintf("- Files passed: %d\n", passedFiles))
+		sb.WriteString(fmt.Sprintf("- Files failed: %d\n", failedFiles))
+		sb.WriteString(fmt.Sprintf("- Files skipped: %d\n", skippedFiles))
+		sb.WriteString(fmt.Sprintf("- Files pending: %d\n", pendingFiles))
+		sb.WriteString(fmt.Sprintf("- Total duration: %.2fs\n\n", totalDuration))
+	}
+
+	// Test results section with hierarchical structure
+	if len(m.groupManager.GetRootGroups()) > 0 {
+		sb.WriteString("## Test Results\n\n")
+		for _, group := range m.groupManager.GetRootGroups() {
+			m.generateGroupReportSection(sb, group, 0)
+		}
+	}
+}
+
+// generateLegacyReport generates the traditional file-based report
+func (m *Manager) generateLegacyReport(sb *strings.Builder, statusText string) {
 	// Summary (show when we have test files, hide for command errors)
-	if m.state.Status != "ERROR" && len(m.state.TestFiles) > 0 {
+	if statusText != "ERRORED" && len(m.state.TestFiles) > 0 {
 		sb.WriteString("## Summary\n\n")
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("- Total files: %d\n", m.state.TotalFiles))
@@ -581,7 +662,7 @@ func (m *Manager) generateMarkdownReport() string {
 		for _, tf := range m.state.TestFiles {
 			statusIcon := getTestFileStatusText(tf.Status)
 			filename := filepath.Base(tf.File)
-			
+
 			// Calculate total duration for this test file
 			var totalDuration float64
 			for _, tc := range tf.TestCases {
@@ -591,13 +672,106 @@ func (m *Manager) generateMarkdownReport() string {
 			}
 			// Convert milliseconds to seconds with 2 decimal places
 			durationStr := fmt.Sprintf("%.2fs", totalDuration/1000.0)
-			
+
 			reportPath := fmt.Sprintf("./reports/%s.md", sanitizePathForFilesystem(tf.File))
 			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", statusIcon, filename, durationStr, reportPath))
 		}
 	}
+}
 
-	return sb.String()
+// generateGroupReportSection generates a hierarchical report section for a group
+func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGroup, indent int) {
+	indentStr := strings.Repeat("  ", indent)
+
+	// File-level groups (root groups)
+	if len(group.ParentNames) == 0 {
+		statusIcon := getGroupStatusIcon(group.Status)
+		filename := filepath.Base(group.Name)
+		durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
+
+		sb.WriteString(fmt.Sprintf("%s**%s** - %s %s", indentStr, filename, statusIcon, durationStr))
+
+		// Add test counts
+		if group.Stats.TotalTests > 0 {
+			sb.WriteString(fmt.Sprintf(" (%d tests: %d passed, %d failed, %d skipped)",
+				group.Stats.TotalTests, group.Stats.PassedTests, group.Stats.FailedTests, group.Stats.SkippedTests))
+		}
+		sb.WriteString("\n")
+
+		// Add report link for failed files
+		if group.Status == TestStatusFail {
+			reportPath := fmt.Sprintf("./reports/%s.md", sanitizePathForFilesystem(group.Name))
+			sb.WriteString(fmt.Sprintf("%s  [View detailed report](%s)\n", indentStr, reportPath))
+		}
+	} else {
+		// Suite-level groups
+		statusIcon := getGroupStatusIcon(group.Status)
+		sb.WriteString(fmt.Sprintf("%s**%s** - %s", indentStr, group.Name, statusIcon))
+
+		if group.Stats.TotalTests > 0 {
+			sb.WriteString(fmt.Sprintf(" (%d tests)", group.Stats.TotalTests))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Show individual test cases for this group
+	for _, testCase := range group.TestCases {
+		testIcon := getTestCaseStatusIcon(testCase.Status)
+		testIndent := strings.Repeat("  ", indent+1)
+		durationStr := ""
+		if testCase.Duration > 0 {
+			durationStr = fmt.Sprintf(" (%.2fs)", testCase.Duration.Seconds())
+		}
+		sb.WriteString(fmt.Sprintf("%s%s %s%s\n", testIndent, testIcon, testCase.Name, durationStr))
+
+		// Show error for failed tests
+		if testCase.Status == TestStatusFail && testCase.Error != nil && testCase.Error.Message != "" {
+			errorIndent := strings.Repeat("  ", indent+2)
+			sb.WriteString(fmt.Sprintf("%s```\n", errorIndent))
+			sb.WriteString(fmt.Sprintf("%s%s\n", errorIndent, testCase.Error.Message))
+			sb.WriteString(fmt.Sprintf("%s```\n", errorIndent))
+		}
+	}
+
+	// Recursively display child groups
+	for _, child := range group.Subgroups {
+		m.generateGroupReportSection(sb, child, indent+1)
+	}
+
+	// Add spacing after root groups
+	if len(group.ParentNames) == 0 {
+		sb.WriteString("\n")
+	}
+}
+
+// getGroupStatusIcon returns a status icon for groups in markdown reports
+func getGroupStatusIcon(status TestStatus) string {
+	switch status {
+	case TestStatusPass:
+		return "PASS"
+	case TestStatusFail:
+		return "FAIL"
+	case TestStatusSkip:
+		return "SKIP"
+	case TestStatusRunning:
+		return "RUNNING"
+	default:
+		return "PENDING"
+	}
+}
+
+// getTestCaseStatusIcon returns a status icon for individual test cases in markdown reports
+func getTestCaseStatusIcon(status TestStatus) string {
+	switch status {
+	case TestStatusPass:
+		return "✓"
+	case TestStatusFail:
+		return "x"
+	case TestStatusSkip:
+		return "o"
+	default:
+		return "-"
+	}
 }
 
 // getTotalDuration calculates total duration from all test files
@@ -912,6 +1086,22 @@ func (m *Manager) updateIndividualFileReport(filePath string) {
 			break
 		}
 	}
+}
+
+// GetRootGroups returns root groups from the group manager for console display
+func (m *Manager) GetRootGroups() []*TestGroup {
+	if m.groupManager == nil {
+		return nil
+	}
+	return m.groupManager.GetRootGroups()
+}
+
+// GetGroup returns a specific group by ID from the group manager
+func (m *Manager) GetGroup(groupID string) (*TestGroup, bool) {
+	if m.groupManager == nil {
+		return nil, false
+	}
+	return m.groupManager.GetGroup(groupID)
 }
 
 // noopLogger is a default logger that does nothing
