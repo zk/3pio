@@ -34,7 +34,13 @@ type GoTestDefinition struct {
 	fileStatuses   map[string]string  // Track overall status per file (PASS/FAIL)
 
 	// Package-level tracking
-	packageTestFiles map[string][]string // Map of package to its test files
+	packageTestFiles  map[string][]string   // Map of package to its test files
+	packageStarted    map[string]bool       // Track if we've sent package group start
+	packageStartTimes map[string]time.Time  // Track when package started
+	packageTestCounts map[string]int        // Track number of tests per package
+	packageTestsDone  map[string]int        // Track completed tests per package
+	packageStatuses   map[string]string     // Track overall status per package
+	packageGroups     map[string]*PackageGroupInfo // Track package-level group info
 
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool // Track discovered groups to avoid duplicates
@@ -84,6 +90,12 @@ type GoTestEvent struct {
 	Elapsed float64   `json:"Elapsed,omitempty"`
 }
 
+// PackageGroupInfo tracks information for a package group
+type PackageGroupInfo struct {
+	StartTime time.Time
+	Tests     []TestInfo
+}
+
 // IPCWriter handles writing IPC events
 type IPCWriter struct {
 	path string
@@ -103,8 +115,14 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		fileTestCounts:   make(map[string]int),
 		fileTestsDone:    make(map[string]int),
 		fileStatuses:     make(map[string]string),
-		packageTestFiles: make(map[string][]string),
-		discoveredGroups: make(map[string]bool),
+		packageTestFiles:  make(map[string][]string),
+		packageStarted:    make(map[string]bool),
+		packageStartTimes: make(map[string]time.Time),
+		packageTestCounts: make(map[string]int),
+		packageTestsDone:  make(map[string]int),
+		packageStatuses:   make(map[string]string),
+		packageGroups:     make(map[string]*PackageGroupInfo),
+		discoveredGroups:  make(map[string]bool),
 		groupStarts:      make(map[string]bool),
 		fileGroups:       make(map[string]*FileGroupInfo),
 	}
@@ -318,24 +336,39 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 	if filePath == "" {
 		return
 	}
-	
-	// Check if this is the first test from this file
+
+	// Check if this is the first test from this package
+	if !g.packageStarted[event.Package] {
+		g.packageStarted[event.Package] = true
+		g.packageStartTimes[event.Package] = event.Time
+		// testFileStart event removed - using group events instead
+
+		// Discover the package as a root group and start it
+		g.ensureGroupsDiscovered(event.Package, []string{})
+		g.ensureGroupStarted([]string{event.Package})
+
+		// Store package group info
+		g.packageGroups[event.Package] = &PackageGroupInfo{
+			StartTime: event.Time,
+			Tests:     []TestInfo{},
+		}
+
+		g.logger.Debug("Package group discovered and started for %s at %v", event.Package, event.Time)
+	}
+
+	// Increment expected test count for this package
+	g.packageTestCounts[event.Package]++
+
+	// Track file for internal use
 	if !g.fileStarted[filePath] {
 		g.fileStarted[filePath] = true
 		g.fileStartTimes[filePath] = event.Time
-		// testFileStart event removed - using group events instead
-
-		// Discover the file as a root group and start it
-		g.ensureGroupsDiscovered(filePath, []string{})
-		g.ensureGroupStarted([]string{filePath})
 
 		// Store file group info
 		g.fileGroups[filePath] = &FileGroupInfo{
 			StartTime: event.Time,
 			Tests:     []TestInfo{},
 		}
-
-		g.logger.Debug("File group discovered and started for %s at %v", filePath, event.Time)
 	}
 	
 	// Increment expected test count for this file
@@ -406,24 +439,33 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	suiteChain, finalTestName := g.parseTestHierarchy(event.Test)
 
 	// Ensure all parent groups are discovered and started
-	g.ensureGroupsDiscovered(filePath, suiteChain)
+	g.ensureGroupsDiscovered(event.Package, suiteChain)
 
 	// Start all parent groups in the hierarchy
 	for i := 0; i <= len(suiteChain); i++ {
-		hierarchy := append([]string{filePath}, suiteChain[:i]...)
+		hierarchy := append([]string{event.Package}, suiteChain[:i]...)
 		g.ensureGroupStarted(hierarchy)
 	}
 
-	// Build complete hierarchy for this test case
-	parentNames := g.buildHierarchyFromFile(filePath, suiteChain)
+	// Build complete hierarchy for this test case using package
+	parentNames := g.buildHierarchyFromPackage(event.Package, suiteChain)
 
 	// Send test case event with group hierarchy
 	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, state.Output)
 	
 	// Clean up state
 	delete(g.testStates, key)
-	
-	// Track test in file group
+
+	// Track test in package group
+	if pkgGroup, ok := g.packageGroups[event.Package]; ok {
+		pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
+			Name:     finalTestName,
+			Status:   status,
+			Duration: event.Elapsed,
+		})
+	}
+
+	// Track test in file group (for internal use)
 	if fileGroup, ok := g.fileGroups[filePath]; ok {
 		fileGroup.Tests = append(fileGroup.Tests, TestInfo{
 			Name:     finalTestName,
@@ -432,7 +474,22 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		})
 	}
 
-	// Track file completion
+	// Track package completion
+	g.packageTestsDone[event.Package]++
+
+	// Update package status based on test result
+	if event.Action == "fail" {
+		g.packageStatuses[event.Package] = "FAIL"
+	} else if g.packageStatuses[event.Package] != "FAIL" {
+		// Only update to PASS/SKIP if not already failed
+		if event.Action == "pass" {
+			g.packageStatuses[event.Package] = "PASS"
+		} else if event.Action == "skip" && g.packageStatuses[event.Package] != "PASS" {
+			g.packageStatuses[event.Package] = "SKIP"
+		}
+	}
+
+	// Track file completion (for internal use)
 	g.fileTestsDone[filePath]++
 
 	// Update file status based on test result
@@ -447,24 +504,24 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		}
 	}
 	
-	// Check if all tests for this file are complete
-	if g.fileTestsDone[filePath] >= g.fileTestCounts[filePath] && g.fileTestCounts[filePath] > 0 {
+	// Check if all tests for this package are complete
+	if g.packageTestsDone[event.Package] >= g.packageTestCounts[event.Package] && g.packageTestCounts[event.Package] > 0 {
 		// Calculate duration
 		var elapsed float64
-		if startTime, ok := g.fileStartTimes[filePath]; ok {
+		if startTime, ok := g.packageStartTimes[event.Package]; ok {
 			elapsed = event.Time.Sub(startTime).Seconds()
 		}
 
-		// Calculate totals for the file group
-		fileGroup := g.fileGroups[filePath]
+		// Calculate totals for the package group
+		pkgGroup := g.packageGroups[event.Package]
 		totals := map[string]interface{}{
-			"total":   len(fileGroup.Tests),
+			"total":   len(pkgGroup.Tests),
 			"passed":  0,
 			"failed":  0,
 			"skipped": 0,
 		}
 
-		for _, test := range fileGroup.Tests {
+		for _, test := range pkgGroup.Tests {
 			switch test.Status {
 			case "PASS":
 				totals["passed"] = totals["passed"].(int) + 1
@@ -475,11 +532,11 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 			}
 		}
 
-		// Send GroupResult for the file
-		g.sendGroupResult(filePath, []string{}, g.fileStatuses[filePath], elapsed, totals)
+		// Send GroupResult for the package
+		g.sendGroupResult(event.Package, []string{}, g.packageStatuses[event.Package], elapsed, totals)
 
 		// testFileResult event removed - using group events instead
-		g.logger.Debug("Sent group result for %s: status=%s, duration=%.2fs", filePath, g.fileStatuses[filePath], elapsed)
+		g.logger.Debug("Sent group result for package %s: status=%s, duration=%.2fs", event.Package, g.packageStatuses[event.Package], elapsed)
 	}
 }
 
@@ -688,18 +745,24 @@ func (g *GoTestDefinition) buildHierarchyFromFile(filePath string, suiteChain []
 	return hierarchy
 }
 
-func (g *GoTestDefinition) ensureGroupsDiscovered(filePath string, suiteChain []string) {
-	// First, the file itself is a group
-	fileHierarchy := []string{filePath}
-	fileGroupId := g.getGroupId(fileHierarchy)
-	if !g.discoveredGroups[fileGroupId] {
-		g.discoveredGroups[fileGroupId] = true
-		g.sendGroupDiscovered(filePath, []string{})
+func (g *GoTestDefinition) buildHierarchyFromPackage(packageName string, suiteChain []string) []string {
+	hierarchy := []string{packageName}
+	hierarchy = append(hierarchy, suiteChain...)
+	return hierarchy
+}
+
+func (g *GoTestDefinition) ensureGroupsDiscovered(packageName string, suiteChain []string) {
+	// First, the package itself is a group
+	packageHierarchy := []string{packageName}
+	packageGroupId := g.getGroupId(packageHierarchy)
+	if !g.discoveredGroups[packageGroupId] {
+		g.discoveredGroups[packageGroupId] = true
+		g.sendGroupDiscovered(packageName, []string{})
 	}
 
 	// Then each level of suites creates a nested group
 	for i := range suiteChain {
-		parentNames := append([]string{filePath}, suiteChain[:i]...)
+		parentNames := append([]string{packageName}, suiteChain[:i]...)
 		groupName := suiteChain[i]
 		hierarchy := append(parentNames, groupName)
 		groupId := g.getGroupId(hierarchy)

@@ -55,7 +55,7 @@ Total time:  23.694s
 **Note on Group Names in Console Output:**
 The console output displays raw group names as provided by each test runner:
 - **Jest/Vitest**: Full file paths as discovered (e.g., `/path/to/project/math.test.js`)
-- **Go**: Test file paths (e.g., `./cmd/3pio/main_test.go`) - organized by file, not package
+- **Go**: Package import paths (e.g., `github.com/zk/3pio/cmd/3pio`)
 - **pytest**: File paths relative to test root (e.g., `test_math.py`, `tests/unit/test_string.py`)
 
 The group names are displayed exactly as provided by the test runner adapters without normalization.
