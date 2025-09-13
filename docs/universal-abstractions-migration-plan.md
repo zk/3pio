@@ -510,7 +510,15 @@ func GenerateGroupPath(group *TestGroup) string {
 **Key Principle**: Every group gets a report file that:
 - Lists all direct test cases (if any)
 - Links to all subgroups (if any)
-- Shows aggregated statistics from both direct tests and subgroups
+- Shows statistics based on content:
+  - **Direct tests only**: Show test statistics only
+  - **Both direct tests AND subgroups**: Show test statistics AND subgroup statistics
+  - **Subgroups only**: Show subgroup statistics only
+
+**Summary Section Format Rules**:
+- **Groups with direct tests only**: Show test counts (Total tests, Tests passed, Tests failed, Tests skipped)
+- **Groups with both direct tests AND subgroups**: Show test counts AND subgroup counts (Subgroups, Subgroups passed, Subgroups failed)
+- **Groups with subgroups only**: Show subgroup counts only (Subgroups, Subgroups passed, Subgroups failed)
 
 **Report Content Structure**:
 ```markdown
