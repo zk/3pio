@@ -9,7 +9,7 @@ from setuptools.command.install import install
 import shutil
 import stat
 
-PACKAGE_VERSION = "0.0.2"
+PACKAGE_VERSION = "0.2.0"
 
 # Platform and architecture mapping
 PLATFORM_MAPPING = {
