@@ -7,27 +7,35 @@ func TestPass1(t *testing.T) {
 }
 
 func TestFail1(t *testing.T) {
-	t.Fatal("First failure message")
+	t.Error("First failure message")
+	t.FailNow()
 }
 
 func TestFail2(t *testing.T) {
-	t.Fatal("Second failure message")
+	t.Error("Second failure message")
+	t.FailNow()
 }
 
 func TestPass2(t *testing.T) {
 	// This test also passes
+	if false {
+		t.Fatal("This should not run")
+	}
 }
 
 func TestFail3(t *testing.T) {
-	t.Fatal("Third failure message")
+	t.Error("Third failure message")
+	t.FailNow()
 }
 
 func TestFail4(t *testing.T) {
-	t.Fatal("Fourth failure message")
+	t.Error("Fourth failure message")
+	t.FailNow()
 }
 
 func TestFail5(t *testing.T) {
-	t.Fatal("Fifth failure message")
+	t.Error("Fifth failure message")
+	t.FailNow()
 }
 
 func TestPass3(t *testing.T) {
