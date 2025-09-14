@@ -6,11 +6,7 @@ import "time"
 type EventType string
 
 const (
-	EventTypeStdoutChunk      EventType = "stdoutChunk"
-	EventTypeStderrChunk      EventType = "stderrChunk"
-	EventTypeTestFileStart    EventType = "testFileStart"
 	EventTypeTestCase         EventType = "testCase"
-	EventTypeTestFileResult   EventType = "testFileResult"
 	EventTypeRunComplete      EventType = "runComplete"
 	EventTypeCollectionStart  EventType = "collectionStart"
 	EventTypeCollectionError  EventType = "collectionError"
@@ -32,68 +28,6 @@ const (
 type Event interface {
 	Type() EventType
 }
-
-// StdoutChunkEvent represents stdout output from a test file
-type StdoutChunkEvent struct {
-	EventType EventType `json:"eventType"`
-	Payload   struct {
-		FilePath string `json:"filePath"`
-		Chunk    string `json:"chunk"`
-	} `json:"payload"`
-}
-
-func (e StdoutChunkEvent) Type() EventType { return EventTypeStdoutChunk }
-
-// StderrChunkEvent represents stderr output from a test file
-type StderrChunkEvent struct {
-	EventType EventType `json:"eventType"`
-	Payload   struct {
-		FilePath string `json:"filePath"`
-		Chunk    string `json:"chunk"`
-	} `json:"payload"`
-}
-
-func (e StderrChunkEvent) Type() EventType { return EventTypeStderrChunk }
-
-// TestFileStartEvent indicates a test file has started running
-type TestFileStartEvent struct {
-	EventType EventType `json:"eventType"`
-	Payload   struct {
-		FilePath string `json:"filePath"`
-	} `json:"payload"`
-}
-
-func (e TestFileStartEvent) Type() EventType { return EventTypeTestFileStart }
-
-// TestCaseEvent represents an individual test case result
-type TestCaseEvent struct {
-	EventType EventType `json:"eventType"`
-	Payload   struct {
-		FilePath  string     `json:"filePath"`
-		TestName  string     `json:"testName"`
-		SuiteName string     `json:"suiteName,omitempty"`
-		Status    TestStatus `json:"status"`
-		Duration  float64    `json:"duration,omitempty"`
-		Error     string     `json:"error,omitempty"`
-	} `json:"payload"`
-}
-
-func (e TestCaseEvent) Type() EventType { return EventTypeTestCase }
-
-// TestFileResultEvent represents the completion of a test file
-type TestFileResultEvent struct {
-	EventType EventType `json:"eventType"`
-	Payload   struct {
-		FilePath    string     `json:"filePath"`
-		Status      TestStatus `json:"status"`
-		FailedTests []struct {
-			Name     string  `json:"name"`
-			Duration float64 `json:"duration,omitempty"`
-		} `json:"failedTests,omitempty"`
-	} `json:"payload"`
-}
-
-func (e TestFileResultEvent) Type() EventType { return EventTypeTestFileResult }
 
 // RunCompleteEvent indicates that the test runner has completed
 type RunCompleteEvent struct {

@@ -111,15 +111,32 @@ func TestReportFileGeneration(t *testing.T) {
 		t.Error("reports directory should exist")
 	}
 
-	// Check for individual log files
-	mathLogPath := filepath.Join(reportsDir, "math.test.js.md")
-	if !fileExists(mathLogPath) {
-		t.Error("math.test.js.md file should exist")
+	// Check for hierarchical report files (index.md files in group directories)
+	var foundMathReport, foundStringReport bool
+	err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), "index.md") {
+			// Note: paths are sanitized with underscores replacing dots and slashes
+			if strings.Contains(path, "math_test") {
+				foundMathReport = true
+			}
+			if strings.Contains(path, "string_test") {
+				foundStringReport = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Errorf("Failed to walk reports directory: %v", err)
 	}
 
-	stringLogPath := filepath.Join(reportsDir, "string.test.js.md")
-	if !fileExists(stringLogPath) {
-		t.Error("string.test.js.md file should exist")
+	if !foundMathReport {
+		t.Error("Expected to find report for math.test.js in hierarchical structure")
+	}
+	if !foundStringReport {
+		t.Error("Expected to find report for string.test.js in hierarchical structure")
 	}
 }
 
@@ -154,46 +171,22 @@ func TestTestRunMdContent(t *testing.T) {
 		t.Error("test-run.md should contain '# 3pio Test Run'")
 	}
 
-	if !strings.Contains(content, "## Summary") {
-		t.Error("test-run.md should contain '## Summary'")
+	// Check that test files are referenced in inline format (not table)
+	if !strings.Contains(content, "math.test.js") {
+		t.Error("test-run.md should contain math.test.js")
 	}
 
-	if !strings.Contains(content, "- Total files: 2") {
-		t.Error("test-run.md should show '- Total files: 2'")
+	if !strings.Contains(content, "string.test.js") {
+		t.Error("test-run.md should contain string.test.js")
 	}
 
-	if !strings.Contains(content, "- Files completed: 2") {
-		t.Error("test-run.md should show '- Files completed: 2'")
+	// Check for status indicators in inline format
+	if !strings.Contains(content, "PASS") {
+		t.Error("test-run.md should contain PASS status")
 	}
 
-	if !strings.Contains(content, "- Files passed: 1") {
-		t.Error("test-run.md should show '- Files passed: 1'")
-	}
-
-	if !strings.Contains(content, "- Files failed: 1") {
-		t.Error("test-run.md should show '- Files failed: 1'")
-	}
-
-	// Check math.test.js in test file results table
-	if !strings.Contains(content, "| PASS | math.test.js |") {
-		t.Error("test-run.md should contain math.test.js with PASS status in table")
-	}
-
-	// Check string.test.js in test file results table with FAIL status
-	if !strings.Contains(content, "| FAIL | string.test.js |") {
-		t.Error("test-run.md should contain string.test.js with FAIL status in table")
-	}
-
-	// Individual test details are now in separate report files
-	// Main report only shows file-level summary in table format
-
-	// Check that report files are referenced in the table
-	if !strings.Contains(content, "./reports/math.test.js.md") {
-		t.Error("test-run.md should reference math.test.js.md in table")
-	}
-
-	if !strings.Contains(content, "./reports/string.test.js.md") {
-		t.Error("test-run.md should reference string.test.js.md in table")
+	if !strings.Contains(content, "FAIL") {
+		t.Error("test-run.md should contain FAIL status")
 	}
 
 	// Check that output.log is referenced in header

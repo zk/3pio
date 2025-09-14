@@ -153,7 +153,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	// First, decode to determine event type
 	var rawEvent map[string]interface{}
 	if err := json.Unmarshal(line, &rawEvent); err != nil {
-		m.logger.Error("Failed to parse event: %v", err)
+		m.logger.Debug("Failed to parse event: %v", err)
 		return
 	}
 
@@ -166,42 +166,11 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	// Parse based on event type
 	var event Event
 	switch EventType(eventType) {
-	case EventTypeStdoutChunk:
-		var e StdoutChunkEvent
-		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse stdout chunk event: %v", err)
-			return
-		}
-		event = e
-
-	case EventTypeStderrChunk:
-		var e StderrChunkEvent
-		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse stderr chunk event: %v", err)
-			return
-		}
-		event = e
-
-	case EventTypeTestFileStart:
-		var e TestFileStartEvent
-		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse test file start event: %v", err)
-			return
-		}
-		event = e
-
 	case EventTypeTestCase:
-		var e TestCaseEvent
+		// Only new group-based testCase events are supported
+		var e GroupTestCaseEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse test case event: %v", err)
-			return
-		}
-		event = e
-
-	case EventTypeTestFileResult:
-		var e TestFileResultEvent
-		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse test file result event: %v", err)
+			m.logger.Debug("Failed to parse group test case event: %v", err)
 			return
 		}
 		event = e
@@ -209,7 +178,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeRunComplete:
 		var e RunCompleteEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse run complete event: %v", err)
+			m.logger.Debug("Failed to parse run complete event: %v", err)
 			return
 		}
 		event = e
@@ -217,7 +186,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeCollectionStart:
 		var e CollectionStartEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse collection start event: %v", err)
+			m.logger.Debug("Failed to parse collection start event: %v", err)
 			return
 		}
 		event = e
@@ -225,7 +194,7 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeCollectionError:
 		var e CollectionErrorEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse collection error event: %v", err)
+			m.logger.Debug("Failed to parse collection error event: %v", err)
 			return
 		}
 		event = e
@@ -233,7 +202,47 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 	case EventTypeCollectionFinish:
 		var e CollectionFinishEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Error("Failed to parse collection finish event: %v", err)
+			m.logger.Debug("Failed to parse collection finish event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupDiscovered:
+		var e GroupDiscoveredEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group discovered event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupStart:
+		var e GroupStartEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group start event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupResult:
+		var e GroupResultEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group result event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupStdout:
+		var e GroupStdoutChunkEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group stdout event: %v", err)
+			return
+		}
+		event = e
+
+	case EventTypeGroupStderr:
+		var e GroupStderrChunkEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group stderr event: %v", err)
 			return
 		}
 		event = e

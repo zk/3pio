@@ -88,7 +88,7 @@ function ensureGroupsDiscovered(filePath, ancestorTitles) {
     if (!discoveredGroups.has(groupId)) {
       discoveredGroups.set(groupId, group);
       sendEvent({
-        eventType: 'testGroupDiscovered',
+        eventType: 'groupDiscovered',
         payload: {
           groupName: group.name,
           parentNames: group.parentNames
@@ -109,7 +109,7 @@ function ensureGroupStarted(hierarchy) {
     const group = discoveredGroups.get(groupId);
     if (group) {
       sendEvent({
-        eventType: 'testGroupStart',
+        eventType: 'groupStart',
         payload: {
           groupName: group.name,
           parentNames: group.parentNames
@@ -188,23 +188,15 @@ class ThreePioJestReporter {
       const error = testCaseResult.failureMessages?.join('\n\n');
       
       // Send the test case event with group hierarchy
-      const payload = {
-        testName: testName,
-        parentNames: parentNames,
-        status: status,
-        duration: testCaseResult.duration
-      };
-
-      // Only include error if it exists
-      if (error) {
-        payload.error = {
-          message: error
-        };
-      }
-
       sendEvent({
-        eventType: 'testCase',
-        payload: payload
+        eventType: 'groupTestCase',
+        payload: {
+          testName: testName,
+          parentNames: parentNames,
+          status: status,
+          duration: testCaseResult.duration,
+          error: error
+        }
       });
       
       // Track test in file group
@@ -308,7 +300,7 @@ class ThreePioJestReporter {
             const duration = startTime ? Date.now() - startTime : undefined;
             
             sendEvent({
-              eventType: 'testGroupResult',
+              eventType: 'groupResult',
               payload: {
                 groupName: groupName,
                 parentNames: parentNames,
@@ -328,7 +320,7 @@ class ThreePioJestReporter {
     const fileDuration = fileGroup?.startTime ? Date.now() - fileGroup.startTime : undefined;
     
     sendEvent({
-      eventType: 'testGroupResult',
+      eventType: 'groupResult',
       payload: {
         groupName: test.path,
         parentNames: [],

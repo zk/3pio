@@ -131,6 +131,22 @@ Run tests without coverage during development:
 - `THREEPIO_IPC_PATH` must be explicitly passed to child processes
 - Adapter paths must use absolute paths to avoid resolution issues
 
+## IPC Concurrency
+
+### Concurrent Adapter Writes
+
+When multiple test adapters run in parallel, they write to the same IPC file without explicit locking:
+
+- **Reliance on OS guarantees**: 3pio depends on operating system atomic append guarantees
+  - Linux/macOS: 4KB atomic writes (PIPE_BUF)
+  - Windows: ~4KB atomic writes (undocumented but reliable in practice)
+- **JSON Lines format**: Each event is a single line, typically 100-1000 bytes
+- **Risk**: Theoretical possibility of interleaved writes if messages exceed 4KB
+- **In practice**: Safe due to small message sizes staying well under OS limits
+- **Trade-off**: Accepting minimal risk for simplicity vs adding locking complexity
+
+This is not expected to cause issues in normal operation but is documented for transparency.
+
 
 ## File System Limitations
 

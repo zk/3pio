@@ -37,6 +37,7 @@ func TestOrchestrator_New(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	if orch == nil {
 		t.Fatal("Expected orchestrator to be created")
@@ -98,6 +99,7 @@ func TestOrchestrator_RunnerDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	// Test runner detection (this would normally require actual execution)
 	// For now, just verify the orchestrator was created successfully
@@ -116,6 +118,7 @@ func TestOrchestrator_GetExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	// Default exit code should be 0
 	if exitCode := orch.GetExitCode(); exitCode != 0 {
@@ -145,6 +148,7 @@ func TestOrchestrator_RunWithInvalidRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	// This should fail with "no test runner detected"
 	err = orch.Run()
@@ -257,6 +261,7 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	// Attempt to start the run process (this will fail because npm isn't available,
 	// but it should create the directory structure)
@@ -292,6 +297,7 @@ func TestOrchestrator_ConsoleLogging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	// The orchestrator should have a logger set
 	if orch.logger == nil {
@@ -325,6 +331,7 @@ func TestOrchestrator_UpdateDisplayedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
+	defer orch.Close() // Clean up resources
 
 	// Test the internal displayedFiles tracking
 	testFile1 := "test1.js"

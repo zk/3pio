@@ -32,6 +32,49 @@ This document captures key architectural and design decisions made during the de
 - Cannot estimate test suite size before execution begins
 - These trade-offs are acceptable given 3pio's AI-first design philosophy
 
+## Go Package Status Display (2025-09-13)
+
+**Decision**: Display `NO_TESTS` status for Go packages that have no test files.
+
+**Background**: Go's test runner uniquely reports on ALL packages when running `go test ./...`, including those without any test files. Other test runners (Jest, Vitest, pytest) only report on files that match test patterns.
+
+**Status Meanings**:
+- `PASS` - Package has tests and they all passed
+- `FAIL` - Package has tests and at least one failed
+- `SKIP` - Tests were skipped (e.g., with build tags or t.Skip())
+- `NO_TESTS` - Package exists but has no test files (Go specific)
+
+**Rationale**:
+1. **Clear Distinction**: Differentiates between packages that have tests but skip them vs packages with no tests at all
+2. **Coverage Visibility**: Makes it immediately obvious which packages lack test coverage entirely
+3. **Go Philosophy Alignment**: Aligns with Go's opinionated stance that all packages should have tests
+
+## Failure Display Format (2025-09-13)
+
+**Decision**: Show up to 3 failed test names in console output with "+N more" indicator for additional failures.
+
+**Example Output**:
+```
+FAIL     github.com/zk/3pio/tests/integration_go (18.82s)
+  x TestMonorepoIPCPathInjection
+  x TestReportFileGeneration
+  x TestErrorRecovery
+  +12 more
+  See .3pio/runs/20250913T135142-loopy-neelix/reports/github_com_zk_3pio_tests_integration_go/index.md
+```
+
+**Rationale**:
+1. **Context Efficiency**: Provides immediate visibility into which specific tests failed without overwhelming the console
+2. **Actionable Information**: Developers can quickly identify patterns in failures (e.g., all auth tests failing)
+3. **Progressive Disclosure**: Full failure details are available in the report file for those who need them
+4. **Consistent Format**: Matches patterns used by other modern test runners
+
+**Implementation Details**:
+- Failed test names are collected recursively from the entire test group hierarchy
+- Display order matches the order tests were executed
+- Report path is always shown last for easy access to full details
+- Single failures don't show the "+N more" indicator
+
 ## Dynamic Test Discovery
 
 **Decision**: Support both static and dynamic test file discovery modes.

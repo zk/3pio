@@ -24,6 +24,23 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 
 ## Test Runner Support
 
+### Go Test (Native)
+
+**Implementation**: Native JSON processing without external adapter
+- No adapter file required - processes `go test -json` output directly
+- `GoTestDefinition` in `internal/runner/definitions/gotest.go`
+- Automatically adds `-json` flag if not present
+- Maps packages to test files via `go list -json`
+- Tracks test state for parallel test attribution
+- Handles cached test results with CACH status
+
+**Special Considerations**:
+- Uses Go's built-in JSON output format (available since Go 1.10)
+- Processes stdout directly in the orchestrator
+- Supports subtests with "/" separator in names
+- Handles parallel test output with pause/cont state tracking
+- Detects cached packages and reports them separately
+
 ### Jest Adapter
 
 **Implementation**: Reporter interface with lifecycle methods

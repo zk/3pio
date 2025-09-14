@@ -2,7 +2,9 @@
 
 ## Overview
 
-3pio is a context-friendly test runner adapter that translates traditional test runner output (Jest, Vitest, pytest) into structured, persistent reports optimized for AI agents and developers. This document provides a comprehensive view of the Go-based architecture.
+3pio is a context-friendly test runner for frameworks like Jest, Vitest, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+
+It uses a project's existing test runner to run tests via a main process, and depending on the specific test runner it inject adapters or capture output from the test process to write a heirarchy of test results on the filesystem in a way that is easy for coding agents to understand and work with.
 
 ## System Components
 
@@ -38,14 +40,24 @@ Manages test runner detection and configuration:
 - Handles various invocation patterns
 
 ### 4. Report Manager (`internal/report/`)
-Handles all report generation with incremental writing:
+Handles all report generation with hierarchical group-based organization:
 - Creates and manages run directory structure
-- Processes IPC events to update test state
-- Manages file handles for incremental log writing
-- Writes test-run.md report with test case details
-- Generates individual test log files per test file
+- Delegates test state management to Group Manager
+- Manages hierarchical group reports (no longer file-centric)
+- Writes test-run.md report with group hierarchy
+- Generates group-based reports with nested structure
 - Implements debounced writes for performance
 - Thread-safe state management with sync.RWMutex
+
+#### Group Manager (`internal/report/group_manager.go`)
+Manages test hierarchy using universal group abstractions:
+- Processes group discovery, start, and result events
+- Maintains hierarchical group tree structure
+- Generates deterministic IDs from group paths using SHA256
+- Creates filesystem-safe paths for group reports
+- Propagates status from children to parent groups
+- Handles arbitrary nesting depth (files, describes, suites, classes)
+- Supports all test runners with unified abstraction
 
 ### 5. IPC Manager (`internal/ipc/`)
 Provides file-based communication between CLI and test adapters:
@@ -68,22 +80,39 @@ JavaScript and Python reporters embedded in the Go binary:
 
 ### Execution Sequence
 
-1. User executes `3pio npm test`
+1. User executes `3pio npm test` or `3pio go test`
 2. CLI parses arguments and creates Orchestrator
 3. Orchestrator generates run ID (e.g., `20250911T120000Z-brave-luke`)
 4. Runner Manager detects test runner
 5. Orchestrator creates directory structure
-6. Embedded adapters extracted to temp directory
-7. Report Manager initialized with run metadata
-8. IPC Manager starts watching for events
-9. Orchestrator spawns test process with modified command
-10. Test adapter sends events via IPC
-11. IPC Manager reads and parses events
-12. Report Manager processes events incrementally
-13. Orchestrator displays progress to console
-14. Process completes or is interrupted
-15. Report Manager finalizes all files
-16. Orchestrator exits with test runner's exit code
+6. For adapter-based runners (Jest/Vitest/pytest):
+   - Embedded adapters extracted to temp directory
+   - Command modified to include adapter
+7. For native runners (Go test):
+   - Command modified to add `-json` flag
+   - No adapter extraction needed
+8. Report Manager initialized with Group Manager
+9. IPC Manager starts watching for events
+10. Orchestrator spawns test process with modified command
+11. For adapter-based runners:
+    - Test adapter discovers group hierarchy
+    - Sends testGroupDiscovered events for all groups
+    - Sends testGroupStart when groups begin execution
+    - Sends testCase events with parent hierarchy
+    - Sends testGroupResult when groups complete
+12. For native runners:
+    - Orchestrator processes JSON output directly
+    - Generates group events from package/test structure
+13. IPC Manager reads and parses events
+14. Group Manager processes events:
+    - Creates groups on-demand from discovery events
+    - Builds hierarchical tree structure
+    - Generates deterministic IDs from paths
+15. Report Manager generates group reports incrementally
+16. Orchestrator displays hierarchical progress to console
+17. Process completes or is interrupted
+18. Group Manager finalizes all group reports
+19. Orchestrator exits with test runner's exit code
 
 ### Concurrent Processing
 
@@ -98,13 +127,27 @@ The system uses Go's concurrency features:
 
 ### Event Types
 
-All adapters communicate using JSON Lines format with these events:
+All adapters communicate using JSON Lines format with group-based events:
 
-#### testFileStart
+#### testGroupDiscovered
 ```json
 {
-  "eventType": "testFileStart",
-  "payload": {"filePath": "src/math.test.js"}
+  "eventType": "testGroupDiscovered",
+  "payload": {
+    "groupName": "Button Component",
+    "parentNames": ["src/components/Button.test.js", "UI Components"]
+  }
+}
+```
+
+#### testGroupStart
+```json
+{
+  "eventType": "testGroupStart",
+  "payload": {
+    "groupName": "Math operations",
+    "parentNames": ["src/math.test.js"]
+  }
 }
 ```
 
@@ -113,31 +156,31 @@ All adapters communicate using JSON Lines format with these events:
 {
   "eventType": "testCase",
   "payload": {
-    "filePath": "src/math.test.js",
     "testName": "should add numbers",
-    "suiteName": "Math operations",
+    "parentNames": ["src/math.test.js", "Math operations"],
     "status": "PASS",
     "duration": 0.023,
-    "error": null
+    "error": null,
+    "stdout": "optional captured stdout",
+    "stderr": "optional captured stderr"
   }
 }
 ```
 
-#### testFileResult
+#### testGroupResult
 ```json
 {
-  "eventType": "testFileResult",
-  "payload": {"filePath": "src/math.test.js", "status": "PASS"}
-}
-```
-
-#### stdoutChunk / stderrChunk
-```json
-{
-  "eventType": "stdoutChunk",
+  "eventType": "testGroupResult",
   "payload": {
-    "filePath": "src/math.test.js",
-    "chunk": "Console log output\n"
+    "groupName": "Math operations",
+    "parentNames": ["src/math.test.js"],
+    "status": "PASS",
+    "duration": 1.23,
+    "totals": {
+      "passed": 10,
+      "failed": 2,
+      "skipped": 1
+    }
   }
 }
 ```
@@ -163,14 +206,21 @@ Note: Collection events provide immediate feedback during test discovery phase
 .3pio/
 ├── runs/
 │   └── [runID]/
-│       ├── test-run.md           # Main report
-│       ├── output.log             # Complete stdout/stderr
-│       └── reports/              # Individual test reports
-│           ├── math.test.js.log
-│           └── string.test.js.log
+│       ├── test-run.md                         # Main report with group hierarchy
+│       ├── output.log                          # Complete stdout/stderr
+│       └── reports/                            # Hierarchical group reports
+│           ├── src_components_button_test_js/  # File group directory
+│           │   ├── index.md                    # File-level tests
+│           │   ├── button_rendering.md         # Describe block tests
+│           │   └── button_rendering/           # Nested describe
+│           │       ├── with_props.md          # Nested tests
+│           │       └── without_props.md       # Nested tests
+│           └── test_math_py/                   # Python file group
+│               ├── index.md                    # Module-level tests
+│               └── testmathoperations.md       # Class-based tests
 ├── ipc/
-│   └── [runID].jsonl            # IPC communication
-└── debug.log                      # Debug logging
+│   └── [runID].jsonl                          # IPC communication
+└── debug.log                                   # Debug logging
 ```
 
 ### Source Code Structure
@@ -187,6 +237,13 @@ tests/                  # Integration tests and fixtures
 ```
 
 ## Key Design Decisions
+
+### Universal Group Abstractions
+- Hierarchical model supports all test runners
+- Groups replace file-centric organization
+- Arbitrary nesting depth (files → describes → suites)
+- Deterministic ID generation using SHA256
+- Filesystem-safe path generation with sanitization
 
 ### Embedded Adapters
 - Compiled into binary for zero dependencies

@@ -29,14 +29,15 @@ func TestVitestFailedTestsReporting(t *testing.T) {
 		t.Error("Expected non-zero exit code for failing tests")
 	}
 
-	// Should show failed test file
+	// Should show failed test file in the new inline format
 	if !strings.Contains(output, "FAIL") {
 		t.Error("Should show failed test file")
 	}
 
-	// Should show individual failed test names (this is what we're testing)
-	if !strings.Contains(output, "✕ should fail this test") {
-		t.Error("Should show individual failed test names")
+	// Should show individual failed test names in the inline hierarchical format
+	// The test name may include suite name like "String operations > should fail this test"
+	if !strings.Contains(output, "should fail this test") {
+		t.Error("Should show individual failed test names in inline format")
 	}
 
 	// Verify the console output shows the specific test failure

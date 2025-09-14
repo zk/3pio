@@ -87,11 +87,12 @@ make build
 
 ### IPC Event Schema
 Events written to `.3pio/ipc/[timestamp].jsonl`:
-- `stdoutChunk`: `{ eventType: "stdoutChunk", payload: { filePath, chunk } }`
-- `stderrChunk`: `{ eventType: "stderrChunk", payload: { filePath, chunk } }`
-- `testCase`: `{ eventType: "testCase", payload: { filePath, testName, suiteName?, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
-- `testFileResult`: `{ eventType: "testFileResult", payload: { filePath, status: "PASS"|"FAIL"|"SKIP" } }`
-- `testFileStart`: `{ eventType: "testFileStart", payload: { filePath } }`
+- `testGroupDiscovered`: `{ eventType: "testGroupDiscovered", payload: { groupName, parentNames } }`
+- `testGroupStart`: `{ eventType: "testGroupStart", payload: { groupName, parentNames } }`
+- `testCase`: `{ eventType: "testCase", payload: { testName, parentNames, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
+- `testGroupResult`: `{ eventType: "testGroupResult", payload: { groupName, parentNames, status, duration?, totals? } }`
+- `groupStdout`: `{ eventType: "groupStdout", payload: { groupName, parentNames, chunk } }`
+- `groupStderr`: `{ eventType: "groupStderr", payload: { groupName, parentNames, chunk } }`
 
 ### Adapter Development
 - Adapters must be **silent** - no stdout/stderr output
@@ -159,9 +160,10 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 
 For detailed information about these issues and their solutions, see `docs/known-issues.md`.
 - Never use emojis in output
-- All debug, info and error logging is written to `.3pio/debug.log`
+- All debug and info logging is written to `.3pio/debug.log`
 - Each test run session is clearly marked with timestamps in the debug log
-- Error messages are also displayed to stderr for immediate visibility
+- Only critical errors that require user attention are displayed to stderr
+- Parsing errors and internal issues are logged to debug.log only, not console output
 
 
 
