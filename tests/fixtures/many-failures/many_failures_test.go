@@ -7,13 +7,13 @@ func TestPass1(t *testing.T) {
 }
 
 func TestFail1(t *testing.T) {
-	t.Error("First failure message")
-	t.FailNow()
+	t.Errorf("First failure message - this test must fail")
+	t.Fatal("FORCE FAILURE - this should never pass")
 }
 
 func TestFail2(t *testing.T) {
-	t.Error("Second failure message")
-	t.FailNow()
+	t.Errorf("Second failure message - this test must fail")
+	t.Fatal("FORCE FAILURE - this should never pass")
 }
 
 func TestPass2(t *testing.T) {
@@ -24,18 +24,18 @@ func TestPass2(t *testing.T) {
 }
 
 func TestFail3(t *testing.T) {
-	t.Error("Third failure message")
-	t.FailNow()
+	t.Errorf("Third failure message - this test must fail")
+	t.Fatal("FORCE FAILURE - this should never pass")
 }
 
 func TestFail4(t *testing.T) {
-	t.Error("Fourth failure message")
-	t.FailNow()
+	t.Errorf("Fourth failure message - this test must fail")
+	t.Fatal("FORCE FAILURE - this should never pass")
 }
 
 func TestFail5(t *testing.T) {
-	t.Error("Fifth failure message")
-	t.FailNow()
+	t.Errorf("Fifth failure message - this test must fail")
+	t.Fatal("FORCE FAILURE - this should never pass")
 }
 
 func TestPass3(t *testing.T) {
