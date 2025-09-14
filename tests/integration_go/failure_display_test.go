@@ -53,15 +53,15 @@ func TestFailureDisplayFormat(t *testing.T) {
 
 	// Verify the failure display format
 	t.Run("shows_up_to_3_failures", func(t *testing.T) {
-		// Check that we show exactly 3 test names
-		if !strings.Contains(output, "x TestFail1") && !strings.Contains(output, "× TestFail1") {
-			t.Errorf("Expected to see 'x TestFail1' in output")
+		// Check that we show exactly 3 test names (with indentation)
+		if !strings.Contains(output, "  x TestFail1") && !strings.Contains(output, "  × TestFail1") {
+			t.Errorf("Expected to see '  x TestFail1' in output")
 		}
-		if !strings.Contains(output, "x TestFail2") && !strings.Contains(output, "× TestFail2") {
-			t.Errorf("Expected to see 'x TestFail2' in output")
+		if !strings.Contains(output, "  x TestFail2") && !strings.Contains(output, "  × TestFail2") {
+			t.Errorf("Expected to see '  x TestFail2' in output")
 		}
-		if !strings.Contains(output, "x TestFail3") && !strings.Contains(output, "× TestFail3") {
-			t.Errorf("Expected to see 'x TestFail3' in output")
+		if !strings.Contains(output, "  x TestFail3") && !strings.Contains(output, "  × TestFail3") {
+			t.Errorf("Expected to see '  x TestFail3' in output")
 		}
 	})
 
@@ -84,7 +84,7 @@ func TestFailureDisplayFormat(t *testing.T) {
 
 	t.Run("does_not_show_fourth_failure", func(t *testing.T) {
 		// Verify we don't show the 4th failure name (TestFail4)
-		if strings.Contains(output, "x TestFail4") || strings.Contains(output, "× TestFail4") {
+		if strings.Contains(output, "  x TestFail4") || strings.Contains(output, "  × TestFail4") {
 			t.Errorf("Should not show TestFail4 (4th failure) in output")
 		}
 	})
@@ -144,8 +144,8 @@ func TestSingleFailure(t *testing.T) {
 	output := stdout.String()
 
 	// Should show the single failure without "+N more"
-	// Check for the failure marker with flexible whitespace
-	if !strings.Contains(output, "x TestSingleFailure") && !strings.Contains(output, "× TestSingleFailure") {
+	// Check for the failure marker with indentation
+	if !strings.Contains(output, "  x TestSingleFailure") && !strings.Contains(output, "  × TestSingleFailure") {
 		t.Errorf("Expected to see single failure in output, got:\n%s", output)
 	}
 	if strings.Contains(output, "more") {
