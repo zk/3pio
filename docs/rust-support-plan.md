@@ -223,12 +223,21 @@ Example mappings:
 
 **Note**: Workspace support is functional but has a limitation - cargo test's JSON output doesn't include crate names when using `--workspace`. Tests from all crates are grouped by their module names (tests, integration_tests) rather than by crate. Full crate-level grouping would require parsing non-JSON output lines.
 
-### Phase 3: cargo-nextest Support 🔧 IMPLEMENTED, NEEDS TESTING
+### Phase 3: cargo-nextest Support ✅ COMPLETE
 - [x] Create `NextestDefinition` struct
 - [x] Implement nextest-specific JSON parsing
-- [ ] Handle nextest's partition feature
 - [x] Return empty array from `GetTestFiles()` for dynamic discovery
-- [ ] Test with large parallel test suites (needs nextest installed)
+- [x] Test with single crate and workspace projects
+- [x] Verify nextest provides better crate identification than cargo test
+- [ ] Handle nextest's partition feature (deferred to Phase 4)
+- [ ] Test with large parallel test suites (deferred to Phase 4)
+
+**Implementation Notes:**
+- cargo-nextest requires `NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1` environment variable
+- Uses `--message-format libtest-json` flag for structured output
+- Test names in nextest format: `crate_name::module$test_name` (uses `$` separator)
+- **Advantage over cargo test**: Correctly identifies crate names in workspace mode
+- Successfully handles all test states: pass, fail, skip/ignore
 
 ### Phase 4: Advanced Features ⏳ IN PROGRESS
 - [x] Doctest support for cargo test (basic - shows 0 tests)

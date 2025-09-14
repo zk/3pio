@@ -80,17 +80,17 @@ func (n *NextestDefinition) Name() string {
 
 // Detect checks if the command is for cargo nextest
 func (n *NextestDefinition) Detect(args []string) bool {
-	if len(args) < 3 {
+	if len(args) < 2 {
 		return false
 	}
 
-	// Check for "cargo nextest run" command
-	if args[0] == "cargo" && args[1] == "nextest" && args[2] == "run" {
+	// Check for "cargo nextest" command (with or without "run")
+	if args[0] == "cargo" && args[1] == "nextest" {
 		return true
 	}
 
 	// Check for full path to cargo binary with nextest
-	if strings.HasSuffix(args[0], "/cargo") && len(args) > 2 && args[1] == "nextest" && args[2] == "run" {
+	if strings.HasSuffix(args[0], "/cargo") && len(args) > 1 && args[1] == "nextest" {
 		return true
 	}
 
@@ -99,10 +99,22 @@ func (n *NextestDefinition) Detect(args []string) bool {
 
 // ModifyCommand adds JSON output flags to cargo nextest command
 func (n *NextestDefinition) ModifyCommand(cmd []string, ipcPath, runID string) []string {
-	result := make([]string, 0, len(cmd)+2)
+	result := make([]string, 0, len(cmd)+4)
 
 	// Copy original command
 	result = append(result, cmd...)
+
+	// If "run" is not present, add it
+	hasRun := false
+	for _, arg := range cmd {
+		if arg == "run" {
+			hasRun = true
+			break
+		}
+	}
+	if !hasRun {
+		result = append(result, "run")
+	}
 
 	// Add JSON output format
 	result = append(result, "--message-format", "libtest-json")
@@ -463,7 +475,7 @@ func (n *NextestDefinition) sendIPCEvent(event map[string]interface{}) {
 	}
 }
 
-// SetEnvironment returns empty - nextest doesn't need special environment variables
+// SetEnvironment returns the required environment variable for nextest JSON output
 func (n *NextestDefinition) SetEnvironment() []string {
-	return []string{}
+	return []string{"NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1"}
 }

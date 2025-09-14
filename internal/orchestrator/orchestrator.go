@@ -238,6 +238,12 @@ func (o *Orchestrator) Run() error {
 		o.logger.Debug("Added RUSTC_BOOTSTRAP=1 for cargo test JSON output")
 	}
 
+	// Add NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1 for cargo nextest to enable JSON output
+	if len(o.command) >= 2 && o.command[0] == "cargo" && o.command[1] == "nextest" {
+		cmd.Env = append(cmd.Env, "NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1")
+		o.logger.Debug("Added NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1 for cargo nextest JSON output")
+	}
+
 	// Connect stdin to allow interactive prompts
 	cmd.Stdin = os.Stdin
 
