@@ -1,6 +1,6 @@
 {
   "name": "@heyzk/3pio",
-  "version": "0.0.2",
+  "version": "0.2.0",
   "description": "A context-optimized test runner for coding agents",
   "bin": {
     "3pio": "bin/3pio"
