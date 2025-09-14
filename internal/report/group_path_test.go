@@ -152,7 +152,8 @@ func TestGenerateGroupPath(t *testing.T) {
 }
 
 func TestGenerateGroupPath_DepthLimit(t *testing.T) {
-	runDir := "/tmp/run"
+	// Use a proper temporary directory that works on all platforms
+	runDir := t.TempDir()
 
 	// Create a very deep hierarchy
 	parentNames := make([]string, 30)
@@ -167,10 +168,23 @@ func TestGenerateGroupPath_DepthLimit(t *testing.T) {
 
 	path := GenerateGroupPath(group, runDir)
 
-	// Count path separators to check depth
-	separators := strings.Count(path, string(filepath.Separator))
-	// Subtract for initial runDir separators and 'reports' directory
-	depth := separators - strings.Count(runDir, string(filepath.Separator)) - 1
+	// Get relative path from runDir to check depth
+	relPath, err := filepath.Rel(runDir, path)
+	if err != nil {
+		t.Fatalf("Failed to get relative path: %v", err)
+	}
+
+	// Count path components in the relative path
+	components := strings.Split(relPath, string(filepath.Separator))
+	// Filter out empty components
+	var nonEmptyComponents []string
+	for _, c := range components {
+		if c != "" {
+			nonEmptyComponents = append(nonEmptyComponents, c)
+		}
+	}
+	// Subtract 1 for the 'reports' directory
+	depth := len(nonEmptyComponents) - 1
 
 	if depth > MaxDepth+1 { // +1 for the group name itself
 		t.Errorf("Path depth %d exceeds MaxDepth %d", depth, MaxDepth)
