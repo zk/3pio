@@ -93,8 +93,9 @@ type GoTestEvent struct {
 
 // PackageGroupInfo tracks information for a package group
 type PackageGroupInfo struct {
-	StartTime time.Time
-	Tests     []TestInfo
+	StartTime    time.Time
+	Tests        []TestInfo
+	NoTestFiles  bool   // True if package has no test files
 }
 
 // IPCWriter handles writing IPC events
@@ -181,9 +182,30 @@ func (g *GoTestDefinition) ModifyCommand(cmd []string, ipcPath, runID string) []
 
 // GetTestFiles extracts test files from command arguments or uses go list
 func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
+	// Check if specific test files are provided
+	var testFiles []string
+	startIdx := 2
+	if len(args) < 2 {
+		startIdx = len(args)
+	}
+	for i := startIdx; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasSuffix(arg, "_test.go") || strings.HasSuffix(arg, ".go") {
+			// Specific test file provided
+			if !strings.HasPrefix(arg, "-") {
+				testFiles = append(testFiles, arg)
+			}
+		}
+	}
+
+	// If specific test files were provided, return them
+	if len(testFiles) > 0 {
+		return testFiles, nil
+	}
+
 	// Build package patterns from args
 	patterns := g.extractPackagePatterns(args)
-	
+
 	// If no patterns, use current directory
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
@@ -208,18 +230,18 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 		// Continue without the map - will fall back to package-based mapping
 	}
 	
-	// Extract all test files
-	var testFiles []string
+	// Extract all test files from packages
+	var allTestFiles []string
 	for _, pkg := range packageMap {
 		for _, file := range pkg.TestGoFiles {
-			testFiles = append(testFiles, filepath.Join(pkg.Dir, file))
+			allTestFiles = append(allTestFiles, filepath.Join(pkg.Dir, file))
 		}
 		for _, file := range pkg.XTestGoFiles {
-			testFiles = append(testFiles, filepath.Join(pkg.Dir, file))
+			allTestFiles = append(allTestFiles, filepath.Join(pkg.Dir, file))
 		}
 	}
-	
-	return testFiles, nil
+
+	return allTestFiles, nil
 }
 
 // RequiresAdapter returns false as Go test doesn't need an external adapter
@@ -265,6 +287,10 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 
 // processEvent handles a single go test JSON event
 func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
+	if event == nil {
+		return nil
+	}
+
 	switch event.Action {
 	case "start":
 		// Package execution starting
@@ -314,7 +340,21 @@ func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
 func (g *GoTestDefinition) handlePackageStart(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
+	// Track package group
+	if _, exists := g.packageGroups[event.Package]; !exists {
+		g.packageGroups[event.Package] = &PackageGroupInfo{
+			StartTime:   event.Time,
+			Tests:       []TestInfo{},
+			NoTestFiles: false,
+		}
+
+		// Send discovery event for package
+		g.sendGroupDiscovered(event.Package, []string{})
+		g.sendGroupStart(event.Package, []string{})
+		g.packageStarted[event.Package] = true
+	}
+
 	// Don't send testFileStart here - we'll send it when the first test from a file runs
 	// Just ensure the package mapping is ready
 	if _, ok := g.packageMap[event.Package]; !ok {
@@ -560,6 +600,14 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 		// Send the package group result
 		status := strings.ToUpper(event.Action)
 
+		// Check if this is a package with no test files
+		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
+			if pkgGroup.NoTestFiles && status == "SKIP" {
+				// Mark this specially so orchestrator can display ???
+				status = "NOTESTS"
+			}
+		}
+
 		// Calculate totals from tracked tests
 		totals := map[string]interface{}{
 			"total":   0,
@@ -603,6 +651,20 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 			state.Output = append(state.Output, event.Output)
 		}
 	} else {
+		// Check for "no test files" indicator
+		if strings.Contains(event.Output, "[no test files]") {
+			// Ensure package group exists
+			if _, exists := g.packageGroups[event.Package]; !exists {
+				g.packageGroups[event.Package] = &PackageGroupInfo{
+					StartTime:   event.Time,
+					Tests:       []TestInfo{},
+					NoTestFiles: true,
+				}
+			} else {
+				g.packageGroups[event.Package].NoTestFiles = true
+			}
+		}
+
 		// Package-level output - now handled by group events
 		filePath := g.getFilePathForPackage(event.Package)
 		if filePath != "" {
@@ -835,7 +897,7 @@ func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 		// Skip flags
 		if strings.HasPrefix(arg, "-") {
 			// Check if flag takes a value
-			if arg == "-run" || arg == "-bench" || arg == "-count" || 
+			if arg == "-run" || arg == "-bench" || arg == "-count" ||
 			   arg == "-cpu" || arg == "-parallel" || arg == "-timeout" ||
 			   arg == "-benchtime" || arg == "-blockprofile" || arg == "-coverprofile" ||
 			   arg == "-cpuprofile" || arg == "-memprofile" || arg == "-mutexprofile" ||
@@ -844,7 +906,12 @@ func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 			}
 			continue
 		}
-		
+
+		// Skip test files (ending in _test.go or .go)
+		if strings.HasSuffix(arg, ".go") {
+			continue
+		}
+
 		// This is likely a package pattern
 		patterns = append(patterns, arg)
 	}

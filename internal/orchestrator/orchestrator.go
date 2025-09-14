@@ -44,6 +44,7 @@ type Orchestrator struct {
 	fileStartTimes map[string]time.Time // Track start time for each file
 	fileFailedTests map[string][]string // Track failed test names by file
 	completedFiles map[string]bool // Track which files have shown their final PASS/FAIL status
+	noTestFiles    map[string]bool // Track packages with no test files (Go specific)
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -76,6 +77,7 @@ func New(config Config) (*Orchestrator, error) {
 		fileStartTimes: make(map[string]time.Time),
 		fileFailedTests: make(map[string][]string),
 		completedFiles: make(map[string]bool),
+		noTestFiles:    make(map[string]bool),
 	}, nil
 }
 
@@ -523,6 +525,13 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
 
 	case ipc.GroupResultEvent:
+		// Check if this is a NOTESTS status (Go packages with no test files)
+		if e.Payload.Status == "NOTESTS" {
+			o.noTestFiles[e.Payload.GroupName] = true
+			// Convert to SKIP for internal handling
+			e.Payload.Status = "SKIP"
+		}
+
 		// Update the report manager with the group result
 		if err := o.reportManager.HandleEvent(e); err != nil {
 			o.logger.Error("Failed to handle group result: %v", err)
@@ -671,6 +680,12 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	// For groups without test cases, show their actual status (SKIP or FAIL)
 	if !group.HasTestCases() {
 		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+
+		// Check if this is a package with no test files (Go specific)
+		if o.noTestFiles[group.Name] {
+			statusStr = "NO_TESTS"
+		}
+
 		o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
 
 		// Only show if not pending (pending means it never really ran)
@@ -701,13 +716,48 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
+		// Collect all failed test names from the group hierarchy
+		failedTests := o.collectFailedTests(group)
+
+		// Display up to 3 failed test names
+		displayCount := 3
+		if len(failedTests) < displayCount {
+			displayCount = len(failedTests)
+		}
+
+		for i := 0; i < displayCount; i++ {
+			fmt.Printf("  x %s\n", failedTests[i])
+		}
+
+		// Show "+N more" if there are additional failures
+		if len(failedTests) > 3 {
+			fmt.Printf("  +%d more\n", len(failedTests)-3)
+		}
+
 		// Show report path using raw groupName
 		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, sanitizePathForFilesystem(group.Name))
 		fmt.Printf("  See %s\n", reportPath)
-
-		// Display failed subgroups and tests
-		o.displayFailedSubgroups(group, "")
 	}
+}
+
+// collectFailedTests recursively collects all failed test names from a group hierarchy
+func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
+	var failedTests []string
+
+	// Collect failed tests from this group
+	for _, testCase := range group.TestCases {
+		if testCase.Status == report.TestStatusFail {
+			failedTests = append(failedTests, testCase.Name)
+		}
+	}
+
+	// Recursively collect from subgroups
+	for _, subgroup := range group.Subgroups {
+		subgroupFailures := o.collectFailedTests(subgroup)
+		failedTests = append(failedTests, subgroupFailures...)
+	}
+
+	return failedTests
 }
 
 // displayFailedSubgroups recursively displays subgroups that contain failures
@@ -867,6 +917,9 @@ func convertStringToTestStatus(status string) ipc.TestStatus {
 		return ipc.TestStatusFail
 	case "SKIP":
 		return ipc.TestStatusSkip
+	case "NOTESTS":
+		// Special status for Go packages with no test files
+		return ipc.TestStatusSkip // Store as SKIP internally
 	case "PENDING":
 		return ipc.TestStatusPending
 	case "RUNNING":

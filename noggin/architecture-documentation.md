@@ -60,3 +60,9 @@ Manages test runner detection and configuration:
 - Extracts test files from arguments
 - Handles various invocation patterns
 ```
+
+### Data Flow
+
+### Key Design Decisions
+
+### Error Handling
