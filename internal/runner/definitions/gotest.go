@@ -566,11 +566,6 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	if len(suiteChain) == 0 {
 		// This is a top-level test (no parent hierarchy)
 		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
-			// Debug for CI
-			if strings.Contains(event.Package, "many-failures") {
-				fmt.Fprintf(os.Stderr, "DEBUG: Adding test %s to package %s with status %s\n",
-					finalTestName, event.Package, status)
-			}
 			pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
 				Name:     finalTestName,
 				Status:   status,
@@ -603,11 +598,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Debug output to stderr for CI visibility
-	if strings.Contains(event.Package, "many-failures") {
-		fmt.Fprintf(os.Stderr, "DEBUG: handlePackageResult for %s: action=%s, elapsed=%f\n",
-			event.Package, event.Action, event.Elapsed)
-	}
 
 	// Update package info
 	if pkg, ok := g.packageMap[event.Package]; ok {
@@ -652,14 +642,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			"skipped": 0,
 		}
 
-		// Debug output for CI
-		if strings.Contains(event.Package, "many-failures") {
-			fmt.Fprintf(os.Stderr, "DEBUG: Package %s has %d tests in packageGroups\n",
-				event.Package, len(g.packageGroups[event.Package].Tests))
-			for _, test := range g.packageGroups[event.Package].Tests {
-				fmt.Fprintf(os.Stderr, "  Test: %s = %s\n", test.Name, test.Status)
-			}
-		}
 
 		// If we have a package group with tests, use those totals
 		if pkgGroup, ok := g.packageGroups[event.Package]; ok && len(pkgGroup.Tests) > 0 {
