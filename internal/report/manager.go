@@ -535,35 +535,6 @@ func countSkippedTestCases(group *TestGroup) int {
 	}
 } */
 
-// getGroupStatusIcon returns a status icon for groups in markdown reports
-func getGroupStatusIcon(status TestStatus) string {
-	switch status {
-	case TestStatusPass:
-		return "PASS"
-	case TestStatusFail:
-		return "FAIL"
-	case TestStatusSkip:
-		return "SKIP"
-	case TestStatusRunning:
-		return "RUNNING"
-	default:
-		return "PENDING"
-	}
-}
-
-// getTestCaseStatusIcon returns a status icon for individual test cases in markdown reports
-func getTestCaseStatusIcon(status TestStatus) string {
-	switch status {
-	case TestStatusPass:
-		return "✓"
-	case TestStatusFail:
-		return "x"
-	case TestStatusSkip:
-		return "o"
-	default:
-		return "-"
-	}
-}
 
 // Finalize completes the test run and closes all resources
 func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
