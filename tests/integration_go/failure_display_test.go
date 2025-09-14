@@ -117,9 +117,12 @@ go 1.21`
 
 	// Create test file with single failure
 	testContent := `package temptest
-import "testing"
+import (
+	"testing"
+	"time"
+)
 func TestSingleFailure(t *testing.T) {
-	t.Fatal("This is the only failure")
+	t.Fatalf("This is the only failure at %v", time.Now().UnixNano())
 }`
 	if err := os.WriteFile(filepath.Join(tempDir, "single_test.go"), []byte(testContent), 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)

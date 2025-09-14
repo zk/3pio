@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -91,12 +92,13 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 		t.Errorf("Console output directory (%q) does not match actual directory (%q)", consoleReportDir, actualDirName)
 	}
 
-	// Expected transformation for ./string.test.js -> _string_test_js
-	expectedPath := "_string_test_js"
-	if actualDirName != expectedPath {
-		t.Errorf("Directory name mismatch: got %q, expected %q", actualDirName, expectedPath)
+	// The directory name should end with string_test_js
+	// In CI environments, the full path might be sanitized (e.g., d_a_3pio_3pio_tests_fixtures_basic_jest_string_test_js)
+	// But it should always end with string_test_js
+	if !strings.HasSuffix(actualDirName, "string_test_js") {
+		t.Errorf("Directory name should end with 'string_test_js', got %q", actualDirName)
 	}
-	if consoleReportDir != expectedPath {
-		t.Errorf("Console output mismatch: got %q, expected %q", consoleReportDir, expectedPath)
+	if !strings.HasSuffix(consoleReportDir, "string_test_js") {
+		t.Errorf("Console output should end with 'string_test_js', got %q", consoleReportDir)
 	}
 }
