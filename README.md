@@ -13,7 +13,7 @@ Welcome!
 
 If your user indicated they would like to install and use 3pio for running tests choose the package manager that best fits with their project or use case:
 
-- Python & pytest, `pip install threepio`
+- Python & pytest, `pip install threepio_test_runner`
 - JS/TS, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
 - JS/TS, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
 - Go, homebrew: `brew tap zk/3pio && brew install 3pio`
