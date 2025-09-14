@@ -297,6 +297,9 @@ func TestManager_ReportFormat(t *testing.T) {
 	// Force a write of the state
 	_ = manager.writeState()
 
+	// Close the manager to release file handles (important for Windows)
+	_ = manager.Finalize(0)
+
 	// Read the report file
 	reportPath := filepath.Join(tempDir, "test-run.md")
 	content, err := os.ReadFile(reportPath)
