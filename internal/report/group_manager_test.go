@@ -640,21 +640,21 @@ func TestFormatGroupReport_OnlyShowCountsGreaterThanZero(t *testing.T) {
 	content := gm.formatGroupReport(group)
 
 	// Should include these lines
-	if !strings.Contains(content, "- Total tests: 3") {
-		t.Error("Should show total tests")
+	if !strings.Contains(content, "- Group tests: 3") {
+		t.Error("Should show group tests")
 	}
-	if !strings.Contains(content, "- Tests passed: 2") {
-		t.Error("Should show passed tests")
+	if !strings.Contains(content, "- Group tests passed: 2") {
+		t.Error("Should show group tests passed")
 	}
-	if !strings.Contains(content, "- Tests skipped: 1") {
-		t.Error("Should show skipped tests")
+	if !strings.Contains(content, "- Group tests skipped: 1") {
+		t.Error("Should show group tests skipped")
 	}
 
 	// Should NOT include this line (failed tests is 0)
-	if strings.Contains(content, "- Tests failed: 0") {
-		t.Error("Should not show 'Tests failed: 0'")
+	if strings.Contains(content, "- Group tests failed: 0") {
+		t.Error("Should not show 'Group tests failed: 0'")
 	}
-	if strings.Contains(content, "Tests failed:") {
+	if strings.Contains(content, "Group tests failed:") {
 		t.Error("Should not show failed tests line when count is 0")
 	}
 }

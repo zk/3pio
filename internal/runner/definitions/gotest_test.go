@@ -908,6 +908,70 @@ func TestGoTestDefinition_DeeplyNestedSubgroups(t *testing.T) {
 	}
 }
 
+// Test package-level test counting
+func TestGoTestDefinition_PackageLevelTestCount(t *testing.T) {
+	g := NewGoTestDefinition(createTestLogger(t))
+	tmpDir := t.TempDir()
+	ipcPath := filepath.Join(tmpDir, "test.jsonl")
+	ipcWriter, _ := NewIPCWriter(ipcPath)
+	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
+	capture := NewTestIPCCapture(ipcPath)
+
+	// Simulate a package with a test that has subtests
+	now := time.Now()
+	events := []*GoTestEvent{
+		{Action: "start", Package: "example.com/pkg", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestMain", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestMain/Sub1", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestMain/Sub2", Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestMain/Sub1", Elapsed: 0.1, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestMain/Sub2", Elapsed: 0.1, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestMain", Elapsed: 0.2, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Elapsed: 0.3, Time: now},
+	}
+
+	// Process all events
+	for _, event := range events {
+		if err := g.processEvent(event); err != nil {
+			t.Fatalf("Failed to process event: %v", err)
+		}
+	}
+
+	// Check the package-level group result
+	groupResults := capture.GetEventsByType("testGroupResult")
+
+	var packageResult map[string]interface{}
+	for _, event := range groupResults {
+		payload := event["payload"].(map[string]interface{})
+		groupName := payload["groupName"].(string)
+		parentNames := convertToStringSlice(payload["parentNames"])
+
+		if groupName == "example.com/pkg" && len(parentNames) == 0 {
+			packageResult = event
+			break
+		}
+	}
+
+	if packageResult == nil {
+		t.Fatal("Package-level group result not found")
+	}
+
+	// Check that the package reports only 1 test (TestMain), not 3 (TestMain + 2 subtests)
+	payload := packageResult["payload"].(map[string]interface{})
+	totals := payload["totals"].(map[string]interface{})
+
+	total := int(totals["total"].(float64))
+	if total != 1 {
+		t.Errorf("Package should report 1 top-level test, got %d", total)
+	}
+
+	passed := int(totals["passed"].(float64))
+	if passed != 1 {
+		t.Errorf("Package should report 1 passed test, got %d", passed)
+	}
+}
+
 // Test concurrent test handling
 func TestGoTestDefinition_ConcurrentTests(t *testing.T) {
 	g := NewGoTestDefinition(createTestLogger(t))

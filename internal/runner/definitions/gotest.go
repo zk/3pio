@@ -562,13 +562,16 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	// Clean up state
 	delete(g.testStates, key)
 
-	// Track test in package group
-	if pkgGroup, ok := g.packageGroups[event.Package]; ok {
-		pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
-			Name:     finalTestName,
-			Status:   status,
-			Duration: event.Elapsed,
-		})
+	// Track test in package group (only top-level tests, not subtests)
+	if len(suiteChain) == 0 {
+		// This is a top-level test (no parent hierarchy)
+		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
+			pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
+				Name:     finalTestName,
+				Status:   status,
+				Duration: event.Elapsed,
+			})
+		}
 	}
 
 	// Track package completion
