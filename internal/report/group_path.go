@@ -58,28 +58,11 @@ func SanitizeGroupName(name string) string {
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
 
-	// Preserve file extension if present (only for common extensions)
-	lastDot := strings.LastIndex(name, ".")
-	var ext string
-	if lastDot > 0 && lastDot < len(name)-1 {
-		possibleExt := name[lastDot:]
-		// Only preserve if it looks like a file extension (1-4 alphanumeric chars)
-		if len(possibleExt) >= 2 && len(possibleExt) <= 5 &&
-			strings.IndexFunc(possibleExt[1:], func(r rune) bool {
-				return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
-			}) == -1 {
-			ext = possibleExt
-			name = name[:lastDot]
-		}
-	}
-
-	// Replace remaining dots with underscores
+	// Replace ALL dots with underscores (including file extensions)
 	name = strings.ReplaceAll(name, ".", "_")
 
-	// Add extension back if it was preserved
-	if ext != "" {
-		name = name + ext
-	}
+	// Replace dashes with underscores
+	name = strings.ReplaceAll(name, "-", "_")
 
 	// Step 4: Replace invalid filesystem characters
 	name = invalidCharsPattern.ReplaceAllString(name, "_")

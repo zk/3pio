@@ -442,53 +442,6 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 	return absPath
 }
 
-// sanitizePathForFilesystem sanitizes a file path to preserve directory structure
-// while preventing directory traversal and filesystem issues
-func sanitizePathForFilesystem(filePath string) string {
-	// Clean the path to normalize it
-	cleanPath := filepath.Clean(filePath)
-
-	// Remove any leading slash or dot-slash
-	cleanPath = strings.TrimPrefix(cleanPath, "/")
-	cleanPath = strings.TrimPrefix(cleanPath, "./")
-
-	// Replace all slashes with underscores
-	cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
-	cleanPath = strings.ReplaceAll(cleanPath, "\\", "_")
-
-	// Replace dots with underscores (for package names like github.com)
-	// but preserve file extensions
-	lastDot := strings.LastIndex(cleanPath, ".")
-	if lastDot > 0 {
-		ext := cleanPath[lastDot:]
-		// Check if it looks like a file extension (2-5 chars, alphanumeric)
-		if len(ext) >= 2 && len(ext) <= 5 {
-			isFileExt := true
-			for i := 1; i < len(ext); i++ {
-				c := ext[i]
-				if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
-					isFileExt = false
-					break
-				}
-			}
-			if isFileExt {
-				// Preserve the extension
-				cleanPath = strings.ReplaceAll(cleanPath[:lastDot], ".", "_") + ext
-			} else {
-				// Not a file extension, replace all dots
-				cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
-			}
-		} else {
-			// Not a file extension, replace all dots
-			cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
-		}
-	} else {
-		// No dots or dot at start, replace all
-		cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
-	}
-
-	return cleanPath
-}
 
 // makeRelativePath normalizes paths to relative paths (matching report manager)
 func (o *Orchestrator) makeRelativePath(name string) string {
@@ -745,7 +698,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		}
 
 		// Show report path using raw groupName
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, sanitizePathForFilesystem(group.Name))
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, report.SanitizeGroupName(group.Name))
 		fmt.Printf("  See %s\n", reportPath)
 	}
 }
