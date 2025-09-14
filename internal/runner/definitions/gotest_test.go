@@ -467,6 +467,7 @@ func TestGoTestDefinition_ProcessEvent(t *testing.T) {
 			ipcPath := filepath.Join(tmpDir, "test.jsonl")
 			ipcWriter, _ := NewIPCWriter(ipcPath)
 			g.ipcWriter = ipcWriter
+			t.Cleanup(func() { _ = ipcWriter.Close() })
 			capture := NewTestIPCCapture(ipcPath)
 
 			if tt.setup != nil {
@@ -729,6 +730,7 @@ func TestGoTestDefinition_ProcessEvent_ErrorCases(t *testing.T) {
 			ipcPath := filepath.Join(tmpDir, "test.jsonl")
 			ipcWriter, _ := NewIPCWriter(ipcPath)
 			g.ipcWriter = ipcWriter
+			t.Cleanup(func() { _ = ipcWriter.Close() })
 			// capture not needed for error test cases
 
 			err := g.processEvent(tt.event)
@@ -749,6 +751,7 @@ func TestGoTestDefinition_ConcurrentTests(t *testing.T) {
 	ipcPath := filepath.Join(tmpDir, "test.jsonl")
 	ipcWriter, _ := NewIPCWriter(ipcPath)
 	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
 	capture := NewTestIPCCapture(ipcPath)
 
 	// Simulate concurrent test execution
@@ -822,6 +825,7 @@ func TestIPCWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create IPC writer: %v", err)
 	}
+	t.Cleanup(func() { _ = writer.Close() })
 
 	// Write events
 	events := []map[string]interface{}{
@@ -917,6 +921,7 @@ func BenchmarkGoTestDefinition_ProcessEvent(b *testing.B) {
 	ipcPath := filepath.Join(tmpDir, "test.jsonl")
 	ipcWriter, _ := NewIPCWriter(ipcPath)
 	g.ipcWriter = ipcWriter
+	b.Cleanup(func() { _ = ipcWriter.Close() })
 
 	// Set up initial state
 	g.packageGroups["test/pkg"] = &PackageGroupInfo{
