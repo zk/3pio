@@ -69,6 +69,14 @@ func createTestLogger(t testing.TB) *logger.FileLogger {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
+
+	// Register cleanup to close the logger
+	if tt, ok := t.(*testing.T); ok {
+		tt.Cleanup(func() {
+			_ = l.Close()
+		})
+	}
+
 	return l
 }
 

@@ -25,6 +25,9 @@ type Manager struct {
 	// Group manager for hierarchical test organization
 	groupManager *GroupManager
 
+	// Track if we created our own FileLogger that needs closing
+	ownedFileLogger *logger.FileLogger
+
 	// File handles for incremental writing
 	fileHandles map[string]*os.File
 	fileBuffers map[string][]string
@@ -70,6 +73,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 	// Initialize GroupManager for hierarchical test organization
 	// Cast the logger to FileLogger if possible, otherwise create a new one
 	var fileLogger *logger.FileLogger
+	var ownedFileLogger *logger.FileLogger
 	if fl, ok := lg.(*logger.FileLogger); ok {
 		fileLogger = fl
 	} else {
@@ -79,6 +83,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		if err != nil {
 			return nil, fmt.Errorf("failed to create file logger for group manager: %w", err)
 		}
+		ownedFileLogger = fileLogger // Track that we created this logger
 	}
 
 	groupManager := NewGroupManager(runDir, "", fileLogger)
@@ -90,6 +95,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		detectedRunner:  detectedRunner,
 		modifiedCommand: modifiedCommand,
 		groupManager:    groupManager,
+		ownedFileLogger: ownedFileLogger,
 		fileHandles:     make(map[string]*os.File),
 		fileBuffers:     make(map[string][]string),
 		debouncers:      make(map[string]*time.Timer),
@@ -517,6 +523,11 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	// Close output.log
 	if m.outputFile != nil {
 		_ = m.outputFile.Close()
+	}
+
+	// Close our owned FileLogger if we created one
+	if m.ownedFileLogger != nil {
+		_ = m.ownedFileLogger.Close()
 	}
 
 	// Update final status

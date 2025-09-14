@@ -14,6 +14,7 @@ import (
 func TestGroupManager_ProcessGroupDiscovered(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Test discovering a root group
@@ -89,6 +90,7 @@ func TestGroupManager_ProcessGroupDiscovered(t *testing.T) {
 func TestGroupManager_ProcessGroupStart(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Start a group that hasn't been discovered (should auto-discover)
@@ -123,6 +125,7 @@ func TestGroupManager_ProcessGroupStart(t *testing.T) {
 func TestGroupManager_ProcessGroupResult(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// First discover and start a group
@@ -187,6 +190,7 @@ func TestGroupManager_ProcessGroupResult(t *testing.T) {
 func TestGroupManager_ProcessTestCase(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Process a test case (should auto-create parent hierarchy)
@@ -263,6 +267,7 @@ func TestGroupManager_ProcessTestCase(t *testing.T) {
 func TestGroupManager_HierarchyBuilding(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a deep hierarchy via test case
@@ -307,6 +312,7 @@ func TestGroupManager_HierarchyBuilding(t *testing.T) {
 func TestGroupManager_OutputCapture(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a group
@@ -352,6 +358,7 @@ func TestGroupManager_OutputCapture(t *testing.T) {
 func TestGroupManager_ReportGeneration(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a hierarchy with tests
@@ -437,6 +444,7 @@ func TestGroupManager_ReportGeneration(t *testing.T) {
 func TestGroupManager_StatusPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create parent and child groups
@@ -496,6 +504,7 @@ func TestGroupManager_StatusPropagation(t *testing.T) {
 func TestGroupManager_FinalReport(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create multiple root groups
@@ -573,6 +582,7 @@ func TestGroupManager_FinalReport(t *testing.T) {
 func TestGroupManager_Cleanup(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a group and add pending updates
@@ -601,6 +611,7 @@ func TestGroupManager_Cleanup(t *testing.T) {
 func TestFormatGroupReport_OnlyShowCountsGreaterThanZero(t *testing.T) {
 	tmpDir := t.TempDir()
 	log, _ := logger.NewFileLogger()
+	t.Cleanup(func() { _ = log.Close() })
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Test group with some passed tests, no failed tests, some skipped tests
