@@ -18,45 +18,44 @@ import (
 
 // GoTestDefinition implements support for Go's native test runner
 type GoTestDefinition struct {
-	logger       *logger.FileLogger
-	packageMap   map[string]*PackageInfo
-	testStates   map[string]*TestState
-	testToFileMap map[string]string  // Maps "package/test" to file path
-	currentFile  string
-	mu           sync.RWMutex
-	ipcWriter    *IPCWriter
+	logger        *logger.FileLogger
+	packageMap    map[string]*PackageInfo
+	testStates    map[string]*TestState
+	testToFileMap map[string]string // Maps "package/test" to file path
+	mu            sync.RWMutex
+	ipcWriter     *IPCWriter
 
 	// File timing tracking
-	fileStarted    map[string]bool    // Track if we've sent testFileStart for a file
+	fileStarted    map[string]bool      // Track if we've sent testFileStart for a file
 	fileStartTimes map[string]time.Time // Track when first test in file started
-	fileTestCounts map[string]int     // Track number of tests per file
-	fileTestsDone  map[string]int     // Track completed tests per file
-	fileStatuses   map[string]string  // Track overall status per file (PASS/FAIL)
+	fileTestCounts map[string]int       // Track number of tests per file
+	fileTestsDone  map[string]int       // Track completed tests per file
+	fileStatuses   map[string]string    // Track overall status per file (PASS/FAIL)
 
 	// Package-level tracking
-	packageTestFiles  map[string][]string   // Map of package to its test files
-	packageStarted    map[string]bool       // Track if we've sent package group start
-	packageStartTimes map[string]time.Time  // Track when package started
-	packageTestCounts map[string]int        // Track number of tests per package
-	packageTestsDone  map[string]int        // Track completed tests per package
-	packageStatuses   map[string]string     // Track overall status per package
+	packageTestFiles  map[string][]string          // Map of package to its test files
+	packageStarted    map[string]bool              // Track if we've sent package group start
+	packageStartTimes map[string]time.Time         // Track when package started
+	packageTestCounts map[string]int               // Track number of tests per package
+	packageTestsDone  map[string]int               // Track completed tests per package
+	packageStatuses   map[string]string            // Track overall status per package
 	packageGroups     map[string]*PackageGroupInfo // Track package-level group info
-	packageResultSent map[string]bool       // Track if result has been sent for package
+	packageResultSent map[string]bool              // Track if result has been sent for package
 
 	// Group tracking for universal abstractions
-	discoveredGroups map[string]bool // Track discovered groups to avoid duplicates
-	groupStarts      map[string]bool // Track started groups
+	discoveredGroups map[string]bool           // Track discovered groups to avoid duplicates
+	groupStarts      map[string]bool           // Track started groups
 	fileGroups       map[string]*FileGroupInfo // Track file-level group info
 }
 
 // PackageInfo holds information about a Go package
 type PackageInfo struct {
-	ImportPath string   `json:"ImportPath"`
-	Dir        string   `json:"Dir"`
-	TestGoFiles []string `json:"TestGoFiles"`
+	ImportPath   string   `json:"ImportPath"`
+	Dir          string   `json:"Dir"`
+	TestGoFiles  []string `json:"TestGoFiles"`
 	XTestGoFiles []string `json:"XTestGoFiles"`
-	IsCached   bool
-	Status     string
+	IsCached     bool
+	Status       string
 }
 
 // TestState tracks the state of a running test
@@ -93,9 +92,9 @@ type GoTestEvent struct {
 
 // PackageGroupInfo tracks information for a package group
 type PackageGroupInfo struct {
-	StartTime    time.Time
-	Tests        []TestInfo
-	NoTestFiles  bool   // True if package has no test files
+	StartTime   time.Time
+	Tests       []TestInfo
+	NoTestFiles bool // True if package has no test files
 }
 
 // IPCWriter handles writing IPC events
@@ -108,15 +107,15 @@ type IPCWriter struct {
 // NewGoTestDefinition creates a new Go test runner definition
 func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 	return &GoTestDefinition{
-		logger:           logger,
-		packageMap:       make(map[string]*PackageInfo),
-		testStates:       make(map[string]*TestState),
-		testToFileMap:    make(map[string]string),
-		fileStarted:      make(map[string]bool),
-		fileStartTimes:   make(map[string]time.Time),
-		fileTestCounts:   make(map[string]int),
-		fileTestsDone:    make(map[string]int),
-		fileStatuses:     make(map[string]string),
+		logger:            logger,
+		packageMap:        make(map[string]*PackageInfo),
+		testStates:        make(map[string]*TestState),
+		testToFileMap:     make(map[string]string),
+		fileStarted:       make(map[string]bool),
+		fileStartTimes:    make(map[string]time.Time),
+		fileTestCounts:    make(map[string]int),
+		fileTestsDone:     make(map[string]int),
+		fileStatuses:      make(map[string]string),
 		packageTestFiles:  make(map[string][]string),
 		packageStarted:    make(map[string]bool),
 		packageStartTimes: make(map[string]time.Time),
@@ -126,8 +125,8 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		packageGroups:     make(map[string]*PackageGroupInfo),
 		packageResultSent: make(map[string]bool),
 		discoveredGroups:  make(map[string]bool),
-		groupStarts:      make(map[string]bool),
-		fileGroups:       make(map[string]*FileGroupInfo),
+		groupStarts:       make(map[string]bool),
+		fileGroups:        make(map[string]*FileGroupInfo),
 	}
 }
 
@@ -141,17 +140,17 @@ func (g *GoTestDefinition) Detect(args []string) bool {
 	if len(args) < 2 {
 		return false
 	}
-	
+
 	// Check for "go test" command
 	if args[0] == "go" && args[1] == "test" {
 		return true
 	}
-	
+
 	// Check for full path to go binary
 	if strings.HasSuffix(args[0], "/go") && len(args) > 1 && args[1] == "test" {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -159,24 +158,24 @@ func (g *GoTestDefinition) Detect(args []string) bool {
 func (g *GoTestDefinition) ModifyCommand(cmd []string, ipcPath, runID string) []string {
 	result := make([]string, 0, len(cmd)+1)
 	hasJSON := false
-	
+
 	// Check if -json flag already exists
 	for _, arg := range cmd {
 		if arg == "-json" {
 			hasJSON = true
 		}
 	}
-	
+
 	// Add -json flag after "go test" if not present
 	for i, arg := range cmd {
 		result = append(result, arg)
-		
+
 		// After "test" command, add -json if needed
 		if i > 0 && cmd[i-1] == "go" && arg == "test" && !hasJSON {
 			result = append(result, "-json")
 		}
 	}
-	
+
 	return result
 }
 
@@ -210,7 +209,7 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
 	}
-	
+
 	// Run go list to get package info
 	start := time.Now()
 	packageMap, err := g.runGoList(patterns)
@@ -219,17 +218,17 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 		return []string{}, nil // Return empty for dynamic discovery
 	}
 	g.logger.Debug("go list completed in %v", time.Since(start))
-	
+
 	// Store package map for later use
 	g.packageMap = packageMap
-	
+
 	// Build test-to-file mapping for accurate test tracking
 	// This is needed to properly process all tests including those that fail
 	if err := g.buildTestToFileMap(); err != nil {
 		g.logger.Debug("Failed to build test-to-file map: %v", err)
 		// Continue without the map - will fall back to package-based mapping
 	}
-	
+
 	// Extract all test files from packages
 	var allTestFiles []string
 	for _, pkg := range packageMap {
@@ -257,12 +256,16 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 	if err != nil {
 		return fmt.Errorf("failed to create IPC writer: %w", err)
 	}
-	defer g.ipcWriter.Close()
-	
+	defer func() {
+		if err := g.ipcWriter.Close(); err != nil {
+			g.logger.Debug("Failed to close IPC writer: %v", err)
+		}
+	}()
+
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		
+
 		// Try to parse as JSON
 		var event GoTestEvent
 		if err := json.Unmarshal(line, &event); err != nil {
@@ -271,17 +274,17 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 			// Non-JSON output no longer sent as events - handled by group events
 			continue
 		}
-		
+
 		// Process the event
 		if err := g.processEvent(&event); err != nil {
 			g.logger.Error("Failed to process event: %v", err)
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error reading output: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -297,25 +300,25 @@ func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
 		if event.Test == "" {
 			g.handlePackageStart(event)
 		}
-		
+
 	case "run":
 		// Test starting
 		if event.Test != "" {
 			g.handleTestRun(event)
 		}
-		
+
 	case "pause":
 		// Test paused (parallel execution)
 		if event.Test != "" {
 			g.handleTestPause(event)
 		}
-		
+
 	case "cont":
 		// Test continued
 		if event.Test != "" {
 			g.handleTestCont(event)
 		}
-		
+
 	case "pass", "fail", "skip":
 		// Test or package result
 		if event.Test != "" {
@@ -323,16 +326,16 @@ func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
 		} else {
 			g.handlePackageResult(event)
 		}
-		
+
 	case "output":
 		// Test output
 		g.handleOutput(event)
-		
+
 	case "bench":
 		// Benchmark result (not supported yet)
 		g.logger.Debug("Benchmark event (not supported): %+v", event)
 	}
-	
+
 	return nil
 }
 
@@ -366,7 +369,7 @@ func (g *GoTestDefinition) handlePackageStart(event *GoTestEvent) {
 func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
 	g.testStates[key] = &TestState{
 		Name:      event.Test,
@@ -375,7 +378,7 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 		Output:    []string{},
 		IsPaused:  false,
 	}
-	
+
 	// Get the file path for this test
 	filePath := g.getFilePathForTest(event.Package, event.Test)
 	if filePath == "" {
@@ -427,7 +430,7 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 func (g *GoTestDefinition) handleTestPause(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
 	if state, ok := g.testStates[key]; ok {
 		state.IsPaused = true
@@ -438,7 +441,7 @@ func (g *GoTestDefinition) handleTestPause(event *GoTestEvent) {
 func (g *GoTestDefinition) handleTestCont(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
 	if state, ok := g.testStates[key]; ok {
 		state.IsPaused = false
@@ -449,7 +452,7 @@ func (g *GoTestDefinition) handleTestCont(event *GoTestEvent) {
 func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
 	state, ok := g.testStates[key]
 	if !ok {
@@ -459,7 +462,7 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 			Package: event.Package,
 		}
 	}
-	
+
 	// First try to find the test in our test-to-file map
 	// For subtests, we need to check the parent test
 	testName := event.Test
@@ -468,7 +471,7 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		parentTest := strings.Split(testName, "/")[0]
 		key = fmt.Sprintf("%s/%s", event.Package, parentTest)
 	}
-	
+
 	var filePath string
 	filePath, ok = g.testToFileMap[key]
 	if !ok {
@@ -479,10 +482,10 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 			// Don't return - still need to process the test even without file mapping
 		}
 	}
-	
+
 	// Determine status
 	status := strings.ToUpper(event.Action)
-	
+
 	// Parse the test hierarchy (handle subtests with "/" separator)
 	suiteChain, finalTestName := g.parseTestHierarchy(event.Test)
 
@@ -500,7 +503,7 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 
 	// Send test case event with group hierarchy
 	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, state.Output)
-	
+
 	// Clean up state
 	delete(g.testStates, key)
 
@@ -555,7 +558,7 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 			}
 		}
 	}
-	
+
 	// Don't send package result here - wait for the actual package result event
 	// The package-level pass/fail event comes at the end after all tests complete
 }
@@ -643,7 +646,7 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	// If output is for a specific test, buffer it
 	if event.Test != "" {
 		key := fmt.Sprintf("%s/%s", event.Package, event.Test)
@@ -681,7 +684,7 @@ func (g *GoTestDefinition) getFilePathForTest(packageName, testName string) stri
 	if filePath, ok := g.testToFileMap[key]; ok {
 		return filePath
 	}
-	
+
 	// For subtests, try the parent test
 	if strings.Contains(testName, "/") {
 		parentTest := strings.Split(testName, "/")[0]
@@ -690,7 +693,7 @@ func (g *GoTestDefinition) getFilePathForTest(packageName, testName string) stri
 			return filePath
 		}
 	}
-	
+
 	// Fall back to package-based mapping
 	return g.getFilePathForPackage(packageName)
 }
@@ -733,11 +736,11 @@ func (g *GoTestDefinition) getFilePathForPackage(packageName string) string {
 // buildTestToFileMap builds a mapping of test names to their source files
 func (g *GoTestDefinition) buildTestToFileMap() error {
 	g.logger.Debug("Building test-to-file mapping")
-	
+
 	// Note: Go tests operate at the package level, not file level.
 	// Since we can't reliably determine which test belongs to which file,
 	// we'll report at the package level using the first test file as representative.
-	
+
 	for pkgName, pkg := range g.packageMap {
 		// Determine the representative file for this package
 		var absolutePath string
@@ -776,15 +779,14 @@ func (g *GoTestDefinition) buildTestToFileMap() error {
 			g.testToFileMap[key] = representativeFile
 			g.logger.Debug("Mapped test %s to representative file %s", key, representativeFile)
 		}
-		
+
 		// Store all test files for this package so we can report them as part of the package
 		g.packageTestFiles[pkgName] = append(g.packageTestFiles[pkgName], pkg.TestGoFiles...)
 		g.packageTestFiles[pkgName] = append(g.packageTestFiles[pkgName], pkg.XTestGoFiles...)
 	}
-	
+
 	return nil
 }
-
 
 // listTestsInPackage runs go test -list to get all tests in a package
 func (g *GoTestDefinition) listTestsInPackage(pkgDir string) ([]string, error) {
@@ -794,7 +796,7 @@ func (g *GoTestDefinition) listTestsInPackage(pkgDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Parse the output to get test names
 	var tests []string
 	scanner := bufio.NewScanner(bytes.NewReader(output))
@@ -808,7 +810,7 @@ func (g *GoTestDefinition) listTestsInPackage(pkgDir string) ([]string, error) {
 			}
 		}
 	}
-	
+
 	return tests, nil
 }
 
@@ -882,26 +884,26 @@ func (g *GoTestDefinition) ensureGroupStarted(hierarchy []string) {
 func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 	var patterns []string
 	skipNext := false
-	
+
 	for i, arg := range args {
 		if skipNext {
 			skipNext = false
 			continue
 		}
-		
+
 		// Skip go and test commands
 		if i < 2 {
 			continue
 		}
-		
+
 		// Skip flags
 		if strings.HasPrefix(arg, "-") {
 			// Check if flag takes a value
 			if arg == "-run" || arg == "-bench" || arg == "-count" ||
-			   arg == "-cpu" || arg == "-parallel" || arg == "-timeout" ||
-			   arg == "-benchtime" || arg == "-blockprofile" || arg == "-coverprofile" ||
-			   arg == "-cpuprofile" || arg == "-memprofile" || arg == "-mutexprofile" ||
-			   arg == "-outputdir" || arg == "-trace" {
+				arg == "-cpu" || arg == "-parallel" || arg == "-timeout" ||
+				arg == "-benchtime" || arg == "-blockprofile" || arg == "-coverprofile" ||
+				arg == "-cpuprofile" || arg == "-memprofile" || arg == "-mutexprofile" ||
+				arg == "-outputdir" || arg == "-trace" {
 				skipNext = true
 			}
 			continue
@@ -915,7 +917,7 @@ func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 		// This is likely a package pattern
 		patterns = append(patterns, arg)
 	}
-	
+
 	return patterns
 }
 
@@ -923,12 +925,12 @@ func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 func (g *GoTestDefinition) runGoList(patterns []string) (map[string]*PackageInfo, error) {
 	args := append([]string{"list", "-json"}, patterns...)
 	cmd := exec.Command("go", args...)
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("go list failed: %w", err)
 	}
-	
+
 	return g.parseGoListOutput(output)
 }
 
@@ -936,7 +938,7 @@ func (g *GoTestDefinition) runGoList(patterns []string) (map[string]*PackageInfo
 func (g *GoTestDefinition) parseGoListOutput(output []byte) (map[string]*PackageInfo, error) {
 	packages := make(map[string]*PackageInfo)
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
-	
+
 	for {
 		var pkg PackageInfo
 		if err := decoder.Decode(&pkg); err == io.EOF {
@@ -944,13 +946,13 @@ func (g *GoTestDefinition) parseGoListOutput(output []byte) (map[string]*Package
 		} else if err != nil {
 			return nil, fmt.Errorf("failed to parse go list output: %w", err)
 		}
-		
+
 		// Only include packages with test files
 		if len(pkg.TestGoFiles) > 0 || len(pkg.XTestGoFiles) > 0 {
 			packages[pkg.ImportPath] = &pkg
 		}
 	}
-	
+
 	return packages, nil
 }
 
@@ -1031,22 +1033,22 @@ func (g *GoTestDefinition) sendTestCase(filePath, testName, suiteName, status st
 		"status":   status,
 		"duration": duration * 1000, // Convert seconds to milliseconds
 	}
-	
+
 	if suiteName != "" {
 		payload["suiteName"] = suiteName
 	}
-	
+
 	if status == "FAIL" && len(output) > 0 {
 		payload["error"] = map[string]interface{}{
 			"message": strings.Join(output, ""),
 		}
 	}
-	
+
 	event := map[string]interface{}{
 		"eventType": "testCase",
 		"payload":   payload,
 	}
-	
+
 	if err := g.ipcWriter.WriteEvent(event); err != nil {
 		g.logger.Error("Failed to send testCase: %v", err)
 	}
@@ -1060,7 +1062,7 @@ func NewIPCWriter(path string) (*IPCWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &IPCWriter{
 		path: path,
 		file: file,
@@ -1071,17 +1073,17 @@ func NewIPCWriter(path string) (*IPCWriter, error) {
 func (w *IPCWriter) WriteEvent(event interface{}) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
-	
+
 	_, err = w.file.Write(append(data, '\n'))
 	if err != nil {
 		return fmt.Errorf("failed to write event: %w", err)
 	}
-	
+
 	return nil
 }
 

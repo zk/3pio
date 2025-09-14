@@ -258,10 +258,10 @@ func TestGoTestDefinition_GetTestFiles(t *testing.T) {
 // Test event processing
 func TestGoTestDefinition_ProcessEvent(t *testing.T) {
 	tests := []struct {
-		name      string
-		event     *GoTestEvent
-		setup     func(*GoTestDefinition)
-		validate  func(*testing.T, *GoTestDefinition, *TestIPCCapture)
+		name     string
+		event    *GoTestEvent
+		setup    func(*GoTestDefinition)
+		validate func(*testing.T, *GoTestDefinition, *TestIPCCapture)
 	}{
 		{
 			name: "Package start event",
@@ -691,8 +691,8 @@ func TestGoTestDefinition_ProcessEvent_ErrorCases(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name: "Nil event",
-			event: nil,
+			name:        "Nil event",
+			event:       nil,
 			expectError: false, // Should handle gracefully
 		},
 		{
@@ -876,8 +876,8 @@ func TestGoTestDefinition_BuildTestToFileMap(t *testing.T) {
 	// Mock package info
 	g.packageMap = map[string]*PackageInfo{
 		"github.com/test/pkg": {
-			ImportPath: "github.com/test/pkg",
-			Dir:        "/tmp/test/pkg",
+			ImportPath:  "github.com/test/pkg",
+			Dir:         "/tmp/test/pkg",
 			TestGoFiles: []string{"foo_test.go", "bar_test.go"},
 		},
 	}

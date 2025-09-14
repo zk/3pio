@@ -18,9 +18,9 @@ const (
 // TestGroup represents a hierarchical group of tests (file, describe block, class, etc.)
 type TestGroup struct {
 	// Identification
-	ID          string // SHA256-based ID from full path
-	Name        string // Name of this group (e.g., "math.test.js", "Calculator", "addition tests")
-	ParentID    string // ID of parent group (empty for root groups)
+	ID          string   // SHA256-based ID from full path
+	Name        string   // Name of this group (e.g., "math.test.js", "Calculator", "addition tests")
+	ParentID    string   // ID of parent group (empty for root groups)
 	ParentNames []string // Full hierarchy from root (excludes this group's name)
 	Depth       int      // Depth in hierarchy (0 for root)
 
@@ -33,8 +33,8 @@ type TestGroup struct {
 	Updated   time.Time
 
 	// Test data
-	TestCases []TestCase                // Direct test cases in this group
-	Subgroups map[string]*TestGroup     // Child groups (key is group ID)
+	TestCases []TestCase            // Direct test cases in this group
+	Subgroups map[string]*TestGroup // Child groups (key is group ID)
 
 	// Statistics
 	Stats TestGroupStats
@@ -50,7 +50,7 @@ type TestGroupStats struct {
 	PassedTests  int
 	FailedTests  int
 	SkippedTests int
-	
+
 	// Recursive counts (includes subgroups)
 	TotalTestsRecursive   int
 	PassedTestsRecursive  int
@@ -61,9 +61,9 @@ type TestGroupStats struct {
 // TestCase represents an individual test
 type TestCase struct {
 	// Identification
-	ID      string   // Unique ID for this test case
-	GroupID string   // ID of parent group
-	Name    string   // Test name (e.g., "should add two numbers")
+	ID      string // Unique ID for this test case
+	GroupID string // ID of parent group
+	Name    string // Test name (e.g., "should add two numbers")
 
 	// Status and timing
 	Status    TestStatus
@@ -81,19 +81,19 @@ type TestCase struct {
 
 // TestError represents error information for a failed test
 type TestError struct {
-	Message    string   // Error message
-	Stack      string   // Stack trace
-	Expected   string   // Expected value (for assertions)
-	Actual     string   // Actual value (for assertions)
-	Location   string   // File:line where error occurred
-	ErrorType  string   // Type of error (e.g., "AssertionError")
+	Message   string // Error message
+	Stack     string // Stack trace
+	Expected  string // Expected value (for assertions)
+	Actual    string // Actual value (for assertions)
+	Location  string // File:line where error occurred
+	ErrorType string // Type of error (e.g., "AssertionError")
 }
 
 // IsComplete returns true if the group has finished executing
 func (g *TestGroup) IsComplete() bool {
-	return g.Status == TestStatusPass || 
-	       g.Status == TestStatusFail || 
-	       g.Status == TestStatusSkip
+	return g.Status == TestStatusPass ||
+		g.Status == TestStatusFail ||
+		g.Status == TestStatusSkip
 }
 
 // HasFailures returns true if the group or any of its children have failures
@@ -101,19 +101,19 @@ func (g *TestGroup) HasFailures() bool {
 	if g.Status == TestStatusFail {
 		return true
 	}
-	
+
 	for _, tc := range g.TestCases {
 		if tc.Status == TestStatusFail {
 			return true
 		}
 	}
-	
+
 	for _, sg := range g.Subgroups {
 		if sg.HasFailures() {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -121,12 +121,12 @@ func (g *TestGroup) HasFailures() bool {
 func (g *TestGroup) UpdateStats() {
 	// Reset stats
 	g.Stats = TestGroupStats{}
-	
+
 	// Count direct test cases
 	for _, tc := range g.TestCases {
 		g.Stats.TotalTests++
 		g.Stats.TotalTestsRecursive++
-		
+
 		switch tc.Status {
 		case TestStatusPass:
 			g.Stats.PassedTests++
@@ -139,7 +139,7 @@ func (g *TestGroup) UpdateStats() {
 			g.Stats.SkippedTestsRecursive++
 		}
 	}
-	
+
 	// Add subgroup stats
 	for _, sg := range g.Subgroups {
 		sg.UpdateStats()
@@ -148,7 +148,7 @@ func (g *TestGroup) UpdateStats() {
 		g.Stats.FailedTestsRecursive += sg.Stats.FailedTestsRecursive
 		g.Stats.SkippedTestsRecursive += sg.Stats.SkippedTestsRecursive
 	}
-	
+
 	// Update group status based on children
 	g.updateStatusFromChildren()
 }
@@ -160,7 +160,7 @@ func (g *TestGroup) updateStatusFromChildren() {
 		hasFailures := false
 		hasSkipped := false
 		hasTests := false
-		
+
 		// Check test cases
 		for _, tc := range g.TestCases {
 			hasTests = true
@@ -175,7 +175,7 @@ func (g *TestGroup) updateStatusFromChildren() {
 				hasSkipped = true
 			}
 		}
-		
+
 		// Check subgroups
 		for _, sg := range g.Subgroups {
 			hasTests = true
@@ -190,7 +190,7 @@ func (g *TestGroup) updateStatusFromChildren() {
 				hasSkipped = true
 			}
 		}
-		
+
 		// Update status if all children are complete
 		if allComplete && hasTests {
 			if hasFailures {
@@ -220,7 +220,7 @@ func (g *TestGroup) updateStatusFromChildren() {
 			} else {
 				g.Status = TestStatusPass
 			}
-			
+
 			if g.EndTime.IsZero() {
 				g.EndTime = time.Now()
 				g.Duration = g.EndTime.Sub(g.StartTime)

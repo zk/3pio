@@ -76,7 +76,7 @@ func TestSanitizeGroupName(t *testing.T) {
 			if got != tt.expected {
 				t.Errorf("SanitizeGroupName(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
-			
+
 			// Ensure result is not too long
 			if len(got) > MaxComponentLength {
 				t.Errorf("Result too long: %d > %d", len(got), MaxComponentLength)
@@ -87,7 +87,7 @@ func TestSanitizeGroupName(t *testing.T) {
 
 func TestGenerateGroupPath(t *testing.T) {
 	runDir := "/tmp/run"
-	
+
 	tests := []struct {
 		name     string
 		group    *TestGroup
@@ -127,7 +127,7 @@ func TestGenerateGroupPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := GenerateGroupPath(tt.group, runDir)
-			
+
 			if tt.group == nil {
 				want := filepath.Join(runDir, "reports")
 				if got != want {
@@ -135,14 +135,14 @@ func TestGenerateGroupPath(t *testing.T) {
 				}
 				return
 			}
-			
+
 			// Check that path contains expected components
 			for _, component := range tt.contains {
 				if !strings.Contains(got, component) {
 					t.Errorf("Path %s should contain %s", got, component)
 				}
 			}
-			
+
 			// Verify it's a valid path
 			if !IsValidFilePath(got) {
 				t.Errorf("Generated invalid path: %s", got)
@@ -153,20 +153,20 @@ func TestGenerateGroupPath(t *testing.T) {
 
 func TestGenerateGroupPath_DepthLimit(t *testing.T) {
 	runDir := "/tmp/run"
-	
+
 	// Create a very deep hierarchy
 	parentNames := make([]string, 30)
 	for i := range parentNames {
 		parentNames[i] = "level" + string(rune('0'+i%10))
 	}
-	
+
 	group := &TestGroup{
 		Name:        "deeptest",
 		ParentNames: parentNames,
 	}
-	
+
 	path := GenerateGroupPath(group, runDir)
-	
+
 	// Count path separators to check depth
 	separators := strings.Count(path, string(filepath.Separator))
 	// Subtract for initial runDir separators and 'reports' directory
@@ -175,7 +175,7 @@ func TestGenerateGroupPath_DepthLimit(t *testing.T) {
 	if depth > MaxDepth+1 { // +1 for the group name itself
 		t.Errorf("Path depth %d exceeds MaxDepth %d", depth, MaxDepth)
 	}
-	
+
 	// Should contain collapsed indicator
 	if !strings.Contains(path, "_collapsed_") {
 		t.Error("Deep hierarchy should be collapsed")
@@ -186,18 +186,18 @@ func TestGenerateGroupPath_WindowsPathLimit(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows path limit test only runs on Windows")
 	}
-	
+
 	runDir := "C:\\test"
-	
+
 	// Create a path that would exceed Windows limit
 	longName := strings.Repeat("a", 100)
 	group := &TestGroup{
 		Name:        longName,
 		ParentNames: []string{longName, longName, longName},
 	}
-	
+
 	path := GenerateGroupPath(group, runDir)
-	
+
 	if len(path) > MaxWindowsPathLength {
 		t.Errorf("Path length %d exceeds Windows limit %d", len(path), MaxWindowsPathLength)
 	}
@@ -225,7 +225,7 @@ func TestCollapseHierarchy(t *testing.T) {
 		{
 			name:         "Over limit",
 			hierarchy:    make([]string, MaxDepth+10),
-			expectedLen:  MaxDepth+1, // Includes collapsed element
+			expectedLen:  MaxDepth + 1, // Includes collapsed element
 			hasCollapsed: true,
 		},
 	}
@@ -236,13 +236,13 @@ func TestCollapseHierarchy(t *testing.T) {
 			for i := range tt.hierarchy {
 				tt.hierarchy[i] = "level" + string(rune('0'+i%10))
 			}
-			
+
 			result := collapseHierarchy(tt.hierarchy)
-			
+
 			if len(result) != tt.expectedLen {
 				t.Errorf("Result length = %d, want %d", len(result), tt.expectedLen)
 			}
-			
+
 			hasCollapsed := false
 			for _, item := range result {
 				if strings.Contains(item, "_collapsed_") {
@@ -250,7 +250,7 @@ func TestCollapseHierarchy(t *testing.T) {
 					break
 				}
 			}
-			
+
 			if hasCollapsed != tt.hasCollapsed {
 				t.Errorf("Has collapsed indicator = %v, want %v", hasCollapsed, tt.hasCollapsed)
 			}
@@ -264,13 +264,13 @@ func TestGetReportFilePath(t *testing.T) {
 		Name:        "test.js",
 		ParentNames: []string{"src"},
 	}
-	
+
 	path := GetReportFilePath(group, runDir)
-	
+
 	if !strings.HasSuffix(path, "index.md") {
 		t.Errorf("Report file should end with index.md: %s", path)
 	}
-	
+
 	if !strings.Contains(path, "src") {
 		t.Errorf("Path should contain parent directory: %s", path)
 	}
@@ -283,17 +283,17 @@ func TestGetTestLogFilePath(t *testing.T) {
 		ParentNames: []string{"math.test.js"},
 	}
 	testName := "should add numbers"
-	
+
 	path := GetTestLogFilePath(group, testName, runDir)
-	
+
 	if !strings.HasSuffix(path, ".log") {
 		t.Errorf("Log file should end with .log: %s", path)
 	}
-	
+
 	if !strings.Contains(path, "logs") {
 		t.Errorf("Path should contain logs directory: %s", path)
 	}
-	
+
 	if !strings.Contains(path, "should_add_numbers") {
 		t.Errorf("Path should contain sanitized test name: %s", path)
 	}
@@ -301,10 +301,10 @@ func TestGetTestLogFilePath(t *testing.T) {
 
 func TestIsValidFilePath(t *testing.T) {
 	tests := []struct {
-		name     string
-		path     string
-		valid    bool
-		skipOS   string // Skip on this OS
+		name   string
+		path   string
+		valid  bool
+		skipOS string // Skip on this OS
 	}{
 		{
 			name:  "Valid Unix path",
@@ -340,13 +340,13 @@ func TestIsValidFilePath(t *testing.T) {
 			if tt.skipOS != "" && runtime.GOOS == tt.skipOS {
 				t.Skip("Test not applicable on this OS")
 			}
-			
+
 			got := IsValidFilePath(tt.path)
 			// On non-Windows, some Windows-specific checks won't apply
 			if runtime.GOOS != "windows" && strings.Contains(tt.name, "Windows") {
 				return
 			}
-			
+
 			if got != tt.valid {
 				t.Errorf("IsValidFilePath(%s) = %v, want %v", tt.path, got, tt.valid)
 			}
@@ -398,19 +398,19 @@ func TestGetRelativeReportPath(t *testing.T) {
 		Name:        "test.js",
 		ParentNames: []string{"src", "components"},
 	}
-	
+
 	relPath := GetRelativeReportPath(group, runDir)
-	
+
 	// Should be relative
 	if filepath.IsAbs(relPath) {
 		t.Errorf("Path should be relative: %s", relPath)
 	}
-	
+
 	// Should contain the group hierarchy
 	if !strings.Contains(relPath, "src") || !strings.Contains(relPath, "components") {
 		t.Errorf("Relative path should contain hierarchy: %s", relPath)
 	}
-	
+
 	// Should end with index.md
 	if !strings.HasSuffix(relPath, "index.md") {
 		t.Errorf("Should end with index.md: %s", relPath)

@@ -161,15 +161,15 @@ func TestTestGroup_UpdateStats(t *testing.T) {
 
 func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 	tests := []struct {
-		name         string
-		setupGroup   func() *TestGroup
+		name           string
+		setupGroup     func() *TestGroup
 		expectedStatus TestStatus
 	}{
 		{
 			name: "All tests pass",
 			setupGroup: func() *TestGroup {
 				return &TestGroup{
-					Status: TestStatusRunning,
+					Status:    TestStatusRunning,
 					StartTime: time.Now(),
 					TestCases: []TestCase{
 						{Status: TestStatusPass},
@@ -183,7 +183,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			name: "One test fails",
 			setupGroup: func() *TestGroup {
 				return &TestGroup{
-					Status: TestStatusRunning,
+					Status:    TestStatusRunning,
 					StartTime: time.Now(),
 					TestCases: []TestCase{
 						{Status: TestStatusPass},
@@ -197,7 +197,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			name: "All tests skipped",
 			setupGroup: func() *TestGroup {
 				return &TestGroup{
-					Status: TestStatusRunning,
+					Status:    TestStatusRunning,
 					StartTime: time.Now(),
 					TestCases: []TestCase{
 						{Status: TestStatusSkip},
@@ -211,7 +211,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			name: "Mixed pass and skip",
 			setupGroup: func() *TestGroup {
 				return &TestGroup{
-					Status: TestStatusRunning,
+					Status:    TestStatusRunning,
 					StartTime: time.Now(),
 					TestCases: []TestCase{
 						{Status: TestStatusPass},
@@ -225,7 +225,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			name: "Subgroup fails",
 			setupGroup: func() *TestGroup {
 				return &TestGroup{
-					Status: TestStatusRunning,
+					Status:    TestStatusRunning,
 					StartTime: time.Now(),
 					Subgroups: map[string]*TestGroup{
 						"sub1": {Status: TestStatusPass},
@@ -254,11 +254,11 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			group := tt.setupGroup()
 			group.updateStatusFromChildren()
-			
+
 			if group.Status != tt.expectedStatus {
 				t.Errorf("Status = %v, want %v", group.Status, tt.expectedStatus)
 			}
-			
+
 			// Check that end time is set when complete
 			if tt.expectedStatus != TestStatusRunning && group.EndTime.IsZero() {
 				t.Error("EndTime should be set when group is complete")
@@ -290,7 +290,7 @@ func TestTestGroup_GetFullPath(t *testing.T) {
 func TestTestGroup_FindSubgroup(t *testing.T) {
 	sub1 := &TestGroup{Name: "sub1"}
 	sub2 := &TestGroup{Name: "sub2"}
-	
+
 	group := &TestGroup{
 		Name: "parent",
 		Subgroups: map[string]*TestGroup{
@@ -300,9 +300,9 @@ func TestTestGroup_FindSubgroup(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		findName  string
-		wantNil   bool
+		name     string
+		findName string
+		wantNil  bool
 	}{
 		{"Find existing sub1", "sub1", false},
 		{"Find existing sub2", "sub2", false},

@@ -35,16 +35,16 @@ type Orchestrator struct {
 	exitCode int
 
 	// Console output state
-	startTime      time.Time
-	passedFiles    int
-	failedFiles    int
-	totalFiles     int
-	displayedFiles map[string]bool // Track which files we've already displayed
-	lastCollected  int             // Track last collection count to avoid duplicates
-	fileStartTimes map[string]time.Time // Track start time for each file
-	fileFailedTests map[string][]string // Track failed test names by file
-	completedFiles map[string]bool // Track which files have shown their final PASS/FAIL status
-	noTestFiles    map[string]bool // Track packages with no test files (Go specific)
+	startTime       time.Time
+	passedFiles     int
+	failedFiles     int
+	totalFiles      int
+	displayedFiles  map[string]bool      // Track which files we've already displayed
+	lastCollected   int                  // Track last collection count to avoid duplicates
+	fileStartTimes  map[string]time.Time // Track start time for each file
+	fileFailedTests map[string][]string  // Track failed test names by file
+	completedFiles  map[string]bool      // Track which files have shown their final PASS/FAIL status
+	noTestFiles     map[string]bool      // Track packages with no test files (Go specific)
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -70,14 +70,14 @@ func New(config Config) (*Orchestrator, error) {
 	}
 
 	return &Orchestrator{
-		runnerManager:  runner.NewManager(),
-		logger:         config.Logger,
-		command:        config.Command,
-		displayedFiles: make(map[string]bool),
-		fileStartTimes: make(map[string]time.Time),
+		runnerManager:   runner.NewManager(),
+		logger:          config.Logger,
+		command:         config.Command,
+		displayedFiles:  make(map[string]bool),
+		fileStartTimes:  make(map[string]time.Time),
 		fileFailedTests: make(map[string][]string),
-		completedFiles: make(map[string]bool),
-		noTestFiles:    make(map[string]bool),
+		completedFiles:  make(map[string]bool),
+		noTestFiles:     make(map[string]bool),
 	}, nil
 }
 
@@ -179,7 +179,7 @@ func (o *Orchestrator) Run() error {
 	var testCommandSlice []string
 	var isNativeRunner bool
 	var nativeDef interface{}
-	
+
 	// Check if adapter is needed (empty adapter name means native runner)
 	adapterFileName := runnerDef.GetAdapterFileName()
 	if adapterFileName == "" {
@@ -199,7 +199,7 @@ func (o *Orchestrator) Run() error {
 		}
 		testCommandSlice = runnerDef.BuildCommand(o.command, adapterPath)
 		o.logger.Debug("Adapter path: %s", adapterPath)
-		
+
 		// Update modified command now that we have the actual command
 		modifiedCommand = strings.Join(testCommandSlice, " ")
 		o.reportManager.UpdateModifiedCommand(modifiedCommand)
@@ -574,7 +574,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			}
 		}
 
-	// Legacy TestFileResultEvent removed - using group events instead
+		// Legacy TestFileResultEvent removed - using group events instead
 	}
 }
 

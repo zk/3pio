@@ -5,29 +5,29 @@ const (
 	EventTypeGroupDiscovered EventType = "testGroupDiscovered"
 	EventTypeGroupStart      EventType = "testGroupStart"
 	EventTypeGroupResult     EventType = "testGroupResult"
-	EventTypeGroupTestCase   EventType = "testCase"  // Reuse existing testCase type with group hierarchy
+	EventTypeGroupTestCase   EventType = "testCase" // Reuse existing testCase type with group hierarchy
 	EventTypeGroupStdout     EventType = "groupStdout"
 	EventTypeGroupStderr     EventType = "groupStderr"
 )
 
 // GroupDiscoveredEvent indicates a test group has been discovered (during collection phase)
 type GroupDiscoveredEvent struct {
-	EventType   string                 `json:"eventType"`
-	Payload     GroupDiscoveredPayload `json:"payload"`
+	EventType string                 `json:"eventType"`
+	Payload   GroupDiscoveredPayload `json:"payload"`
 }
 
 func (e GroupDiscoveredEvent) Type() EventType { return EventTypeGroupDiscovered }
 
 type GroupDiscoveredPayload struct {
-	GroupName   string   `json:"groupName"`            // Name of this group
-	ParentNames []string `json:"parentNames,omitempty"` // Full hierarchy from root (excluding this group)
+	GroupName   string                 `json:"groupName"`             // Name of this group
+	ParentNames []string               `json:"parentNames,omitempty"` // Full hierarchy from root (excluding this group)
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Additional metadata (file path, line numbers, etc.)
 }
 
 // GroupStartEvent indicates a test group has started executing
 type GroupStartEvent struct {
-	EventType   string             `json:"eventType"`
-	Payload     GroupStartPayload  `json:"payload"`
+	EventType string            `json:"eventType"`
+	Payload   GroupStartPayload `json:"payload"`
 }
 
 func (e GroupStartEvent) Type() EventType { return EventTypeGroupStart }
@@ -41,20 +41,20 @@ type GroupStartPayload struct {
 
 // GroupResultEvent indicates a test group has finished executing
 type GroupResultEvent struct {
-	EventType   string              `json:"eventType"`
-	Payload     GroupResultPayload  `json:"payload"`
+	EventType string             `json:"eventType"`
+	Payload   GroupResultPayload `json:"payload"`
 }
 
 func (e GroupResultEvent) Type() EventType { return EventTypeGroupResult }
 
 type GroupResultPayload struct {
-	GroupName   string   `json:"groupName"`
-	ParentNames []string `json:"parentNames,omitempty"`
-	Status      string   `json:"status"`          // "PASS", "FAIL", "SKIP"
-	Duration    float64  `json:"duration,omitempty"` // Duration in milliseconds
-	Totals      GroupTotals `json:"totals,omitempty"`
+	GroupName   string                 `json:"groupName"`
+	ParentNames []string               `json:"parentNames,omitempty"`
+	Status      string                 `json:"status"`             // "PASS", "FAIL", "SKIP"
+	Duration    float64                `json:"duration,omitempty"` // Duration in milliseconds
+	Totals      GroupTotals            `json:"totals,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-	Timestamp   int64    `json:"timestamp,omitempty"`
+	Timestamp   int64                  `json:"timestamp,omitempty"`
 }
 
 // GroupTotals holds test count statistics for a group
@@ -67,22 +67,22 @@ type GroupTotals struct {
 
 // GroupTestCaseEvent represents an individual test case result with group hierarchy
 type GroupTestCaseEvent struct {
-	EventType   string            `json:"eventType"`
-	Payload     TestCasePayload   `json:"payload"`
+	EventType string          `json:"eventType"`
+	Payload   TestCasePayload `json:"payload"`
 }
 
 func (e GroupTestCaseEvent) Type() EventType { return EventTypeGroupTestCase }
 
 type TestCasePayload struct {
-	TestName    string      `json:"testName"`
-	ParentNames []string    `json:"parentNames,omitempty"` // Full hierarchy including file and describe blocks
-	Status      string      `json:"status"`                 // "PASS", "FAIL", "SKIP", "PENDING"
-	Duration    float64     `json:"duration,omitempty"`    // Duration in milliseconds
-	Error       *TestError  `json:"error,omitempty"`
-	Stdout      string      `json:"stdout,omitempty"`
-	Stderr      string      `json:"stderr,omitempty"`
+	TestName    string                 `json:"testName"`
+	ParentNames []string               `json:"parentNames,omitempty"` // Full hierarchy including file and describe blocks
+	Status      string                 `json:"status"`                // "PASS", "FAIL", "SKIP", "PENDING"
+	Duration    float64                `json:"duration,omitempty"`    // Duration in milliseconds
+	Error       *TestError             `json:"error,omitempty"`
+	Stdout      string                 `json:"stdout,omitempty"`
+	Stderr      string                 `json:"stderr,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-	Timestamp   int64       `json:"timestamp,omitempty"`
+	Timestamp   int64                  `json:"timestamp,omitempty"`
 }
 
 // TestError contains error information for failed tests
@@ -97,16 +97,16 @@ type TestError struct {
 
 // GroupStdoutChunkEvent represents stdout output from a test group
 type GroupStdoutChunkEvent struct {
-	EventType   string              `json:"eventType"`
-	Payload     OutputChunkPayload  `json:"payload"`
+	EventType string             `json:"eventType"`
+	Payload   OutputChunkPayload `json:"payload"`
 }
 
 func (e GroupStdoutChunkEvent) Type() EventType { return EventTypeGroupStdout }
 
 // GroupStderrChunkEvent represents stderr output from a test group
 type GroupStderrChunkEvent struct {
-	EventType   string              `json:"eventType"`
-	Payload     OutputChunkPayload  `json:"payload"`
+	EventType string             `json:"eventType"`
+	Payload   OutputChunkPayload `json:"payload"`
 }
 
 func (e GroupStderrChunkEvent) Type() EventType { return EventTypeGroupStderr }
@@ -114,11 +114,11 @@ func (e GroupStderrChunkEvent) Type() EventType { return EventTypeGroupStderr }
 type OutputChunkPayload struct {
 	GroupName   string   `json:"groupName,omitempty"`   // The group this output belongs to
 	ParentNames []string `json:"parentNames,omitempty"` // Full hierarchy
-	Chunk       string   `json:"chunk"`                  // The output chunk
+	Chunk       string   `json:"chunk"`                 // The output chunk
 	Timestamp   int64    `json:"timestamp,omitempty"`
-	
+
 	// Legacy field for backward compatibility (will be removed)
-	FilePath    string   `json:"filePath,omitempty"`
+	FilePath string `json:"filePath,omitempty"`
 }
 
 // GenericEvent is used for parsing unknown event types
@@ -189,9 +189,9 @@ func IsGroupEvent(eventType string) bool {
 // GetHierarchyFromEvent extracts the full hierarchy path from an event
 func GetHierarchyFromEvent(event GenericEvent) []string {
 	payload := event.Payload
-	
+
 	var hierarchy []string
-	
+
 	// Extract parent names
 	if parentNames, ok := payload["parentNames"].([]interface{}); ok {
 		for _, name := range parentNames {
@@ -200,13 +200,13 @@ func GetHierarchyFromEvent(event GenericEvent) []string {
 			}
 		}
 	}
-	
+
 	// Add the group/test name
 	if groupName, ok := payload["groupName"].(string); ok {
 		hierarchy = append(hierarchy, groupName)
 	} else if testName, ok := payload["testName"].(string); ok {
 		hierarchy = append(hierarchy, testName)
 	}
-	
+
 	return hierarchy
 }

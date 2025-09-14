@@ -3,7 +3,7 @@ package runner
 import (
 	"fmt"
 	"strings"
-	
+
 	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/runner/definitions"
 )
@@ -18,7 +18,7 @@ type Manager struct {
 func NewManager() *Manager {
 	// Create a logger for the manager
 	fileLogger, _ := logger.NewFileLogger()
-	
+
 	m := &Manager{
 		runners: make(map[string]Definition),
 		logger:  fileLogger,
@@ -28,7 +28,7 @@ func NewManager() *Manager {
 	m.Register("jest", NewJestDefinition())
 	m.Register("vitest", NewVitestDefinition())
 	m.Register("pytest", NewPytestDefinition())
-	
+
 	// Register Go test runner (native, no adapter)
 	m.Register("go", definitions.NewGoTestWrapper(fileLogger))
 

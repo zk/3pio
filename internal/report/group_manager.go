@@ -15,13 +15,13 @@ import (
 
 // GroupManager manages the hierarchical test group state
 type GroupManager struct {
-	mu          sync.RWMutex
-	groups      map[string]*TestGroup // ID -> Group
-	rootGroups  []*TestGroup          // Top-level groups (typically files)
-	runDir      string
-	ipcPath     string
-	logger      *logger.FileLogger
-	
+	mu         sync.RWMutex
+	groups     map[string]*TestGroup // ID -> Group
+	rootGroups []*TestGroup          // Top-level groups (typically files)
+	runDir     string
+	ipcPath    string
+	logger     *logger.FileLogger
+
 	// Debouncing for report generation
 	pendingUpdates map[string]time.Time // Group ID -> last update time
 	updateTimer    *time.Timer
@@ -97,22 +97,24 @@ func (gm *GroupManager) ProcessGroupDiscovered(event ipc.GroupDiscoveredEvent) e
 		Subgroups:   make(map[string]*TestGroup),
 		TestCases:   make([]TestCase, 0),
 	}
-	
+
 	// Store in groups map
 	gm.groups[groupID] = group
-	
+
 	// Handle parent relationship
 	if len(payload.ParentNames) == 0 {
 		// This is a root group
 		gm.rootGroups = append(gm.rootGroups, group)
 	} else {
 		// Find or create parent groups
-		gm.ensureParentHierarchy(group)
+		if err := gm.ensureParentHierarchy(group); err != nil {
+			gm.logger.Debug("Failed to ensure parent hierarchy: %v", err)
+		}
 	}
-	
-	gm.logger.Info("Discovered group: %s (ID: %s)", 
+
+	gm.logger.Info("Discovered group: %s (ID: %s)",
 		BuildHierarchicalPath(group), groupID)
-	
+
 	return nil
 }
 
@@ -131,7 +133,7 @@ func (gm *GroupManager) ProcessGroupStart(event ipc.GroupStartEvent) error {
 	}
 
 	groupID := GenerateGroupID(groupName, parentNames)
-	
+
 	group, exists := gm.groups[groupID]
 	if !exists {
 		// Auto-discover the group if not already known
@@ -149,16 +151,16 @@ func (gm *GroupManager) ProcessGroupStart(event ipc.GroupStartEvent) error {
 		}
 		group = gm.groups[groupID]
 	}
-	
+
 	group.Status = TestStatusRunning
 	group.StartTime = time.Now()
 	group.Updated = time.Now()
-	
+
 	// Schedule report update
 	gm.scheduleReportUpdate(groupID)
-	
+
 	gm.logger.Info("Started group: %s", BuildHierarchicalPath(group))
-	
+
 	return nil
 }
 
@@ -177,12 +179,12 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 	}
 
 	groupID := GenerateGroupID(groupName, parentNames)
-	
+
 	group, exists := gm.groups[groupID]
 	if !exists {
 		return fmt.Errorf("group not found: %s", groupID)
 	}
-	
+
 	// Update group status
 	switch payload.Status {
 	case "PASS":
@@ -194,7 +196,7 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 	default:
 		group.Status = TestStatusPending
 	}
-	
+
 	group.EndTime = time.Now()
 	// Use provided duration directly if available
 	if payload.Duration > 0 {
@@ -203,10 +205,10 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 		group.Duration = group.EndTime.Sub(group.StartTime)
 	}
 	group.Updated = time.Now()
-	
+
 	// Update statistics if provided
-	if payload.Totals.Total > 0 || payload.Totals.Passed > 0 || 
-	   payload.Totals.Failed > 0 || payload.Totals.Skipped > 0 {
+	if payload.Totals.Total > 0 || payload.Totals.Passed > 0 ||
+		payload.Totals.Failed > 0 || payload.Totals.Skipped > 0 {
 		group.Stats.PassedTests = payload.Totals.Passed
 		group.Stats.FailedTests = payload.Totals.Failed
 		group.Stats.SkippedTests = payload.Totals.Skipped
@@ -215,16 +217,16 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 			group.Stats.TotalTests = payload.Totals.Passed + payload.Totals.Failed + payload.Totals.Skipped
 		}
 	}
-	
+
 	// Propagate completion to ancestors
 	gm.propagateCompletion(group)
-	
+
 	// Schedule report update
 	gm.scheduleReportUpdate(groupID)
-	
-	gm.logger.Info("Completed group: %s [%s]", 
+
+	gm.logger.Info("Completed group: %s [%s]",
 		BuildHierarchicalPath(group), group.Status)
-	
+
 	return nil
 }
 
@@ -243,7 +245,7 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 
 	// The test's parent is the full parent hierarchy
 	parentID := GenerateGroupIDFromPath(parentNames)
-	
+
 	// Find or create the parent group
 	var parentGroup *TestGroup
 	if len(parentNames) > 0 {
@@ -260,11 +262,11 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 			parentGroup = gm.groups[parentID]
 		}
 	}
-	
+
 	if parentGroup == nil {
 		return fmt.Errorf("unable to find or create parent group for test: %s", payload.TestName)
 	}
-	
+
 	// Create the test case
 	testCase := TestCase{
 		ID:        GenerateTestCaseID(payload.TestName, parentNames),
@@ -272,7 +274,7 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 		Name:      payload.TestName,
 		StartTime: time.Now(),
 	}
-	
+
 	// Set status
 	switch payload.Status {
 	case "PASS":
@@ -284,13 +286,13 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	default:
 		testCase.Status = TestStatusPending
 	}
-	
+
 	// Set duration
 	if payload.Duration > 0 {
 		testCase.Duration = time.Duration(payload.Duration) * time.Millisecond
 	}
 	testCase.EndTime = time.Now()
-	
+
 	// Set error if present
 	if payload.Error != nil {
 		testCase.Error = &TestError{
@@ -302,11 +304,11 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 			ErrorType: payload.Error.ErrorType,
 		}
 	}
-	
+
 	// Set output if present
 	testCase.Stdout = payload.Stdout
 	testCase.Stderr = payload.Stderr
-	
+
 	// Check if test case already exists (deduplication)
 	testExists := false
 	for i, existingTest := range parentGroup.TestCases {
@@ -323,17 +325,17 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 		parentGroup.TestCases = append(parentGroup.TestCases, testCase)
 	}
 	parentGroup.Updated = time.Now()
-	
+
 	// Update parent group statistics
 	parentGroup.UpdateStats()
-	
+
 	// Schedule report update
 	gm.scheduleReportUpdate(parentID)
-	
-	gm.logger.Info("Test case: %s → %s [%s]", 
-		BuildHierarchicalPathFromSlice(payload.ParentNames), 
+
+	gm.logger.Info("Test case: %s → %s [%s]",
+		BuildHierarchicalPathFromSlice(payload.ParentNames),
 		payload.TestName, testCase.Status)
-	
+
 	return nil
 }
 
@@ -341,20 +343,20 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 func (gm *GroupManager) ProcessStdoutChunk(groupName string, parentNames []string, chunk string) error {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
-	
+
 	groupID := GenerateGroupID(groupName, parentNames)
 	group, exists := gm.groups[groupID]
 	if !exists {
 		// Ignore output for unknown groups
 		return nil
 	}
-	
+
 	group.Stdout += chunk
 	group.Updated = time.Now()
-	
+
 	// Schedule debounced report update
 	gm.scheduleReportUpdate(groupID)
-	
+
 	return nil
 }
 
@@ -362,20 +364,20 @@ func (gm *GroupManager) ProcessStdoutChunk(groupName string, parentNames []strin
 func (gm *GroupManager) ProcessStderrChunk(groupName string, parentNames []string, chunk string) error {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
-	
+
 	groupID := GenerateGroupID(groupName, parentNames)
 	group, exists := gm.groups[groupID]
 	if !exists {
 		// Ignore output for unknown groups
 		return nil
 	}
-	
+
 	group.Stderr += chunk
 	group.Updated = time.Now()
-	
+
 	// Schedule debounced report update
 	gm.scheduleReportUpdate(groupID)
-	
+
 	return nil
 }
 
@@ -384,7 +386,7 @@ func (gm *GroupManager) ensureParentHierarchy(group *TestGroup) error {
 	if len(group.ParentNames) == 0 {
 		return nil
 	}
-	
+
 	// Build parent hierarchy from root to immediate parent
 	for i := 1; i <= len(group.ParentNames); i++ {
 		parentPath := group.ParentNames[:i]
@@ -393,9 +395,9 @@ func (gm *GroupManager) ensureParentHierarchy(group *TestGroup) error {
 		if len(parentPath) > 1 {
 			grandparentNames = parentPath[:len(parentPath)-1]
 		}
-		
+
 		parentID := GenerateGroupIDFromPath(parentPath)
-		
+
 		if _, exists := gm.groups[parentID]; !exists {
 			// Create parent group
 			parent := &TestGroup{
@@ -409,23 +411,23 @@ func (gm *GroupManager) ensureParentHierarchy(group *TestGroup) error {
 				Subgroups:   make(map[string]*TestGroup),
 				TestCases:   make([]TestCase, 0),
 			}
-			
+
 			gm.groups[parentID] = parent
-			
+
 			// Add to root groups if this is a root
 			if len(grandparentNames) == 0 {
 				gm.rootGroups = append(gm.rootGroups, parent)
 			}
 		}
 	}
-	
+
 	// Link the group to its immediate parent
 	parentID := GetParentGroupID(group.ParentNames)
 	if parent, exists := gm.groups[parentID]; exists {
 		parent.Subgroups[group.ID] = group
 		group.ParentID = parentID
 	}
-	
+
 	return nil
 }
 
@@ -435,7 +437,7 @@ func (gm *GroupManager) ensureGroupHierarchy(path []string) error {
 	if len(path) == 0 {
 		return nil
 	}
-	
+
 	// Create each level of the hierarchy
 	for i := 1; i <= len(path); i++ {
 		currentPath := path[:i]
@@ -444,9 +446,9 @@ func (gm *GroupManager) ensureGroupHierarchy(path []string) error {
 		if len(currentPath) > 1 {
 			parentNames = currentPath[:len(currentPath)-1]
 		}
-		
+
 		groupID := GenerateGroupIDFromPath(currentPath)
-		
+
 		if _, exists := gm.groups[groupID]; !exists {
 			// Create the group directly without calling ProcessGroupDiscovered
 			// since we already have the lock
@@ -461,9 +463,9 @@ func (gm *GroupManager) ensureGroupHierarchy(path []string) error {
 				Subgroups:   make(map[string]*TestGroup),
 				TestCases:   make([]TestCase, 0),
 			}
-			
+
 			gm.groups[groupID] = group
-			
+
 			// Handle parent relationship
 			if len(parentNames) == 0 {
 				// This is a root group
@@ -478,7 +480,7 @@ func (gm *GroupManager) ensureGroupHierarchy(path []string) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -487,12 +489,12 @@ func (gm *GroupManager) propagateCompletion(group *TestGroup) {
 	if group.ParentID == "" {
 		return
 	}
-	
+
 	parent, exists := gm.groups[group.ParentID]
 	if !exists {
 		return
 	}
-	
+
 	// Check if all children are complete
 	allComplete := true
 	for _, subgroup := range parent.Subgroups {
@@ -501,7 +503,7 @@ func (gm *GroupManager) propagateCompletion(group *TestGroup) {
 			break
 		}
 	}
-	
+
 	if allComplete {
 		// Check test cases in parent
 		for _, tc := range parent.TestCases {
@@ -511,15 +513,15 @@ func (gm *GroupManager) propagateCompletion(group *TestGroup) {
 			}
 		}
 	}
-	
-	if allComplete && parent.Status != TestStatusPass && 
-	   parent.Status != TestStatusFail && parent.Status != TestStatusSkip {
+
+	if allComplete && parent.Status != TestStatusPass &&
+		parent.Status != TestStatusFail && parent.Status != TestStatusSkip {
 		// Update parent status based on children
 		parent.UpdateStats()
-		
+
 		// Recursively propagate to grandparent
 		gm.propagateCompletion(parent)
-		
+
 		// Schedule report update for parent
 		gm.scheduleReportUpdate(parent.ID)
 	}
@@ -529,14 +531,14 @@ func (gm *GroupManager) propagateCompletion(group *TestGroup) {
 func (gm *GroupManager) scheduleReportUpdate(groupID string) {
 	gm.updateMutex.Lock()
 	defer gm.updateMutex.Unlock()
-	
+
 	gm.pendingUpdates[groupID] = time.Now()
-	
+
 	// Cancel existing timer
 	if gm.updateTimer != nil {
 		gm.updateTimer.Stop()
 	}
-	
+
 	// Schedule new update after 100ms of inactivity
 	gm.updateTimer = time.AfterFunc(100*time.Millisecond, func() {
 		gm.flushPendingUpdates()
@@ -552,14 +554,14 @@ func (gm *GroupManager) flushPendingUpdates() {
 	}
 	gm.pendingUpdates = make(map[string]time.Time)
 	gm.updateMutex.Unlock()
-	
+
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
 	for groupID := range updates {
 		if group, exists := gm.groups[groupID]; exists {
 			if err := gm.generateGroupReport(group); err != nil {
-				gm.logger.Error("Failed to generate report for group %s: %v", 
+				gm.logger.Error("Failed to generate report for group %s: %v",
 					groupID, err)
 			}
 		}
@@ -569,21 +571,21 @@ func (gm *GroupManager) flushPendingUpdates() {
 // generateGroupReport generates a report file for a group
 func (gm *GroupManager) generateGroupReport(group *TestGroup) error {
 	reportPath := GetReportFilePath(group, gm.runDir)
-	
+
 	// Ensure directory exists
 	reportDir := filepath.Dir(reportPath)
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
 		return fmt.Errorf("failed to create report directory: %w", err)
 	}
-	
+
 	// Generate report content
 	content := gm.formatGroupReport(group)
-	
+
 	// Write report file
 	if err := os.WriteFile(reportPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write report file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -626,7 +628,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 		fullPath := strings.Join(append(parentPath, group.Name), " > ")
 		content += fmt.Sprintf("# Test Report: %s\n\n", fullPath)
 	}
-	
+
 	// Summary section - show direct tests OR subgroups, not both aggregated counts
 	content += "## Summary\n\n"
 
@@ -728,7 +730,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 		}
 		content += "\n"
 	}
-	
+
 	// Subgroups
 	if len(group.Subgroups) > 0 {
 		content += "## Subgroups\n\n"
@@ -799,7 +801,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 			content += "```\n"
 		}
 	}
-	
+
 	return content
 }
 
@@ -807,7 +809,7 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 func (gm *GroupManager) GetRootGroups() []*TestGroup {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
 	result := make([]*TestGroup, len(gm.rootGroups))
 	copy(result, gm.rootGroups)
 	return result
@@ -817,7 +819,7 @@ func (gm *GroupManager) GetRootGroups() []*TestGroup {
 func (gm *GroupManager) GetGroup(groupID string) (*TestGroup, bool) {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
 	group, exists := gm.groups[groupID]
 	return group, exists
 }
@@ -826,7 +828,7 @@ func (gm *GroupManager) GetGroup(groupID string) (*TestGroup, bool) {
 func (gm *GroupManager) GetAllGroups() map[string]*TestGroup {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
 	result := make(map[string]*TestGroup)
 	for k, v := range gm.groups {
 		result[k] = v
@@ -838,7 +840,7 @@ func (gm *GroupManager) GetAllGroups() map[string]*TestGroup {
 func (gm *GroupManager) GenerateFinalReport() error {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
 	// Generate reports for all groups
 	for _, group := range gm.groups {
 		if err := gm.generateGroupReport(group); err != nil {
@@ -846,25 +848,25 @@ func (gm *GroupManager) GenerateFinalReport() error {
 				group.ID, err)
 		}
 	}
-	
+
 	// Generate root summary
 	summaryPath := filepath.Join(gm.runDir, "test-run.md")
 	summaryContent := gm.generateSummaryReport()
-	
+
 	if err := os.WriteFile(summaryPath, []byte(summaryContent), 0644); err != nil {
 		return fmt.Errorf("failed to write summary report: %w", err)
 	}
-	
+
 	return nil
 }
 
 // generateSummaryReport generates the overall summary report
 func (gm *GroupManager) generateSummaryReport() string {
 	var content string
-	
+
 	content += "# Test Run Summary\n\n"
 	content += fmt.Sprintf("Generated: %s\n\n", time.Now().Format(time.RFC3339))
-	
+
 	// Calculate totals
 	var totalTests, passedTests, failedTests, skippedTests int
 	for _, group := range gm.rootGroups {
@@ -874,18 +876,18 @@ func (gm *GroupManager) generateSummaryReport() string {
 		failedTests += group.Stats.FailedTestsRecursive
 		skippedTests += group.Stats.SkippedTestsRecursive
 	}
-	
+
 	// Overall statistics
 	content += "## Overall Statistics\n\n"
 	content += fmt.Sprintf("- Total Tests: %d\n", totalTests)
-	content += fmt.Sprintf("- Passed: %d (%.1f%%)\n", passedTests, 
+	content += fmt.Sprintf("- Passed: %d (%.1f%%)\n", passedTests,
 		float64(passedTests)*100/float64(max(totalTests, 1)))
 	content += fmt.Sprintf("- Failed: %d (%.1f%%)\n", failedTests,
 		float64(failedTests)*100/float64(max(totalTests, 1)))
 	content += fmt.Sprintf("- Skipped: %d (%.1f%%)\n", skippedTests,
 		float64(skippedTests)*100/float64(max(totalTests, 1)))
 	content += "\n"
-	
+
 	// Root groups
 	content += "## Test Groups\n\n"
 	for _, group := range gm.rootGroups {
@@ -899,7 +901,7 @@ func (gm *GroupManager) generateSummaryReport() string {
 		} else if group.Status == TestStatusPending {
 			icon = "⏳"
 		}
-		
+
 		relPath := GetRelativeReportPath(group, gm.runDir)
 		content += fmt.Sprintf("- %s [%s](%s)", icon, group.Name, relPath)
 		if group.Stats.TotalTestsRecursive > 0 {
@@ -911,7 +913,7 @@ func (gm *GroupManager) generateSummaryReport() string {
 		}
 		content += "\n"
 	}
-	
+
 	return content
 }
 
@@ -923,7 +925,7 @@ func (gm *GroupManager) Cleanup() {
 		gm.updateTimer = nil
 	}
 	gm.updateMutex.Unlock()
-	
+
 	// Flush any pending updates
 	gm.flushPendingUpdates()
 }
@@ -940,7 +942,7 @@ func max(a, b int) int {
 func (gm *GroupManager) MarshalJSON() ([]byte, error) {
 	gm.mu.RLock()
 	defer gm.mu.RUnlock()
-	
+
 	return json.Marshal(struct {
 		Groups     map[string]*TestGroup `json:"groups"`
 		RootGroups []string              `json:"rootGroups"`

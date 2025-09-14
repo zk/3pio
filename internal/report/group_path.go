@@ -13,10 +13,10 @@ import (
 const (
 	// MaxWindowsPathLength is the maximum path length on Windows
 	MaxWindowsPathLength = 260
-	
+
 	// MaxComponentLength is the maximum length for a single path component
 	MaxComponentLength = 100
-	
+
 	// MaxDepth is the maximum nesting depth to prevent excessive directory nesting
 	MaxDepth = 20
 )
@@ -24,13 +24,13 @@ const (
 var (
 	// Pattern to match invalid filesystem characters
 	invalidCharsPattern = regexp.MustCompile(`[<>:"|?*\x00-\x1f]`)
-	
+
 	// Pattern to match multiple spaces or underscores
 	multiSpacePattern = regexp.MustCompile(`[\s_]+`)
-	
+
 	// Pattern to match leading/trailing dots and spaces (Windows restriction)
 	trimPattern = regexp.MustCompile(`^[\s.]+|[\s.]+$`)
-	
+
 	// Reserved Windows filenames
 	windowsReservedNames = map[string]bool{
 		"CON": true, "PRN": true, "AUX": true, "NUL": true,
@@ -105,7 +105,7 @@ func SanitizeGroupName(name string) string {
 		hashStr := hex.EncodeToString(hash[:4]) // 8 chars
 		name = name[:MaxComponentLength-9] + "_" + hashStr
 	}
-	
+
 	return name
 }
 
@@ -137,15 +137,15 @@ func GenerateGroupPath(group *TestGroup, runDir string) string {
 			components = append(components, sanitized)
 		}
 	}
-	
+
 	// Build the path
 	path := filepath.Join(components...)
-	
+
 	// Check Windows path length limit
 	if runtime.GOOS == "windows" && len(path) > MaxWindowsPathLength {
 		path = shortenPath(path, runDir, hierarchy)
 	}
-	
+
 	return path
 }
 
@@ -173,15 +173,15 @@ func GenerateGroupPathFromHierarchy(hierarchy []string, runDir string) string {
 			components = append(components, sanitized)
 		}
 	}
-	
+
 	// Build the path
 	path := filepath.Join(components...)
-	
+
 	// Check Windows path length limit
 	if runtime.GOOS == "windows" && len(path) > MaxWindowsPathLength {
 		path = shortenPath(path, runDir, hierarchy)
 	}
-	
+
 	return path
 }
 
@@ -190,16 +190,16 @@ func collapseHierarchy(hierarchy []string) []string {
 	if len(hierarchy) <= MaxDepth {
 		return hierarchy
 	}
-	
+
 	// Keep first few and last few levels, combine middle ones
 	keepStart := MaxDepth / 2
 	keepEnd := MaxDepth / 2
-	
+
 	result := make([]string, 0, MaxDepth)
-	
+
 	// Add first levels
 	result = append(result, hierarchy[:keepStart]...)
-	
+
 	// Combine middle levels into one
 	middleStart := keepStart
 	middleEnd := len(hierarchy) - keepEnd
@@ -210,38 +210,38 @@ func collapseHierarchy(hierarchy []string) []string {
 		hashStr := hex.EncodeToString(hash[:4])
 		result = append(result, fmt.Sprintf("_collapsed_%s_", hashStr))
 	}
-	
+
 	// Add last levels
 	result = append(result, hierarchy[len(hierarchy)-keepEnd:]...)
-	
+
 	return result
 }
 
 // shortenPath shortens a path that exceeds Windows path length limit
 func shortenPath(longPath string, runDir string, hierarchy []string) string {
 	// Strategy: Use hash-based short names for intermediate directories
-	
+
 	if len(hierarchy) == 0 {
 		return runDir
 	}
-	
+
 	// Always keep the last component readable
 	lastComponent := SanitizeGroupName(hierarchy[len(hierarchy)-1])
-	
+
 	// Calculate available space
 	baseLen := len(runDir) + len(lastComponent) + 10 // Extra space for separators
 	availableSpace := MaxWindowsPathLength - baseLen
-	
+
 	if availableSpace <= 0 {
 		// Even the last component is too long, hash everything
 		hash := sha256.Sum256([]byte(strings.Join(hierarchy, ":")))
 		hashStr := hex.EncodeToString(hash[:8])
 		return filepath.Join(runDir, hashStr)
 	}
-	
+
 	// Build shortened path
 	components := []string{runDir}
-	
+
 	if len(hierarchy) > 1 {
 		// Hash all intermediate components
 		intermediate := hierarchy[:len(hierarchy)-1]
@@ -249,9 +249,9 @@ func shortenPath(longPath string, runDir string, hierarchy []string) string {
 		hashStr := hex.EncodeToString(hash[:8])
 		components = append(components, hashStr)
 	}
-	
+
 	components = append(components, lastComponent)
-	
+
 	return filepath.Join(components...)
 }
 
@@ -280,12 +280,12 @@ func IsValidFilePath(path string) bool {
 	if runtime.GOOS == "windows" && len(path) > MaxWindowsPathLength {
 		return false
 	}
-	
+
 	// Check for invalid characters (basic check)
 	if strings.ContainsAny(path, "\x00") {
 		return false
 	}
-	
+
 	// Check for reserved names on Windows
 	if runtime.GOOS == "windows" {
 		components := strings.Split(path, string(filepath.Separator))
@@ -300,7 +300,7 @@ func IsValidFilePath(path string) bool {
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -308,13 +308,13 @@ func IsValidFilePath(path string) bool {
 func NormalizeFilePath(path string) string {
 	// Clean the path
 	path = filepath.Clean(path)
-	
+
 	// Convert to forward slashes for consistency
 	path = filepath.ToSlash(path)
-	
+
 	// Remove trailing slash
 	path = strings.TrimSuffix(path, "/")
-	
+
 	return path
 }
 

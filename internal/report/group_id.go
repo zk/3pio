@@ -12,7 +12,7 @@ import (
 func GenerateGroupID(groupName string, parentNames []string) string {
 	fullPath := append(parentNames, groupName)
 	pathString := strings.Join(fullPath, ":")
-	
+
 	hash := sha256.Sum256([]byte(pathString))
 	// Use first 16 bytes (32 hex chars) for ID
 	return hex.EncodeToString(hash[:16])
@@ -22,7 +22,7 @@ func GenerateGroupID(groupName string, parentNames []string) string {
 func GenerateTestCaseID(testName string, parentNames []string) string {
 	fullPath := append(parentNames, testName)
 	pathString := strings.Join(fullPath, ":")
-	
+
 	hash := sha256.Sum256([]byte(pathString))
 	// Use first 16 bytes (32 hex chars) for ID
 	return hex.EncodeToString(hash[:16])
@@ -33,7 +33,7 @@ func GenerateGroupIDFromPath(path []string) string {
 	if len(path) == 0 {
 		return ""
 	}
-	
+
 	pathString := strings.Join(path, ":")
 	hash := sha256.Sum256([]byte(pathString))
 	return hex.EncodeToString(hash[:16])
@@ -44,11 +44,11 @@ func ParseHierarchy(fullPath []string) (parentNames []string, itemName string) {
 	if len(fullPath) == 0 {
 		return nil, ""
 	}
-	
+
 	if len(fullPath) == 1 {
 		return nil, fullPath[0]
 	}
-	
+
 	return fullPath[:len(fullPath)-1], fullPath[len(fullPath)-1]
 }
 
@@ -57,9 +57,9 @@ func BuildHierarchicalPath(group *TestGroup) string {
 	if group == nil {
 		return ""
 	}
-	
+
 	parts := append(group.ParentNames, group.Name)
-	
+
 	// Use → as separator for better visual hierarchy
 	return strings.Join(parts, " → ")
 }
@@ -69,7 +69,7 @@ func BuildHierarchicalPathFromSlice(parts []string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	
+
 	// Use → as separator for better visual hierarchy
 	return strings.Join(parts, " → ")
 }
@@ -79,12 +79,12 @@ func TruncatePathForDisplay(path string, maxLength int) string {
 	if len(path) <= maxLength {
 		return path
 	}
-	
+
 	// Reserve space for ellipsis
 	if maxLength <= 3 {
 		return "..."
 	}
-	
+
 	// Try to keep the end of the path visible
 	keepLength := maxLength - 3
 	if keepLength > 0 {
@@ -99,7 +99,7 @@ func TruncatePathForDisplay(path string, maxLength int) string {
 		}
 		return "..." + endPart
 	}
-	
+
 	return "..."
 }
 
@@ -107,10 +107,10 @@ func TruncatePathForDisplay(path string, maxLength int) string {
 func NormalizeGroupName(name string) string {
 	// Trim whitespace
 	name = strings.TrimSpace(name)
-	
+
 	// Replace multiple spaces with single space
 	name = strings.Join(strings.Fields(name), " ")
-	
+
 	return name
 }
 
@@ -120,18 +120,18 @@ func ExtractFileFromPath(path []string) string {
 	if len(path) == 0 {
 		return ""
 	}
-	
+
 	// The first element is typically the file path
 	first := path[0]
-	
+
 	// Check if it looks like a file path
-	if strings.Contains(first, "/") || strings.Contains(first, "\\") || 
-	   strings.HasSuffix(first, ".js") || strings.HasSuffix(first, ".ts") ||
-	   strings.HasSuffix(first, ".jsx") || strings.HasSuffix(first, ".tsx") ||
-	   strings.HasSuffix(first, ".py") || strings.HasSuffix(first, ".go") {
+	if strings.Contains(first, "/") || strings.Contains(first, "\\") ||
+		strings.HasSuffix(first, ".js") || strings.HasSuffix(first, ".ts") ||
+		strings.HasSuffix(first, ".jsx") || strings.HasSuffix(first, ".tsx") ||
+		strings.HasSuffix(first, ".py") || strings.HasSuffix(first, ".go") {
 		return first
 	}
-	
+
 	return ""
 }
 
@@ -140,12 +140,12 @@ func GetParentGroupID(parentNames []string) string {
 	if len(parentNames) == 0 {
 		return ""
 	}
-	
+
 	if len(parentNames) == 1 {
 		// Parent is root, generate ID for just the first element
 		return GenerateGroupIDFromPath([]string{parentNames[0]})
 	}
-	
+
 	// Generate ID for all parent names
 	return GenerateGroupIDFromPath(parentNames)
 }
@@ -155,13 +155,13 @@ func CompareGroupPaths(path1, path2 []string) bool {
 	if len(path1) != len(path2) {
 		return false
 	}
-	
+
 	for i := range path1 {
 		if NormalizeGroupName(path1[i]) != NormalizeGroupName(path2[i]) {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -170,13 +170,13 @@ func IsChildPath(parentPath, childPath []string) bool {
 	if len(childPath) <= len(parentPath) {
 		return false
 	}
-	
+
 	for i := range parentPath {
 		if NormalizeGroupName(parentPath[i]) != NormalizeGroupName(childPath[i]) {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -185,7 +185,7 @@ func GetRelativePath(parentPath, childPath []string) []string {
 	if !IsChildPath(parentPath, childPath) {
 		return nil
 	}
-	
+
 	return childPath[len(parentPath):]
 }
 
@@ -202,7 +202,7 @@ type GroupIDInfo struct {
 func GetGroupIDInfo(groupName string, parentNames []string) GroupIDInfo {
 	fullPath := append(parentNames, groupName)
 	pathString := strings.Join(fullPath, ":")
-	
+
 	return GroupIDInfo{
 		ID:          GenerateGroupID(groupName, parentNames),
 		GroupName:   groupName,
@@ -214,8 +214,8 @@ func GetGroupIDInfo(groupName string, parentNames []string) GroupIDInfo {
 
 // String returns a string representation of GroupIDInfo
 func (info GroupIDInfo) String() string {
-	return fmt.Sprintf("ID: %s\nPath: %s\nGenerated from: %s", 
-		info.ID, 
+	return fmt.Sprintf("ID: %s\nPath: %s\nGenerated from: %s",
+		info.ID,
 		BuildHierarchicalPathFromSlice(info.FullPath),
 		info.PathString)
 }

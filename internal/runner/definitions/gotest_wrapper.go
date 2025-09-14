@@ -10,19 +10,19 @@ import (
 type NativeDefinition interface {
 	// Name returns the name of the test runner
 	Name() string
-	
+
 	// Detect checks if this runner can handle the given command
 	Detect(args []string) bool
-	
+
 	// ModifyCommand modifies the command for proper execution
 	ModifyCommand(cmd []string, ipcPath, runID string) []string
-	
+
 	// GetTestFiles returns list of test files (empty for dynamic discovery)
 	GetTestFiles(args []string) ([]string, error)
-	
+
 	// RequiresAdapter returns whether this runner needs an external adapter
 	RequiresAdapter() bool
-	
+
 	// ProcessOutput processes the test runner output and generates IPC events
 	ProcessOutput(stdout io.Reader, ipcPath string) error
 }

@@ -35,11 +35,11 @@ func TestGenerateGroupID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id := GenerateGroupID(tt.groupName, tt.parentNames)
-			
+
 			if len(id) != tt.expectLen {
 				t.Errorf("ID length = %d, want %d", len(id), tt.expectLen)
 			}
-			
+
 			// Verify it's hex
 			for _, c := range id {
 				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
@@ -54,10 +54,10 @@ func TestGenerateGroupID_Deterministic(t *testing.T) {
 	// Same inputs should always produce same ID
 	groupName := "test.js"
 	parentNames := []string{"src", "components"}
-	
+
 	id1 := GenerateGroupID(groupName, parentNames)
 	id2 := GenerateGroupID(groupName, parentNames)
-	
+
 	if id1 != id2 {
 		t.Errorf("IDs not deterministic: %s != %s", id1, id2)
 	}
@@ -67,7 +67,7 @@ func TestGenerateGroupID_UniqueForDifferentPaths(t *testing.T) {
 	id1 := GenerateGroupID("test.js", []string{"src"})
 	id2 := GenerateGroupID("test.js", []string{"lib"})
 	id3 := GenerateGroupID("other.js", []string{"src"})
-	
+
 	if id1 == id2 {
 		t.Error("Same name in different parents should have different IDs")
 	}
@@ -78,41 +78,41 @@ func TestGenerateGroupID_UniqueForDifferentPaths(t *testing.T) {
 
 func TestParseHierarchy(t *testing.T) {
 	tests := []struct {
-		name           string
-		fullPath       []string
-		wantParents    []string
-		wantItemName   string
+		name         string
+		fullPath     []string
+		wantParents  []string
+		wantItemName string
 	}{
 		{
-			name:           "Empty path",
-			fullPath:       []string{},
-			wantParents:    nil,
-			wantItemName:   "",
+			name:         "Empty path",
+			fullPath:     []string{},
+			wantParents:  nil,
+			wantItemName: "",
 		},
 		{
-			name:           "Single item",
-			fullPath:       []string{"test.js"},
-			wantParents:    nil,
-			wantItemName:   "test.js",
+			name:         "Single item",
+			fullPath:     []string{"test.js"},
+			wantParents:  nil,
+			wantItemName: "test.js",
 		},
 		{
-			name:           "Two items",
-			fullPath:       []string{"src", "test.js"},
-			wantParents:    []string{"src"},
-			wantItemName:   "test.js",
+			name:         "Two items",
+			fullPath:     []string{"src", "test.js"},
+			wantParents:  []string{"src"},
+			wantItemName: "test.js",
 		},
 		{
-			name:           "Multiple items",
-			fullPath:       []string{"src", "components", "Calculator", "test.js"},
-			wantParents:    []string{"src", "components", "Calculator"},
-			wantItemName:   "test.js",
+			name:         "Multiple items",
+			fullPath:     []string{"src", "components", "Calculator", "test.js"},
+			wantParents:  []string{"src", "components", "Calculator"},
+			wantItemName: "test.js",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parents, item := ParseHierarchy(tt.fullPath)
-			
+
 			if !equalStringSlices(parents, tt.wantParents) {
 				t.Errorf("Parents = %v, want %v", parents, tt.wantParents)
 			}
@@ -417,24 +417,24 @@ func TestGetRelativePath(t *testing.T) {
 
 func TestGetGroupIDInfo(t *testing.T) {
 	info := GetGroupIDInfo("test.js", []string{"src", "components"})
-	
+
 	if info.GroupName != "test.js" {
 		t.Errorf("GroupName = %s, want test.js", info.GroupName)
 	}
-	
+
 	if len(info.ParentNames) != 2 {
 		t.Errorf("ParentNames length = %d, want 2", len(info.ParentNames))
 	}
-	
+
 	if len(info.ID) != 32 {
 		t.Errorf("ID length = %d, want 32", len(info.ID))
 	}
-	
+
 	expectedPathString := "src:components:test.js"
 	if info.PathString != expectedPathString {
 		t.Errorf("PathString = %s, want %s", info.PathString, expectedPathString)
 	}
-	
+
 	// Test String() method
 	str := info.String()
 	if !strings.Contains(str, info.ID) {

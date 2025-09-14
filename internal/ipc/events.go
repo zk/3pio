@@ -8,7 +8,7 @@ type EventType string
 const (
 	// Legacy events removed: stdoutChunk, stderrChunk, testFileStart, testFileResult
 	// New group events
-	EventTypeTestCase         EventType = "testCase"        // New group-based testCase
+	EventTypeTestCase         EventType = "testCase" // New group-based testCase
 	EventTypeRunComplete      EventType = "runComplete"
 	EventTypeCollectionStart  EventType = "collectionStart"
 	EventTypeCollectionError  EventType = "collectionError"

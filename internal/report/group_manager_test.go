@@ -151,8 +151,8 @@ func TestGroupManager_ProcessGroupResult(t *testing.T) {
 			Status:      "PASS",
 			Duration:    1500,
 			Totals: ipc.GroupTotals{
-				Passed: 5,
-				Failed: 1,
+				Passed:  5,
+				Failed:  1,
 				Skipped: 2,
 				Total:   8,
 			},
@@ -415,7 +415,7 @@ func TestGroupManager_ReportGeneration(t *testing.T) {
 	}
 
 	reportStr := string(content)
-	
+
 	// Check for expected content
 	if !strings.Contains(reportStr, "math.test.js") {
 		t.Error("Report should contain group name")
@@ -612,7 +612,7 @@ func TestFormatGroupReport_OnlyShowCountsGreaterThanZero(t *testing.T) {
 		Duration:    100 * time.Millisecond,
 		Created:     time.Now(),
 		Updated:     time.Now(),
-		TestCases:   []TestCase{
+		TestCases: []TestCase{
 			{Name: "test1", Status: TestStatusPass, Duration: 10 * time.Millisecond},
 			{Name: "test2", Status: TestStatusPass, Duration: 20 * time.Millisecond},
 			{Name: "test3", Status: TestStatusSkip, Duration: 0},
