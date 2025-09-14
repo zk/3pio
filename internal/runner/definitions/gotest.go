@@ -2,7 +2,6 @@ package definitions
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,19 +17,11 @@ import (
 
 // GoTestDefinition implements support for Go's native test runner
 type GoTestDefinition struct {
-	logger        *logger.FileLogger
-	packageMap    map[string]*PackageInfo
-	testStates    map[string]*TestState
-	testToFileMap map[string]string // Maps "package/test" to file path
-	mu            sync.RWMutex
-	ipcWriter     *IPCWriter
-
-	// File timing tracking
-	fileStarted    map[string]bool      // Track if we've sent testFileStart for a file
-	fileStartTimes map[string]time.Time // Track when first test in file started
-	fileTestCounts map[string]int       // Track number of tests per file
-	fileTestsDone  map[string]int       // Track completed tests per file
-	fileStatuses   map[string]string    // Track overall status per file (PASS/FAIL)
+	logger     *logger.FileLogger
+	packageMap map[string]*PackageInfo
+	testStates map[string]*TestState
+	mu         sync.RWMutex
+	ipcWriter  *IPCWriter
 
 	// Package-level tracking
 	packageTestFiles  map[string][]string          // Map of package to its test files
@@ -45,7 +36,7 @@ type GoTestDefinition struct {
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool           // Track discovered groups to avoid duplicates
 	groupStarts      map[string]bool           // Track started groups
-	fileGroups       map[string]*FileGroupInfo // Track file-level group info
+	subgroupStats    map[string]*SubgroupStats // Track test counts and timing for subgroups
 }
 
 // PackageInfo holds information about a Go package
@@ -67,13 +58,7 @@ type TestState struct {
 	IsPaused  bool
 }
 
-// FileGroupInfo tracks group information for a file
-type FileGroupInfo struct {
-	StartTime time.Time
-	Tests     []TestInfo
-}
-
-// TestInfo tracks individual test information within a file group
+// TestInfo tracks individual test information
 type TestInfo struct {
 	Name     string
 	Status   string
@@ -97,6 +82,17 @@ type PackageGroupInfo struct {
 	NoTestFiles bool // True if package has no test files
 }
 
+// SubgroupStats tracks statistics for a subgroup (e.g., TestMain when it has subtests)
+type SubgroupStats struct {
+	TotalTests   int
+	PassedTests  int
+	FailedTests  int
+	SkippedTests int
+	StartTime    time.Time
+	Duration     float64 // in seconds
+	Status       string
+}
+
 // IPCWriter handles writing IPC events
 type IPCWriter struct {
 	path string
@@ -110,12 +106,6 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		logger:            logger,
 		packageMap:        make(map[string]*PackageInfo),
 		testStates:        make(map[string]*TestState),
-		testToFileMap:     make(map[string]string),
-		fileStarted:       make(map[string]bool),
-		fileStartTimes:    make(map[string]time.Time),
-		fileTestCounts:    make(map[string]int),
-		fileTestsDone:     make(map[string]int),
-		fileStatuses:      make(map[string]string),
 		packageTestFiles:  make(map[string][]string),
 		packageStarted:    make(map[string]bool),
 		packageStartTimes: make(map[string]time.Time),
@@ -126,7 +116,7 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		packageResultSent: make(map[string]bool),
 		discoveredGroups:  make(map[string]bool),
 		groupStarts:       make(map[string]bool),
-		fileGroups:        make(map[string]*FileGroupInfo),
+		subgroupStats:     make(map[string]*SubgroupStats),
 	}
 }
 
@@ -222,12 +212,8 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 	// Store package map for later use
 	g.packageMap = packageMap
 
-	// Build test-to-file mapping for accurate test tracking
-	// This is needed to properly process all tests including those that fail
-	if err := g.buildTestToFileMap(); err != nil {
-		g.logger.Debug("Failed to build test-to-file map: %v", err)
-		// Continue without the map - will fall back to package-based mapping
-	}
+	// Note: buildTestToFileMap() removed - it was legacy code that caused performance issues
+	// Go tests operate at package level, so test-to-file mapping provides no value
 
 	// Extract all test files from packages
 	var allTestFiles []string
@@ -358,8 +344,7 @@ func (g *GoTestDefinition) handlePackageStart(event *GoTestEvent) {
 		g.packageStarted[event.Package] = true
 	}
 
-	// Don't send testFileStart here - we'll send it when the first test from a file runs
-	// Just ensure the package mapping is ready
+	// Package mapping is ready - groups are handled at package level for Go
 	if _, ok := g.packageMap[event.Package]; !ok {
 		g.logger.Debug("Package %s started but not in packageMap", event.Package)
 	}
@@ -407,23 +392,6 @@ func (g *GoTestDefinition) handleTestRun(event *GoTestEvent) {
 
 	// Increment expected test count for this package
 	g.packageTestCounts[event.Package]++
-
-	// Track file for internal use (only if we have a file path)
-	if filePath != "" {
-		if !g.fileStarted[filePath] {
-			g.fileStarted[filePath] = true
-			g.fileStartTimes[filePath] = event.Time
-
-			// Store file group info
-			g.fileGroups[filePath] = &FileGroupInfo{
-				StartTime: event.Time,
-				Tests:     []TestInfo{},
-			}
-		}
-
-		// Increment expected test count for this file
-		g.fileTestCounts[filePath]++
-	}
 }
 
 // handleTestPause processes test pause events
@@ -463,24 +431,11 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 		}
 	}
 
-	// First try to find the test in our test-to-file map
-	// For subtests, we need to check the parent test
-	testName := event.Test
-	if strings.Contains(testName, "/") {
-		// For subtests, use the parent test name for mapping
-		parentTest := strings.Split(testName, "/")[0]
-		key = fmt.Sprintf("%s/%s", event.Package, parentTest)
-	}
-
-	var filePath string
-	filePath, ok = g.testToFileMap[key]
-	if !ok {
-		// Fall back to package-based mapping
-		filePath = g.getFilePathForPackage(event.Package)
-		if filePath == "" {
-			g.logger.Debug("Could not map test %s in package %s to file", event.Test, event.Package)
-			// Don't return - still need to process the test even without file mapping
-		}
+	// Get file path for the test (package-based mapping for Go)
+	filePath := g.getFilePathForTest(event.Package, event.Test)
+	if filePath == "" {
+		g.logger.Debug("Could not map test %s in package %s to file", event.Test, event.Package)
+		// Don't return - still need to process the test even without file mapping
 	}
 
 	// Determine status
@@ -505,22 +460,113 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	outputStr := strings.Join(state.Output, "\n")
 	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, outputStr)
 
+	// Track subgroup statistics for parent groups
+	if len(suiteChain) > 0 {
+		// This is a subtest, update stats for its parent group
+		for i := 0; i < len(suiteChain); i++ {
+			groupHierarchy := append([]string{event.Package}, suiteChain[:i+1]...)
+			groupKey := strings.Join(groupHierarchy, "/")
+
+			if _, exists := g.subgroupStats[groupKey]; !exists {
+				g.subgroupStats[groupKey] = &SubgroupStats{
+					StartTime: time.Now(),
+				}
+			}
+
+			stats := g.subgroupStats[groupKey]
+			stats.TotalTests++
+			switch status {
+			case "PASS":
+				stats.PassedTests++
+			case "FAIL":
+				stats.FailedTests++
+				if stats.Status != "FAIL" {
+					stats.Status = "FAIL" // Fail takes precedence
+				}
+			case "SKIP":
+				stats.SkippedTests++
+			}
+
+			// Update status if not already failed
+			if stats.Status != "FAIL" && stats.PassedTests == stats.TotalTests {
+				stats.Status = "PASS"
+			}
+		}
+
+		// Check if this subtest itself is a parent group (has further subtests)
+		// If it is, send a group result for it
+		groupKey := event.Package + "/" + event.Test
+		if stats, exists := g.subgroupStats[groupKey]; exists {
+			// This subtest has its own subtests, send group result for it
+			stats.Duration = event.Elapsed
+
+			// Determine final status
+			if stats.Status == "" {
+				if stats.FailedTests > 0 {
+					stats.Status = "FAIL"
+				} else if stats.PassedTests == stats.TotalTests {
+					stats.Status = "PASS"
+				} else {
+					stats.Status = "SKIP"
+				}
+			}
+
+			// Send group result for this subgroup
+			totals := map[string]interface{}{
+				"total":   stats.TotalTests,
+				"passed":  stats.PassedTests,
+				"failed":  stats.FailedTests,
+				"skipped": stats.SkippedTests,
+			}
+
+			// Build parent names for this subgroup
+			g.sendGroupResult(finalTestName, parentNames, stats.Status, stats.Duration, totals)
+
+			// Clean up stats
+			delete(g.subgroupStats, groupKey)
+		}
+	} else {
+		// This is a top-level test (no subtests), check if it's a parent group
+		groupKey := event.Package + "/" + event.Test
+		if stats, exists := g.subgroupStats[groupKey]; exists {
+			// This test has subtests, send group result for it
+			stats.Duration = event.Elapsed
+
+			// Determine final status
+			if stats.Status == "" {
+				if stats.FailedTests > 0 {
+					stats.Status = "FAIL"
+				} else if stats.PassedTests == stats.TotalTests {
+					stats.Status = "PASS"
+				} else {
+					stats.Status = "SKIP"
+				}
+			}
+
+			// Send group result for this subgroup
+			totals := map[string]interface{}{
+				"total":   stats.TotalTests,
+				"passed":  stats.PassedTests,
+				"failed":  stats.FailedTests,
+				"skipped": stats.SkippedTests,
+			}
+
+			// The parent names for this group are just [package]
+			g.sendGroupResult(event.Test, []string{event.Package}, stats.Status, stats.Duration, totals)
+
+			// Clean up stats
+			delete(g.subgroupStats, groupKey)
+		}
+	}
+
 	// Clean up state
 	delete(g.testStates, key)
 
-	// Track test in package group
-	if pkgGroup, ok := g.packageGroups[event.Package]; ok {
-		pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
-			Name:     finalTestName,
-			Status:   status,
-			Duration: event.Elapsed,
-		})
-	}
-
-	// Track test in file group (for internal use) - only if we have a file path
-	if filePath != "" {
-		if fileGroup, ok := g.fileGroups[filePath]; ok {
-			fileGroup.Tests = append(fileGroup.Tests, TestInfo{
+	// Track test in package group (only top-level tests, not subtests)
+	if len(suiteChain) == 0 {
+		// This is a top-level test (no parent hierarchy)
+		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
+			pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
 				Name:     finalTestName,
 				Status:   status,
 				Duration: event.Elapsed,
@@ -540,23 +586,6 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 			g.packageStatuses[event.Package] = "PASS"
 		} else if event.Action == "skip" && g.packageStatuses[event.Package] != "PASS" {
 			g.packageStatuses[event.Package] = "SKIP"
-		}
-	}
-
-	// Track file completion (for internal use) - only if we have a file path
-	if filePath != "" {
-		g.fileTestsDone[filePath]++
-
-		// Update file status based on test result
-		if event.Action == "fail" {
-			g.fileStatuses[filePath] = "FAIL"
-		} else if g.fileStatuses[filePath] != "FAIL" {
-			// Only update to PASS/SKIP if not already failed
-			if event.Action == "pass" {
-				g.fileStatuses[filePath] = "PASS"
-			} else if event.Action == "skip" && g.fileStatuses[filePath] != "PASS" {
-				g.fileStatuses[filePath] = "SKIP"
-			}
 		}
 	}
 
@@ -604,14 +633,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 		// Send the package group result
 		status := strings.ToUpper(event.Action)
 
-		// Check if this is a package with no test files
-		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
-			if pkgGroup.NoTestFiles && status == "SKIP" {
-				// Mark this specially so orchestrator can display ???
-				status = "NOTESTS"
-			}
-		}
-
 		// Calculate totals from tracked tests
 		totals := map[string]interface{}{
 			"total":   0,
@@ -632,6 +653,14 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 				case "SKIP":
 					totals["skipped"] = totals["skipped"].(int) + 1
 				}
+			}
+		}
+
+		// Check if this is a package with no test files
+		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
+			if pkgGroup.NoTestFiles && status == "SKIP" {
+				// Mark this specially so orchestrator can display ???
+				status = "NOTESTS"
 			}
 		}
 
@@ -678,24 +707,10 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 	}
 }
 
-// getFilePathForTest maps a test to its source file using the test-to-file map
+// getFilePathForTest maps a test to its source file - simplified to always use package-level mapping
 func (g *GoTestDefinition) getFilePathForTest(packageName, testName string) string {
-	// First try the direct mapping
-	key := fmt.Sprintf("%s/%s", packageName, testName)
-	if filePath, ok := g.testToFileMap[key]; ok {
-		return filePath
-	}
-
-	// For subtests, try the parent test
-	if strings.Contains(testName, "/") {
-		parentTest := strings.Split(testName, "/")[0]
-		parentKey := fmt.Sprintf("%s/%s", packageName, parentTest)
-		if filePath, ok := g.testToFileMap[parentKey]; ok {
-			return filePath
-		}
-	}
-
-	// Fall back to package-based mapping
+	// Go tests operate at package level, not file level
+	// Always use package-based mapping since we can't reliably determine which file contains a test
 	return g.getFilePathForPackage(packageName)
 }
 
@@ -734,86 +749,9 @@ func (g *GoTestDefinition) getFilePathForPackage(packageName string) string {
 	return ""
 }
 
-// buildTestToFileMap builds a mapping of test names to their source files
-func (g *GoTestDefinition) buildTestToFileMap() error {
-	g.logger.Debug("Building test-to-file mapping")
-
-	// Note: Go tests operate at the package level, not file level.
-	// Since we can't reliably determine which test belongs to which file,
-	// we'll report at the package level using the first test file as representative.
-
-	for pkgName, pkg := range g.packageMap {
-		// Determine the representative file for this package
-		var absolutePath string
-		if len(pkg.TestGoFiles) > 0 {
-			absolutePath = filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
-		} else if len(pkg.XTestGoFiles) > 0 {
-			absolutePath = filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
-		} else {
-			continue
-		}
-
-		// Convert to relative path
-		representativeFile := absolutePath
-		cwd, err := os.Getwd()
-		if err == nil {
-			if relPath, err := filepath.Rel(cwd, absolutePath); err == nil {
-				// Always use "./" prefix for consistency
-				if !strings.HasPrefix(relPath, ".") && !strings.HasPrefix(relPath, "/") {
-					relPath = "./" + relPath
-				}
-				representativeFile = relPath
-			}
-		}
-
-		// Get all tests in the package
-		tests, err := g.listTestsInPackage(pkg.Dir)
-		if err != nil {
-			g.logger.Debug("Failed to list tests in package %s: %v", pkgName, err)
-			continue
-		}
-
-		// Map all tests to the representative file
-		// This is a limitation of Go's test runner - we can't determine file-level granularity
-		for _, test := range tests {
-			key := fmt.Sprintf("%s/%s", pkgName, test)
-			g.testToFileMap[key] = representativeFile
-			g.logger.Debug("Mapped test %s to representative file %s", key, representativeFile)
-		}
-
-		// Store all test files for this package so we can report them as part of the package
-		g.packageTestFiles[pkgName] = append(g.packageTestFiles[pkgName], pkg.TestGoFiles...)
-		g.packageTestFiles[pkgName] = append(g.packageTestFiles[pkgName], pkg.XTestGoFiles...)
-	}
-
-	return nil
-}
-
-// listTestsInPackage runs go test -list to get all tests in a package
-func (g *GoTestDefinition) listTestsInPackage(pkgDir string) ([]string, error) {
-	// Run go test -list for the package directory
-	cmd := exec.Command("go", "test", "-list", ".", pkgDir)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the output to get test names
-	var tests []string
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Skip empty lines and "ok" status lines
-		if line != "" && !strings.HasPrefix(line, "ok") && !strings.HasPrefix(line, "?") {
-			// Only include top-level test functions (not subtests)
-			if strings.HasPrefix(line, "Test") || strings.HasPrefix(line, "Example") || strings.HasPrefix(line, "Benchmark") {
-				tests = append(tests, line)
-			}
-		}
-	}
-
-	return tests, nil
-}
+// buildTestToFileMap removed - legacy code from pre-universal-abstractions
+// Go tests operate at the package level, not file level, so mapping individual
+// tests to files provides no value and causes performance issues on large repos
 
 // Group management helper methods
 

@@ -35,16 +35,17 @@ type Orchestrator struct {
 	exitCode int
 
 	// Console output state
-	startTime       time.Time
-	passedFiles     int
-	failedFiles     int
-	totalFiles      int
-	displayedFiles  map[string]bool      // Track which files we've already displayed
-	lastCollected   int                  // Track last collection count to avoid duplicates
-	fileStartTimes  map[string]time.Time // Track start time for each file
-	fileFailedTests map[string][]string  // Track failed test names by file
-	completedFiles  map[string]bool      // Track which files have shown their final PASS/FAIL status
-	noTestFiles     map[string]bool      // Track packages with no test files (Go specific)
+	startTime        time.Time
+	passedGroups     int
+	failedGroups     int
+	skippedGroups    int
+	totalGroups      int
+	displayedGroups  map[string]bool      // Track which groups we've already displayed
+	lastCollected    int                  // Track last collection count to avoid duplicates
+	groupStartTimes  map[string]time.Time // Track start time for each group
+	groupFailedTests map[string][]string  // Track failed test names by group
+	completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
+	noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -70,14 +71,14 @@ func New(config Config) (*Orchestrator, error) {
 	}
 
 	return &Orchestrator{
-		runnerManager:   runner.NewManager(),
-		logger:          config.Logger,
-		command:         config.Command,
-		displayedFiles:  make(map[string]bool),
-		fileStartTimes:  make(map[string]time.Time),
-		fileFailedTests: make(map[string][]string),
-		completedFiles:  make(map[string]bool),
-		noTestFiles:     make(map[string]bool),
+		runnerManager:    runner.NewManager(),
+		logger:           config.Logger,
+		command:          config.Command,
+		displayedGroups:  make(map[string]bool),
+		groupStartTimes:  make(map[string]time.Time),
+		groupFailedTests: make(map[string][]string),
+		completedGroups:  make(map[string]bool),
+		noTestGroups:     make(map[string]bool),
 	}, nil
 }
 
@@ -92,11 +93,16 @@ func (o *Orchestrator) Close() error {
 // Run executes the test command with 3pio instrumentation
 func (o *Orchestrator) Run() error {
 	// Ensure cleanup on exit
-	defer o.Close()
+	defer func() {
+		_ = o.Close()
+	}()
 
 	// Generate run ID
 	o.runID = generateRunID()
 	o.runDir = filepath.Join(".3pio", "runs", o.runID)
+
+	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
+	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
 
 	// Print greeting and command
 	testCommand := strings.Join(o.command, " ")
@@ -117,20 +123,6 @@ func (o *Orchestrator) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to detect test runner: %w", err)
 	}
-
-	// Get test files (may be empty for dynamic discovery)
-	testFiles, err := runnerDef.GetTestFiles(o.command)
-	if err != nil {
-		o.logger.Debug("Could not get test files upfront: %v", err)
-		testFiles = []string{} // Use dynamic discovery
-	}
-
-	// Setup IPC
-	ipcDir, err := ipc.EnsureIPCDirectory()
-	if err != nil {
-		return fmt.Errorf("failed to setup IPC directory: %w", err)
-	}
-	o.ipcPath = filepath.Join(ipcDir, fmt.Sprintf("%s.jsonl", o.runID))
 
 	// Create IPC manager
 	o.ipcManager, err = ipc.NewManager(o.ipcPath, o.logger)
@@ -188,7 +180,7 @@ func (o *Orchestrator) Run() error {
 
 	// Initialize report
 	args := strings.Join(o.command, " ")
-	if err := o.reportManager.Initialize(testFiles, args); err != nil {
+	if err := o.reportManager.Initialize(args); err != nil {
 		return fmt.Errorf("failed to initialize report: %w", err)
 	}
 
@@ -356,7 +348,7 @@ func (o *Orchestrator) Run() error {
 	if commandErr != nil {
 		// Only include error details for actual command errors (not test failures)
 		// If tests were processed, this is just a test failure, not a command error
-		if o.totalFiles == 0 {
+		if o.totalGroups == 0 {
 			errorDetails = commandErr.Error()
 
 			// Include stderr content if available for command errors
@@ -371,7 +363,7 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// If we didn't get GroupResult events, compute stats and display results from the report manager
-	if o.totalFiles == 0 {
+	if o.totalGroups == 0 {
 		o.computeStatsFromReportManager()
 		o.displayFinalResults()
 	}
@@ -386,7 +378,7 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Add random failure exclamation if tests failed
-	if o.failedFiles > 0 {
+	if o.failedGroups > 0 {
 		exclamations := []string{
 			"This is madness!",
 			"We're doomed!",
@@ -394,13 +386,27 @@ func (o *Orchestrator) Run() error {
 		}
 		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
 		fmt.Printf("Test failures! %s\n", randomExclamation)
-	} else if o.passedFiles > 0 {
-		// Success message
+	} else if o.passedGroups > 0 && o.skippedGroups == 0 {
+		// All tests that ran passed (no skips)
 		fmt.Println("Splendid! All tests passed successfully")
+	} else if o.passedGroups > 0 && o.skippedGroups > 0 {
+		// Some tests passed, some were skipped
+		fmt.Println("Tests completed with some skipped")
+	} else if o.skippedGroups > 0 && o.passedGroups == 0 {
+		// Only skipped tests
+		fmt.Println("All tests were skipped")
 	}
 
 	// Format results summary in new format
-	fmt.Printf("Results:     %d passed, %d total\n", o.passedFiles, o.totalFiles)
+	if o.skippedGroups > 0 {
+		fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
+			o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
+	} else if o.failedGroups > 0 {
+		fmt.Printf("Results:     %d passed, %d failed, %d total\n",
+			o.passedGroups, o.failedGroups, o.totalGroups)
+	} else {
+		fmt.Printf("Results:     %d passed, %d total\n", o.passedGroups, o.totalGroups)
+	}
 
 	// Calculate and display elapsed time
 	elapsed := time.Since(o.startTime).Seconds()
@@ -436,54 +442,6 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 		return filePath
 	}
 	return absPath
-}
-
-// sanitizePathForFilesystem sanitizes a file path to preserve directory structure
-// while preventing directory traversal and filesystem issues
-func sanitizePathForFilesystem(filePath string) string {
-	// Clean the path to normalize it
-	cleanPath := filepath.Clean(filePath)
-
-	// Remove any leading slash or dot-slash
-	cleanPath = strings.TrimPrefix(cleanPath, "/")
-	cleanPath = strings.TrimPrefix(cleanPath, "./")
-
-	// Replace all slashes with underscores
-	cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
-	cleanPath = strings.ReplaceAll(cleanPath, "\\", "_")
-
-	// Replace dots with underscores (for package names like github.com)
-	// but preserve file extensions
-	lastDot := strings.LastIndex(cleanPath, ".")
-	if lastDot > 0 {
-		ext := cleanPath[lastDot:]
-		// Check if it looks like a file extension (2-5 chars, alphanumeric)
-		if len(ext) >= 2 && len(ext) <= 5 {
-			isFileExt := true
-			for i := 1; i < len(ext); i++ {
-				c := ext[i]
-				if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
-					isFileExt = false
-					break
-				}
-			}
-			if isFileExt {
-				// Preserve the extension
-				cleanPath = strings.ReplaceAll(cleanPath[:lastDot], ".", "_") + ext
-			} else {
-				// Not a file extension, replace all dots
-				cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
-			}
-		} else {
-			// Not a file extension, replace all dots
-			cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
-		}
-	} else {
-		// No dots or dot at start, replace all
-		cleanPath = strings.ReplaceAll(cleanPath, ".", "_")
-	}
-
-	return cleanPath
 }
 
 // makeRelativePath normalizes paths to relative paths (matching report manager)
@@ -526,7 +484,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	case ipc.GroupStartEvent:
 		// Track group start time for duration calculation
 		groupID := report.GenerateGroupID(e.Payload.GroupName, e.Payload.ParentNames)
-		o.fileStartTimes[groupID] = time.Now()
+		o.groupStartTimes[groupID] = time.Now()
 
 		// Display RUNNING status for the group
 		o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
@@ -534,7 +492,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	case ipc.GroupResultEvent:
 		// Check if this is a NOTESTS status (Go packages with no test files)
 		if e.Payload.Status == "NOTESTS" {
-			o.noTestFiles[e.Payload.GroupName] = true
+			o.noTestGroups[e.Payload.GroupName] = true
 			// Convert to SKIP for internal handling
 			e.Payload.Status = "SKIP"
 		}
@@ -548,13 +506,15 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		status := convertStringToTestStatus(e.Payload.Status)
 		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status)
 
-		// Update file counters for top-level groups (files)
+		// Update group counters for top-level groups
 		if len(e.Payload.ParentNames) == 0 {
-			o.totalFiles++
+			o.totalGroups++
 			if e.Payload.Status == "PASS" {
-				o.passedFiles++
+				o.passedGroups++
 			} else if e.Payload.Status == "FAIL" {
-				o.failedFiles++
+				o.failedGroups++
+			} else if e.Payload.Status == "SKIP" {
+				o.skippedGroups++
 			}
 		}
 
@@ -575,7 +535,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 					suiteNames := e.Payload.ParentNames[1:]
 					testName = strings.Join(suiteNames, " > ") + " > " + testName
 				}
-				o.fileFailedTests[normalizedPath] = append(o.fileFailedTests[normalizedPath], testName)
+				o.groupFailedTests[normalizedPath] = append(o.groupFailedTests[normalizedPath], testName)
 			}
 		}
 
@@ -600,8 +560,8 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 	// Always use embedded adapters in production
-	// Pass IPC path and run ID for injection
-	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runID)
+	// Pass IPC path and run directory for injection
+	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}
@@ -653,7 +613,7 @@ func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string
 	if len(parentNames) == 0 {
 		// Check if we've already displayed the FINAL result for this file
 		// Don't count intermediate PASS results as final if tests are still running
-		if o.completedFiles[groupName] {
+		if o.completedGroups[groupName] {
 			o.logger.Debug("Group already completed: %s", groupName)
 			return
 		}
@@ -661,7 +621,7 @@ func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string
 		// Only mark as completed if this is truly the final status
 		// (all tests are done or it's a failure)
 		if group.IsComplete() || status == ipc.TestStatusFail {
-			o.completedFiles[groupName] = true
+			o.completedGroups[groupName] = true
 		}
 
 		o.logger.Debug("Calling displayGroupHierarchy for: %s", groupName)
@@ -686,7 +646,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
 
 		// Check if this is a package with no test files (Go specific)
-		if o.noTestFiles[group.Name] {
+		if o.noTestGroups[group.Name] {
 			statusStr = "NO_TESTS"
 		}
 
@@ -707,12 +667,12 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	// Get duration for this group
 	durationStr := ""
 	groupID := group.ID
-	if startTime, ok := o.fileStartTimes[groupID]; ok {
+	if startTime, ok := o.groupStartTimes[groupID]; ok {
 		duration := time.Since(startTime).Seconds()
 		if duration > 0.01 { // Only show if > 10ms
 			durationStr = fmt.Sprintf(" (%.2fs)", duration)
 		}
-		delete(o.fileStartTimes, groupID) // Clean up
+		delete(o.groupStartTimes, groupID) // Clean up
 	}
 
 	// Display the file result using raw groupName
@@ -739,7 +699,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		}
 
 		// Show report path using raw groupName
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, sanitizePathForFilesystem(group.Name))
+		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, report.SanitizeGroupName(group.Name))
 		fmt.Printf("  See %s\n", reportPath)
 	}
 }
@@ -827,11 +787,13 @@ func (o *Orchestrator) computeStatsFromReportManager() {
 	for _, group := range rootGroups {
 		// Only count groups that have test cases
 		if group.HasTestCases() {
-			o.totalFiles++
+			o.totalGroups++
 			if group.Status == report.TestStatusPass {
-				o.passedFiles++
+				o.passedGroups++
 			} else if group.Status == report.TestStatusFail {
-				o.failedFiles++
+				o.failedGroups++
+			} else if group.Status == report.TestStatusSkip {
+				o.skippedGroups++
 			}
 		}
 	}

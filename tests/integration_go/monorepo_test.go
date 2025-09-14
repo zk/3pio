@@ -196,47 +196,37 @@ func TestMonorepoMultiplePackagesParallel(t *testing.T) {
 	// Find the latest run directory
 	runDir := getLatestRunDir(t, projectDir)
 
-	// Check IPC file exists and contains events from both packages
-	ipcDir := filepath.Join(projectDir, ".3pio", "ipc")
-	entries, err := os.ReadDir(ipcDir)
-	if err != nil {
-		t.Fatalf("Failed to read IPC directory: %v", err)
-	}
-
-	if len(entries) == 0 {
-		t.Error("No IPC files found")
+	// Check IPC file exists in the run directory and contains events from both packages
+	ipcPath := filepath.Join(runDir, "ipc.jsonl")
+	if _, err := os.Stat(ipcPath); os.IsNotExist(err) {
+		t.Fatalf("IPC file does not exist: %s", ipcPath)
 	}
 
 	// Read the IPC file and verify it contains events from both packages
-	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), ".jsonl") {
-			ipcPath := filepath.Join(ipcDir, entry.Name())
-			content := readFile(t, ipcPath)
+	content := readFile(t, ipcPath)
 
-			// Check for events from both packages
-			if !strings.Contains(content, "packages/package-a/math.test.js") {
-				t.Error("IPC file does not contain events from package-a")
-			}
-
-			if !strings.Contains(content, "packages/package-b/string.test.js") {
-				t.Error("IPC file does not contain events from package-b")
-			}
-
-			// Check for test case events
-			if !strings.Contains(content, `"eventType":"testCase"`) {
-				t.Error("IPC file does not contain testCase events")
-			}
-
-			// Check for group events (new format)
-			if !strings.Contains(content, `"eventType":"testGroupDiscovered"`) {
-				t.Error("IPC file does not contain testGroupDiscovered events")
-			}
-
-			// Note: testGroupResult events may not be present if groups complete implicitly
-			// Just check that we have group discovery and test case events
-			t.Logf("IPC file contains group discovery and test case events")
-		}
+	// Check for events from both packages
+	if !strings.Contains(content, "packages/package-a/math.test.js") {
+		t.Error("IPC file does not contain events from package-a")
 	}
+
+	if !strings.Contains(content, "packages/package-b/string.test.js") {
+		t.Error("IPC file does not contain events from package-b")
+	}
+
+	// Check for test case events
+	if !strings.Contains(content, `"eventType":"testCase"`) {
+		t.Error("IPC file does not contain testCase events")
+	}
+
+	// Check for group events (new format)
+	if !strings.Contains(content, `"eventType":"testGroupDiscovered"`) {
+		t.Error("IPC file does not contain testGroupDiscovered events")
+	}
+
+	// Note: testGroupResult events may not be present if groups complete implicitly
+	// Just check that we have group discovery and test case events
+	t.Logf("IPC file contains group discovery and test case events")
 
 	// Verify summary shows tests from both packages
 	testRunContent := readFile(t, filepath.Join(runDir, "test-run.md"))

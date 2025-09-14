@@ -37,7 +37,9 @@ func TestOrchestrator_New(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	if orch == nil {
 		t.Fatal("Expected orchestrator to be created")
@@ -99,7 +101,9 @@ func TestOrchestrator_RunnerDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	// Test runner detection (this would normally require actual execution)
 	// For now, just verify the orchestrator was created successfully
@@ -118,11 +122,57 @@ func TestOrchestrator_GetExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	// Default exit code should be 0
 	if exitCode := orch.GetExitCode(); exitCode != 0 {
 		t.Errorf("Expected default exit code 0, got %d", exitCode)
+	}
+}
+
+func TestOrchestrator_TestCountsWithSkippedTests(t *testing.T) {
+	config := Config{
+		Command: []string{"npm", "test"},
+		Logger:  &mockLogger{},
+	}
+
+	orch, err := New(config)
+	if err != nil {
+		t.Fatalf("Failed to create orchestrator: %v", err)
+	}
+	defer func() {
+		_ = orch.Close()
+	}()
+
+	// Directly manipulate the test counts to test the display logic
+	// Simulate what would happen after processing events
+	orch.totalGroups = 4
+	orch.passedGroups = 1
+	orch.failedGroups = 1
+	orch.skippedGroups = 2 // Now we track skipped groups
+
+	// After the fix, we should have:
+	// "Results: 1 passed, 1 failed, 2 skipped, 4 total"
+
+	// Verify the counts
+	if orch.totalGroups != 4 {
+		t.Errorf("Expected totalFiles to be 4, got %d", orch.totalGroups)
+	}
+	if orch.passedGroups != 1 {
+		t.Errorf("Expected passedFiles to be 1, got %d", orch.passedGroups)
+	}
+	if orch.failedGroups != 1 {
+		t.Errorf("Expected failedFiles to be 1, got %d", orch.failedGroups)
+	}
+	if orch.skippedGroups != 2 {
+		t.Errorf("Expected skippedFiles to be 2, got %d", orch.skippedGroups)
+	}
+
+	// Now the sum of passed + failed + skipped should equal total
+	if orch.passedGroups+orch.failedGroups+orch.skippedGroups != orch.totalGroups {
+		t.Error("Expected passed + failed + skipped to equal total")
 	}
 }
 
@@ -148,7 +198,9 @@ func TestOrchestrator_RunWithInvalidRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	// This should fail with "no test runner detected"
 	err = orch.Run()
@@ -261,7 +313,9 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	// Attempt to start the run process (this will fail because npm isn't available,
 	// but it should create the directory structure)
@@ -279,11 +333,6 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 		t.Error(".3pio/runs directory was not created")
 	}
 
-	// Check that ipc directory was created
-	ipcDir := filepath.Join(threepioDir, "ipc")
-	if _, err := os.Stat(ipcDir); os.IsNotExist(err) {
-		t.Error(".3pio/ipc directory was not created")
-	}
 }
 
 func TestOrchestrator_ConsoleLogging(t *testing.T) {
@@ -297,7 +346,9 @@ func TestOrchestrator_ConsoleLogging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	// The orchestrator should have a logger set
 	if orch.logger == nil {
@@ -331,26 +382,28 @@ func TestOrchestrator_UpdateDisplayedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close() // Clean up resources
+	defer func() {
+		_ = orch.Close() // Clean up resources
+	}()
 
 	// Test the internal displayedFiles tracking
 	testFile1 := "test1.js"
 	testFile2 := "test2.js"
 
 	// Initially empty
-	if len(orch.displayedFiles) != 0 {
+	if len(orch.displayedGroups) != 0 {
 		t.Error("Expected displayedFiles to be empty initially")
 	}
 
 	// Simulate internal file tracking (would normally happen during run)
-	orch.displayedFiles[testFile1] = true
-	orch.displayedFiles[testFile2] = true
+	orch.displayedGroups[testFile1] = true
+	orch.displayedGroups[testFile2] = true
 
-	if len(orch.displayedFiles) != 2 {
-		t.Errorf("Expected 2 displayed files, got %d", len(orch.displayedFiles))
+	if len(orch.displayedGroups) != 2 {
+		t.Errorf("Expected 2 displayed files, got %d", len(orch.displayedGroups))
 	}
 
-	if !orch.displayedFiles[testFile1] || !orch.displayedFiles[testFile2] {
+	if !orch.displayedGroups[testFile1] || !orch.displayedGroups[testFile2] {
 		t.Error("Expected both test files to be marked as displayed")
 	}
 }

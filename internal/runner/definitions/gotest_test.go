@@ -13,6 +13,23 @@ import (
 	"github.com/zk/3pio/internal/logger"
 )
 
+// Helper function to convert interface slice to string slice
+func convertToStringSlice(i interface{}) []string {
+	if i == nil {
+		return []string{}
+	}
+	arr, ok := i.([]interface{})
+	if !ok {
+		return []string{}
+	}
+	result := make([]string, len(arr))
+	for idx, item := range arr {
+		str, _ := item.(string)
+		result[idx] = str
+	}
+	return result
+}
+
 // TestIPCCapture helps capture IPC events for testing
 type TestIPCCapture struct {
 	ipcPath string
@@ -744,6 +761,217 @@ func TestGoTestDefinition_ProcessEvent_ErrorCases(t *testing.T) {
 	}
 }
 
+// TestGoTestDefinition_SubgroupDuration tests that subgroups get proper duration
+func TestGoTestDefinition_SubgroupDuration(t *testing.T) {
+	g := NewGoTestDefinition(createTestLogger(t))
+
+	// Create a real IPCWriter for testing
+	tmpDir := t.TempDir()
+	ipcPath := filepath.Join(tmpDir, "test.jsonl")
+	ipcWriter, err := NewIPCWriter(ipcPath)
+	if err != nil {
+		t.Fatalf("Failed to create IPC writer: %v", err)
+	}
+	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
+
+	capture := NewTestIPCCapture(ipcPath)
+
+	// Process test events for package with subtest
+	events := []*GoTestEvent{
+		{Action: "run", Package: "example.com/test", Test: "TestMain"},
+		{Action: "run", Package: "example.com/test", Test: "TestMain/SubTest1"},
+		{Action: "pass", Package: "example.com/test", Test: "TestMain/SubTest1", Elapsed: 1.5},
+		{Action: "run", Package: "example.com/test", Test: "TestMain/SubTest2"},
+		{Action: "pass", Package: "example.com/test", Test: "TestMain/SubTest2", Elapsed: 2.3},
+		{Action: "pass", Package: "example.com/test", Test: "TestMain", Elapsed: 4.0},
+		{Action: "pass", Package: "example.com/test", Elapsed: 5.0},
+	}
+
+	for _, event := range events {
+		if err := g.processEvent(event); err != nil {
+			t.Errorf("Failed to process event: %v", err)
+		}
+	}
+
+	// Flush to ensure all events are written
+	_ = ipcWriter.Close()
+
+	// Check that we have group result events for subgroups
+	groupResults := capture.GetEventsByType("testGroupResult")
+
+	// We should have at least the package-level group result
+	if len(groupResults) < 1 {
+		t.Fatalf("Expected at least 1 group result event, got %d", len(groupResults))
+	}
+
+	// Check if we have group results for TestMain subgroup
+	foundTestMainResult := false
+	for _, event := range groupResults {
+		payload, ok := event["payload"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		groupName, _ := payload["groupName"].(string)
+		if groupName == "TestMain" {
+			foundTestMainResult = true
+
+			// Check that duration is set
+			duration, hasDuration := payload["duration"].(float64)
+			if !hasDuration || duration == 0 {
+				t.Errorf("TestMain subgroup should have duration, got %v", duration)
+			}
+		}
+	}
+
+	if !foundTestMainResult {
+		t.Error("Missing group result event for TestMain subgroup")
+	}
+}
+
+// Test deeply nested subgroups with empty names
+func TestGoTestDefinition_DeeplyNestedSubgroups(t *testing.T) {
+	g := NewGoTestDefinition(createTestLogger(t))
+	tmpDir := t.TempDir()
+	ipcPath := filepath.Join(tmpDir, "test.jsonl")
+	ipcWriter, _ := NewIPCWriter(ipcPath)
+	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
+	capture := NewTestIPCCapture(ipcPath)
+
+	// Simulate deeply nested test with empty group names (like ParsedTarget tests)
+	now := time.Now()
+	events := []*GoTestEvent{
+		{Action: "start", Package: "example.com/pkg", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA/", Time: now},  // Empty subgroup
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA//", Time: now}, // Another empty subgroup
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA///DeepTest", Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA///DeepTest", Elapsed: 0.1, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA//", Elapsed: 0.2, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA/", Elapsed: 0.3, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA", Elapsed: 0.4, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed", Elapsed: 0.5, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Elapsed: 1.0, Time: now},
+	}
+
+	// Process all events
+	for _, event := range events {
+		if err := g.processEvent(event); err != nil {
+			t.Fatalf("Failed to process event: %v", err)
+		}
+	}
+
+	// Check that we have group result events for all intermediate groups
+	groupResults := capture.GetEventsByType("testGroupResult")
+
+	// We should have group results for:
+	// 1. SubA (with parent [pkg, TestParsed])
+	// 2. Empty group (with parent [pkg, TestParsed, SubA])
+	// 3. Another empty group (with parent [pkg, TestParsed, SubA, ""])
+	// 4. TestParsed (with parent [pkg])
+	// 5. Package group
+
+	expectedGroups := map[string][]string{
+		"SubA":            {"example.com/pkg", "TestParsed"},
+		"":                {"example.com/pkg", "TestParsed", "SubA"}, // First empty group
+		"TestParsed":      {"example.com/pkg"},
+		"example.com/pkg": {},
+	}
+
+	foundGroups := make(map[string]bool)
+	for _, event := range groupResults {
+		payload := event["payload"].(map[string]interface{})
+		groupName := payload["groupName"].(string)
+		parentNames := convertToStringSlice(payload["parentNames"])
+
+		// Check duration is set for non-package groups
+		if groupName != "example.com/pkg" {
+			duration, hasDuration := payload["duration"].(float64)
+			if !hasDuration || duration == 0 {
+				t.Errorf("Group %s (parents: %v) should have duration, got %v", groupName, parentNames, duration)
+			}
+		}
+
+		key := groupName + ":" + strings.Join(parentNames, "/")
+		foundGroups[key] = true
+	}
+
+	// Check that we have the expected groups
+	for groupName, expectedParents := range expectedGroups {
+		key := groupName + ":" + strings.Join(expectedParents, "/")
+		if !foundGroups[key] {
+			t.Errorf("Missing group result for group '%s' with parents %v", groupName, expectedParents)
+		}
+	}
+}
+
+// Test package-level test counting
+func TestGoTestDefinition_PackageLevelTestCount(t *testing.T) {
+	g := NewGoTestDefinition(createTestLogger(t))
+	tmpDir := t.TempDir()
+	ipcPath := filepath.Join(tmpDir, "test.jsonl")
+	ipcWriter, _ := NewIPCWriter(ipcPath)
+	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
+	capture := NewTestIPCCapture(ipcPath)
+
+	// Simulate a package with a test that has subtests
+	now := time.Now()
+	events := []*GoTestEvent{
+		{Action: "start", Package: "example.com/pkg", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestMain", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestMain/Sub1", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestMain/Sub2", Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestMain/Sub1", Elapsed: 0.1, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestMain/Sub2", Elapsed: 0.1, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestMain", Elapsed: 0.2, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Elapsed: 0.3, Time: now},
+	}
+
+	// Process all events
+	for _, event := range events {
+		if err := g.processEvent(event); err != nil {
+			t.Fatalf("Failed to process event: %v", err)
+		}
+	}
+
+	// Check the package-level group result
+	groupResults := capture.GetEventsByType("testGroupResult")
+
+	var packageResult map[string]interface{}
+	for _, event := range groupResults {
+		payload := event["payload"].(map[string]interface{})
+		groupName := payload["groupName"].(string)
+		parentNames := convertToStringSlice(payload["parentNames"])
+
+		if groupName == "example.com/pkg" && len(parentNames) == 0 {
+			packageResult = event
+			break
+		}
+	}
+
+	if packageResult == nil {
+		t.Fatal("Package-level group result not found")
+	}
+
+	// Check that the package reports only 1 test (TestMain), not 3 (TestMain + 2 subtests)
+	payload := packageResult["payload"].(map[string]interface{})
+	totals := payload["totals"].(map[string]interface{})
+
+	total := int(totals["total"].(float64))
+	if total != 1 {
+		t.Errorf("Package should report 1 top-level test, got %d", total)
+	}
+
+	passed := int(totals["passed"].(float64))
+	if passed != 1 {
+		t.Errorf("Package should report 1 passed test, got %d", passed)
+	}
+}
+
 // Test concurrent test handling
 func TestGoTestDefinition_ConcurrentTests(t *testing.T) {
 	g := NewGoTestDefinition(createTestLogger(t))
@@ -879,10 +1107,12 @@ func TestIPCWriter(t *testing.T) {
 	}
 }
 
-// Test buildTestToFileMap
-func TestGoTestDefinition_BuildTestToFileMap(t *testing.T) {
-	// This test would require mocking the go list command execution
-	// For now, we'll test the parsing logic with mock data
+// Test that buildTestToFileMap has been removed (legacy code cleanup)
+func TestGoTestDefinition_BuildTestToFileMapRemoved(t *testing.T) {
+	// This test verifies that the legacy buildTestToFileMap functionality has been removed
+	// Go tests operate at package level, not file level, so the mapping provided no value
+	// and caused performance issues on large repositories
+
 	g := NewGoTestDefinition(createTestLogger(t))
 
 	// Mock package info
@@ -894,23 +1124,21 @@ func TestGoTestDefinition_BuildTestToFileMap(t *testing.T) {
 		},
 	}
 
-	// Mock the listTestsInPackage response
-	// This would normally come from parsing go test output
-	// For this test, we'll just verify the structure is set up correctly
+	// Verify that getFilePathForTest now directly uses package-based mapping
+	filePath := g.getFilePathForTest("github.com/test/pkg", "TestSomething")
 
-	if err := g.buildTestToFileMap(); err != nil {
-		// This might fail if go is not available, which is ok for unit test
-		t.Logf("buildTestToFileMap returned error (expected if go not available): %v", err)
+	// Should return the first test file from the package or empty if not found
+	if filePath != "" {
+		// Check that it's using the package-based mapping
+		if !strings.Contains(filePath, "foo_test.go") && !strings.Contains(filePath, "bar_test.go") {
+			t.Errorf("getFilePathForTest returned unexpected path: %s", filePath)
+		}
 	}
 
-	// Verify the test map structure exists
-	if g.testToFileMap == nil {
-		g.testToFileMap = make(map[string]string)
-	}
-
-	// The map should be initialized even if empty
-	if g.testToFileMap == nil {
-		t.Error("testToFileMap not initialized")
+	// Test with unknown package
+	unknownPath := g.getFilePathForTest("unknown/package", "TestUnknown")
+	if unknownPath != "" {
+		t.Errorf("Expected empty path for unknown package, got: %s", unknownPath)
 	}
 }
 

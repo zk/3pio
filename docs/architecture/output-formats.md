@@ -3,54 +3,54 @@
 ## Console Output
 
 ```markdown
-Greetings! I will now execute the test command: `npm test`
+Greetings! I will now execute the test command:
+`go test ./...`
 
-Full report: .3pio/runs/20250912T125741-funky-gestahl/test-run.md
+Full report: .3pio/runs/20250913T203231-batty-neelix/test-run.md
 
 Beginning test execution now...
 
-RUNNING  ./cmd/3pio/main_test.go
-RUNNING  ./internal/adapters/embedded_test.go
-RUNNING  ./internal/ipc/unknown_event_test.go
-RUNNING  ./internal/orchestrator/orchestrator_test.go
-RUNNING  ./internal/report/manager_test.go
-PASS     ./internal/ipc/unknown_event_test.go (0.01s)
-RUNNING  ./internal/runner/jest_npm_command_test.go
-RUNNING  ./internal/runner/pytest_command_test.go
-RUNNING  ./internal/runner/vitest_command_test.go
-RUNNING  ./tests/integration_go/error_heading_test.go
-RUNNING  ./tests/integration_go/error_reporting_test.go
-RUNNING  ./tests/integration_go/esm_compatibility_test.go
-RUNNING  ./tests/integration_go/full_flow_test.go
-RUNNING  ./tests/integration_go/interrupted_run_test.go
-RUNNING  ./tests/integration_go/monorepo_test.go
-RUNNING  ./tests/integration_go/npm_separator_test.go
-RUNNING  ./tests/integration_go/test_case_reporting_test.go
-RUNNING  ./tests/integration_go/test_result_formatting_test.go
-RUNNING  ./tests/integration_go/vitest_failed_tests_test.go
-FAIL     ./scratch/go_test_examples_test.go
-  See .3pio/runs/20250912T113945-nutty-poe/reports/scratch/go_test_examples_test.js.md
-PASS     ./internal/report/manager_test.go (0.23s)
-PASS     ./internal/runner/jest_npm_command_test.go (2.22s)
-PASS     ./internal/runner/pytest_command_test.go (0s)
-PASS     ./internal/runner/vitest_command_test.go (0s)
-PASS     ./cmd/3pio/main_test.go (9s)
-PASS     ./internal/orchestrator/orchestrator_test.go (7.2s)
-PASS     ./internal/adapters/embedded_test.go (34s)
-PASS     ./tests/integration_go/error_heading_test.go (394s)
-PASS     ./tests/integration_go/error_reporting_test.go (3s)
-PASS     ./tests/integration_go/esm_compatibility_test.go (5.12s)
-PASS     ./tests/integration_go/full_flow_test.go (9s)
-PASS     ./tests/integration_go/interrupted_run_test.go (8.34s)
-PASS     ./tests/integration_go/monorepo_test.go (7.1s)
-PASS     ./tests/integration_go/npm_separator_test.go (6.3s)
-PASS     ./tests/integration_go/test_case_reporting_test.go (5.4s)
-PASS     ./tests/integration_go/test_result_formatting_test.go (4.6s)
-PASS     ./tests/integration_go/vitest_failed_tests_test.go (3.9s)
+RUNNING  github.com/zk/3pio/cmd/3pio
+RUNNING  github.com/zk/3pio/internal/adapters
+RUNNING  github.com/zk/3pio/internal/ipc
+RUNNING  github.com/zk/3pio/internal/logger
+NO_TESTS github.com/zk/3pio/internal/logger
+FAIL     github.com/zk/3pio/tests/integration_go (29.57s)
+  x TestFailureDisplayFormat
+  x shows_report_path
+  + 12 more
+  see .3pio/runs/20250912T113945-nutty-poe/reports/go_test_examples_test_js/index.md
 
-Results:     18 passed, 18 total
-Total time:  23.694s
+PASS     github.com/zk/3pio/internal/runner (10.77s)
+PASS     github.com/zk/3pio/internal/orchestrator (4.38s)
+PASS     github.com/zk/3pio/cmd/3pio (8.08s)
+PASS     github.com/zk/3pio/internal/runner/definitions (6.42s)
+Test failures! We're doomed!
+Results:     7 passed, 1 failed, 1 skipped, 9 total
+Total time:  42.411s
 ```
+
+### Results Summary Format
+
+The results line dynamically adjusts based on test outcomes:
+
+- **All passed, no skips**: `Results:     N passed, N total`
+- **With failures**: `Results:     N passed, M failed, X total`
+- **With skipped tests**: `Results:     N passed, M failed, S skipped, X total`
+
+Where:
+- `passed`: Number of test groups that passed all tests
+- `failed`: Number of test groups with at least one failure
+- `skipped`: Number of test groups that were skipped or had no tests (includes Go packages with `NO_TESTS`)
+- `total`: Sum of passed + failed + skipped
+
+### Success Messages
+
+The console displays different messages based on outcomes:
+- **All tests passed** (no failures, no skips): "Splendid! All tests passed successfully"
+- **Tests with skips** (no failures, some skips): "Tests completed with some skipped"
+- **Only skipped tests**: "All tests were skipped"
+- **Test failures**: "Test failures! [random exclamation]"
 
 **Note on Group Names in Console Output:**
 The console output displays raw group names as provided by each test runner:
@@ -84,20 +84,20 @@ status: PENDING | RUNNING | COMPLETED | ERRORED
 
 ## Summary
 
-- Total files: 2
-- Files completed: 2
-- Files passed: 1
-- Files failed: 1
-- Files skipped: 0
+- Total test cases: 2
+- Test cases completed: 2
+- Tests cases passed: 1
+- Test cases failed: 1
+- Test cases skipped: 0
 - Total duration: 203.56s
 
-## Test file results
+## Test group results
 
-| Stat | Test | Duration | Report file |
-| ---- | ---- | -------- | ----------- |
-| PASS | math.test.js | 12.3s | ./reports/math.test.js.md |
-| FAIL | string.test.js | 2.3s | ./reports/string.test.js.md |
-| SKIP | tests/unit/utilities.test.js | 0.53s | ./reports/tests/unit/utilities.test.js.md |
+| Status | Name | Tests | Duration | Report |
+|--------|------|-------|----------|--------|
+| PASS | math.test.js | 5 passed | 12.3s | ./reports/math_test_js/index.md |
+| FAIL | string.test.js | 3 passed, 1 failed | 2.3s | ./reports/string_test_js/index.md |
+| SKIP | tests/unit/utilities.test.js | 0 tests | 0.53s | ./reports/tests_unit_utilities_test_js/index.md |
 ```
 
 Notes:

@@ -123,27 +123,18 @@ func (m *Manager) UpdateModifiedCommand(command string) {
 }
 
 // Initialize sets up the initial test run state
-func (m *Manager) Initialize(testFiles []string, args string) error {
+func (m *Manager) Initialize(args string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	now := time.Now()
 	m.state = &ipc.TestRunState{
-		Timestamp:      now,
-		Status:         "RUNNING",
-		UpdatedAt:      now,
-		Arguments:      args,
-		TotalFiles:     len(testFiles),
-		FilesCompleted: 0,
-		FilesPassed:    0,
-		FilesFailed:    0,
-		FilesSkipped:   0,
-		TestFiles:      make([]ipc.TestFile, 0),
-	}
-
-	// Register known test files (static discovery)
-	for _, file := range testFiles {
-		m.registerTestFileInternal(file)
+		Timestamp: now,
+		Status:    "RUNNING",
+		UpdatedAt: now,
+		Arguments: args,
+		// File-based tracking removed - using group-based model
+		TestFiles: make([]ipc.TestFile, 0),
 	}
 
 	// Write output.log header
@@ -212,9 +203,6 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 func (m *Manager) handleCollectionError(event ipc.CollectionErrorEvent) error {
 	filePath := event.Payload.FilePath
 
-	// Ensure file is registered
-	m.ensureTestFileRegisteredInternal(filePath)
-
 	// Find the test file and set execution error
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
@@ -238,9 +226,6 @@ func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Ensure file is registered
-	m.ensureTestFileRegisteredInternal(filePath)
-
 	// Find the test file and set execution error
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
@@ -254,28 +239,7 @@ func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
 	return m.scheduleWrite()
 }
 
-// ensureTestFileRegisteredInternal ensures a test file is registered (internal, assumes lock held)
-func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
-	// Normalize the incoming file path
-	normalizedPath := m.normalizePath(filePath)
-
-	// Check if already registered (compare normalized paths)
-	for _, tf := range m.state.TestFiles {
-		if m.normalizePath(tf.File) == normalizedPath {
-			return
-		}
-	}
-
-	// Register new file
-	m.registerTestFileInternal(filePath)
-	m.state.TotalFiles++
-}
-
-// registerTestFileInternal registers a test file (internal, assumes lock held)
-func (m *Manager) registerTestFileInternal(filePath string) {
-	// File-based reports are no longer created
-	// Groups are created on-demand by the group manager
-}
+// Legacy file registration methods removed - using group-based model
 
 // scheduleWrite schedules a debounced state write
 func (m *Manager) scheduleWrite() error {
@@ -319,22 +283,16 @@ func (m *Manager) generateMarkdownReport() string {
 
 	// Map internal status to spec status
 	var statusText string
-	// Check if all tests are actually completed
-	pendingFiles := m.state.TotalFiles - m.state.FilesCompleted
-	if m.state.Status == "COMPLETE" && pendingFiles > 0 {
-		// Override to RUNNING if there are still pending files
+	// Use group-based tracking for completion status
+	switch m.state.Status {
+	case "RUNNING":
 		statusText = "RUNNING"
-	} else {
-		switch m.state.Status {
-		case "RUNNING":
-			statusText = "RUNNING"
-		case "COMPLETE":
-			statusText = "COMPLETED"
-		case "ERROR":
-			statusText = "ERRORED"
-		default:
-			statusText = "PENDING"
-		}
+	case "COMPLETE":
+		statusText = "COMPLETED"
+	case "ERROR":
+		statusText = "ERRORED"
+	default:
+		statusText = "PENDING"
 	}
 
 	// YAML frontmatter
@@ -342,7 +300,7 @@ func (m *Manager) generateMarkdownReport() string {
 	sb.WriteString(fmt.Sprintf("run_id: %s\n", runID))
 	sb.WriteString(fmt.Sprintf("run_path: %s\n", m.runDir))
 	sb.WriteString(fmt.Sprintf("detected_runner: %s\n", m.detectedRunner))
-	sb.WriteString(fmt.Sprintf("modified_command: %s\n", m.modifiedCommand))
+	sb.WriteString(fmt.Sprintf("modified_command: `%s`\n", m.modifiedCommand))
 	sb.WriteString(fmt.Sprintf("created: %s\n", m.state.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z")))
 	sb.WriteString(fmt.Sprintf("updated: %s\n", m.state.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z")))
 	sb.WriteString(fmt.Sprintf("status: %s\n", statusText))
@@ -376,57 +334,146 @@ func (m *Manager) generateMarkdownReport() string {
 
 // generateGroupBasedReport generates summary and results using hierarchical group data
 func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText string) {
-	// Summary section with group-based statistics
+	// Summary section with test case statistics
 	if statusText != "ERRORED" {
 		sb.WriteString("## Summary\n\n")
-		sb.WriteString("\n")
 
-		// Calculate statistics from group data
+		// Calculate test case statistics from group data
 		rootGroups := m.groupManager.GetRootGroups()
-		totalFiles := len(rootGroups)
-		completedFiles := 0
-		passedFiles := 0
-		failedFiles := 0
-		skippedFiles := 0
+		totalTestCases := 0
+		completedTestCases := 0
+		passedTestCases := 0
+		failedTestCases := 0
+		skippedTestCases := 0
 		var totalDuration float64
 
 		for _, group := range rootGroups {
-			if group.IsComplete() {
-				completedFiles++
-				switch group.Status {
-				case TestStatusPass:
-					passedFiles++
-				case TestStatusFail:
-					failedFiles++
-				case TestStatusSkip:
-					skippedFiles++
-				}
-			}
+			// Count all test cases in the group and its subgroups
+			totalTestCases += countTotalTestCases(group)
+			completedTestCases += countCompletedTestCases(group)
+			passedTestCases += countPassedTestCases(group)
+			failedTestCases += countFailedTestCases(group)
+			skippedTestCases += countSkippedTestCases(group)
 			totalDuration += group.Duration.Seconds()
 		}
 
-		pendingFiles := totalFiles - completedFiles
-
-		sb.WriteString(fmt.Sprintf("- Total files: %d\n", totalFiles))
-		sb.WriteString(fmt.Sprintf("- Files completed: %d\n", completedFiles))
-		sb.WriteString(fmt.Sprintf("- Files passed: %d\n", passedFiles))
-		sb.WriteString(fmt.Sprintf("- Files failed: %d\n", failedFiles))
-		sb.WriteString(fmt.Sprintf("- Files skipped: %d\n", skippedFiles))
-		sb.WriteString(fmt.Sprintf("- Files pending: %d\n", pendingFiles))
+		sb.WriteString(fmt.Sprintf("- Total test cases: %d\n", totalTestCases))
+		sb.WriteString(fmt.Sprintf("- Test cases completed: %d\n", completedTestCases))
+		sb.WriteString(fmt.Sprintf("- Test cases passed: %d\n", passedTestCases))
+		sb.WriteString(fmt.Sprintf("- Test cases failed: %d\n", failedTestCases))
+		sb.WriteString(fmt.Sprintf("- Test cases skipped: %d\n", skippedTestCases))
 		sb.WriteString(fmt.Sprintf("- Total duration: %.2fs\n\n", totalDuration))
 	}
 
-	// Test results section with hierarchical structure
+	// Test group results section with table format
 	if len(m.groupManager.GetRootGroups()) > 0 {
-		sb.WriteString("## Test Results\n\n")
+		sb.WriteString("## Test group results\n\n")
+		sb.WriteString("| Status | Name | Tests | Duration | Report |\n")
+		sb.WriteString("|--------|------|-------|----------|--------|\n")
+
 		for _, group := range m.groupManager.GetRootGroups() {
-			m.generateGroupReportSection(sb, group, 0)
+			statusStr := strings.ToUpper(string(group.Status))
+			if statusStr == "" {
+				statusStr = "PENDING"
+			}
+			filename := filepath.Base(group.Name)
+
+			// Tests column - show breakdown of test results like individual group reports
+			var testsStr string
+			if group.Stats.TotalTests > 0 {
+				parts := []string{}
+				if group.Stats.PassedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
+				}
+				if group.Stats.FailedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", group.Stats.FailedTests))
+				}
+				if group.Stats.SkippedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
+				}
+				testsStr = strings.Join(parts, ", ")
+			} else {
+				testsStr = "0 tests"
+			}
+
+			durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
+
+			// Generate report file path
+			reportFile := GetReportFilePath(group, m.runDir)
+			// Make it relative to the run directory
+			if relPath, err := filepath.Rel(m.runDir, reportFile); err == nil {
+				reportFile = "./" + relPath
+			}
+
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", statusStr, filename, testsStr, durationStr, reportFile))
 		}
 	}
 }
 
-// generateGroupReportSection generates a hierarchical report section for a group
-func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGroup, indent int) {
+// Helper functions to count test cases recursively
+func countTotalTestCases(group *TestGroup) int {
+	count := len(group.TestCases)
+	for _, subgroup := range group.Subgroups {
+		count += countTotalTestCases(subgroup)
+	}
+	return count
+}
+
+func countCompletedTestCases(group *TestGroup) int {
+	count := 0
+	for _, test := range group.TestCases {
+		if test.Status != TestStatusPending && test.Status != TestStatusRunning {
+			count++
+		}
+	}
+	for _, subgroup := range group.Subgroups {
+		count += countCompletedTestCases(subgroup)
+	}
+	return count
+}
+
+func countPassedTestCases(group *TestGroup) int {
+	count := 0
+	for _, test := range group.TestCases {
+		if test.Status == TestStatusPass {
+			count++
+		}
+	}
+	for _, subgroup := range group.Subgroups {
+		count += countPassedTestCases(subgroup)
+	}
+	return count
+}
+
+func countFailedTestCases(group *TestGroup) int {
+	count := 0
+	for _, test := range group.TestCases {
+		if test.Status == TestStatusFail {
+			count++
+		}
+	}
+	for _, subgroup := range group.Subgroups {
+		count += countFailedTestCases(subgroup)
+	}
+	return count
+}
+
+func countSkippedTestCases(group *TestGroup) int {
+	count := 0
+	for _, test := range group.TestCases {
+		if test.Status == TestStatusSkip {
+			count++
+		}
+	}
+	for _, subgroup := range group.Subgroups {
+		count += countSkippedTestCases(subgroup)
+	}
+	return count
+}
+
+// generateGroupReportSection is kept for potential future use but currently not called
+// It generates a hierarchical report section for a group
+/* func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGroup, indent int) {
 	indentStr := strings.Repeat("  ", indent)
 
 	// File-level groups (root groups)
@@ -486,37 +533,7 @@ func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGro
 	if len(group.ParentNames) == 0 {
 		sb.WriteString("\n")
 	}
-}
-
-// getGroupStatusIcon returns a status icon for groups in markdown reports
-func getGroupStatusIcon(status TestStatus) string {
-	switch status {
-	case TestStatusPass:
-		return "PASS"
-	case TestStatusFail:
-		return "FAIL"
-	case TestStatusSkip:
-		return "SKIP"
-	case TestStatusRunning:
-		return "RUNNING"
-	default:
-		return "PENDING"
-	}
-}
-
-// getTestCaseStatusIcon returns a status icon for individual test cases in markdown reports
-func getTestCaseStatusIcon(status TestStatus) string {
-	switch status {
-	case TestStatusPass:
-		return "✓"
-	case TestStatusFail:
-		return "x"
-	case TestStatusSkip:
-		return "o"
-	default:
-		return "-"
-	}
-}
+} */
 
 // Finalize completes the test run and closes all resources
 func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {

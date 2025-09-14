@@ -95,7 +95,6 @@ type TestRunState struct {
 	Status         string     `json:"status"` // RUNNING, COMPLETE, ERROR
 	UpdatedAt      time.Time  `json:"updatedAt"`
 	Arguments      string     `json:"arguments"`
-	TotalFiles     int        `json:"totalFiles"`
 	FilesCompleted int        `json:"filesCompleted"`
 	FilesPassed    int        `json:"filesPassed"`
 	FilesFailed    int        `json:"filesFailed"`

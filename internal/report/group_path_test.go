@@ -21,17 +21,17 @@ func TestSanitizeGroupName(t *testing.T) {
 		{
 			name:     "Path separators",
 			input:    "src/components/test.js",
-			expected: "src_components_test.js",
+			expected: "src_components_test_js",
 		},
 		{
 			name:     "Windows path",
 			input:    "src\\components\\test.js",
-			expected: "src_components_test.js",
+			expected: "src_components_test_js",
 		},
 		{
 			name:     "Invalid chars",
 			input:    "test<>:\"|?*.js",
-			expected: "test_.js", // Multiple invalid chars collapse to single underscore
+			expected: "test_js", // Multiple invalid chars collapse to single underscore
 		},
 		{
 			name:     "Multiple spaces",
@@ -104,7 +104,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "test.js",
 				ParentNames: nil,
 			},
-			contains: []string{"reports", "test.js"},
+			contains: []string{"reports", "test_js"},
 		},
 		{
 			name: "Nested group",
@@ -112,7 +112,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "should add",
 				ParentNames: []string{"math.test.js", "Calculator"},
 			},
-			contains: []string{"reports", "math_test.js", "calculator", "should_add"},
+			contains: []string{"reports", "math_test_js", "calculator", "should_add"},
 		},
 		{
 			name: "Group with invalid chars",

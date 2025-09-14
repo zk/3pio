@@ -13,7 +13,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 		name        string
 		adapterName string
 		ipcPath     string
-		runID       string
+		runDir      string
 		wantErr     bool
 		checkFunc   func(t *testing.T, path string, content []byte)
 	}{
@@ -21,7 +21,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Jest adapter with simple IPC path",
 			adapterName: "jest.js",
 			ipcPath:     "/tmp/test.jsonl",
-			runID:       "20250911T085108-test-run",
+			runDir:      ".3pio/runs/20250911T085108-test-run",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -43,7 +43,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Vitest adapter with special characters in path",
 			adapterName: "vitest.js",
 			ipcPath:     "/home/user's files/.3pio/ipc/test.jsonl",
-			runID:       "20250911T085108-special-chars",
+			runDir:      ".3pio/runs/20250911T085108-special-chars",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -62,7 +62,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Python adapter with IPC path injection",
 			adapterName: "pytest_adapter.py",
 			ipcPath:     "/var/tmp/.3pio/ipc/test.jsonl",
-			runID:       "20250911T085108-python-test",
+			runDir:      ".3pio/runs/20250911T085108-python-test",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -84,7 +84,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Windows-style path with backslashes",
 			adapterName: "jest.js",
 			ipcPath:     `C:\Users\test\.3pio\ipc\test.jsonl`,
-			runID:       "20250911T085108-windows-test",
+			runDir:      ".3pio/runs/20250911T085108-windows-test",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -98,7 +98,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Path with Unicode characters",
 			adapterName: "vitest.js",
 			ipcPath:     "/home/用户/.3pio/ipc/test.jsonl",
-			runID:       "20250911T085108-unicode-test",
+			runDir:      ".3pio/runs/20250911T085108-unicode-test",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -113,7 +113,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Unknown adapter should fail",
 			adapterName: "unknown.js",
 			ipcPath:     "/tmp/test.jsonl",
-			runID:       "20250911T085108-unknown",
+			runDir:      ".3pio/runs/20250911T085108-unknown",
 			wantErr:     true,
 			checkFunc:   nil,
 		},
@@ -122,12 +122,11 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up any existing adapter directory for this run
-			adapterDir := filepath.Join(".3pio", "adapters", tt.runID)
-			_ = os.RemoveAll(adapterDir)
-			defer func() { _ = os.RemoveAll(adapterDir) }()
+			_ = os.RemoveAll(tt.runDir)
+			defer func() { _ = os.RemoveAll(tt.runDir) }()
 
-			// Call GetAdapterPath with IPC path and run ID
-			path, err := GetAdapterPath(tt.adapterName, tt.ipcPath, tt.runID)
+			// Call GetAdapterPath with IPC path and run directory
+			path, err := GetAdapterPath(tt.adapterName, tt.ipcPath, tt.runDir)
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -140,7 +139,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			}
 
 			// Verify the adapter was created in the correct directory
-			expectedDir := filepath.Join(".3pio", "adapters", tt.runID)
+			expectedDir := filepath.Join(tt.runDir, "adapters")
 			if !strings.Contains(path, expectedDir) {
 				t.Errorf("Adapter path %s does not contain expected directory %s", path, expectedDir)
 			}
@@ -167,21 +166,21 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 func TestGetAdapterPath_UniqueAdaptersPerRun(t *testing.T) {
 	ipcPath1 := "/tmp/run1.jsonl"
 	ipcPath2 := "/tmp/run2.jsonl"
-	runID1 := "20250911T085108-run1"
-	runID2 := "20250911T085108-run2"
+	runDir1 := ".3pio/runs/20250911T085108-run1"
+	runDir2 := ".3pio/runs/20250911T085108-run2"
 
 	// Clean up
-	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID1)) }()
-	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID2)) }()
+	defer func() { _ = os.RemoveAll(runDir1) }()
+	defer func() { _ = os.RemoveAll(runDir2) }()
 
 	// Get adapter for first run
-	path1, err := GetAdapterPath("jest.js", ipcPath1, runID1)
+	path1, err := GetAdapterPath("jest.js", ipcPath1, runDir1)
 	if err != nil {
 		t.Fatalf("Failed to get adapter for run1: %v", err)
 	}
 
 	// Get adapter for second run
-	path2, err := GetAdapterPath("jest.js", ipcPath2, runID2)
+	path2, err := GetAdapterPath("jest.js", ipcPath2, runDir2)
 	if err != nil {
 		t.Fatalf("Failed to get adapter for run2: %v", err)
 	}
@@ -215,13 +214,13 @@ func TestGetAdapterPath_UniqueAdaptersPerRun(t *testing.T) {
 
 func TestGetAdapterPath_ESMHandling(t *testing.T) {
 	ipcPath := "/tmp/test.jsonl"
-	runID := "20250911T085108-esm-test"
+	runDir := ".3pio/runs/20250911T085108-esm-test"
 
 	// Clean up
-	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID)) }()
+	defer func() { _ = os.RemoveAll(runDir) }()
 
 	// Test Vitest adapter (ESM)
-	path, err := GetAdapterPath("vitest.js", ipcPath, runID)
+	path, err := GetAdapterPath("vitest.js", ipcPath, runDir)
 	if err != nil {
 		t.Fatalf("Failed to get Vitest adapter: %v", err)
 	}
@@ -240,13 +239,13 @@ func TestGetAdapterPath_ESMHandling(t *testing.T) {
 
 func TestGetAdapterPath_PythonExecutable(t *testing.T) {
 	ipcPath := "/tmp/test.jsonl"
-	runID := "20250911T085108-python-exec-test"
+	runDir := ".3pio/runs/20250911T085108-python-exec-test"
 
 	// Clean up
-	defer func() { _ = os.RemoveAll(filepath.Join(".3pio", "adapters", runID)) }()
+	defer func() { _ = os.RemoveAll(runDir) }()
 
 	// Test Python adapter
-	path, err := GetAdapterPath("pytest_adapter.py", ipcPath, runID)
+	path, err := GetAdapterPath("pytest_adapter.py", ipcPath, runDir)
 	if err != nil {
 		t.Fatalf("Failed to get Python adapter: %v", err)
 	}

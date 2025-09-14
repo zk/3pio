@@ -89,6 +89,83 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 - Handles collection phase errors
 - Supports parametrized tests
 
+## IPC Event Protocol
+
+All adapters communicate using JSON Lines format with group-based events:
+
+### testGroupDiscovered
+Signals that a group has been discovered in the test hierarchy:
+```json
+{
+  "eventType": "testGroupDiscovered",
+  "payload": {
+    "groupName": "Button Component",
+    "parentNames": ["src/components/Button.test.js", "UI Components"]
+  }
+}
+```
+
+### testGroupStart
+Signals that a test group is beginning execution:
+```json
+{
+  "eventType": "testGroupStart",
+  "payload": {
+    "groupName": "Math operations",
+    "parentNames": ["src/math.test.js"]
+  }
+}
+```
+
+### testCase
+Reports an individual test result with parent hierarchy:
+```json
+{
+  "eventType": "testCase",
+  "payload": {
+    "testName": "should add numbers",
+    "parentNames": ["src/math.test.js", "Math operations"],
+    "status": "PASS",
+    "duration": 0.023,
+    "error": null,
+    "stdout": "optional captured stdout",
+    "stderr": "optional captured stderr"
+  }
+}
+```
+
+### testGroupResult
+Indicates test group completion:
+```json
+{
+  "eventType": "testGroupResult",
+  "payload": {
+    "groupName": "Math operations",
+    "parentNames": ["src/math.test.js"],
+    "status": "PASS",
+    "duration": 1.23,
+    "totals": {
+      "passed": 10,
+      "failed": 2,
+      "skipped": 1
+    }
+  }
+}
+```
+
+### groupStdout / groupStderr
+Captures console output at group level:
+```json
+{
+  "eventType": "groupStdout",
+  "payload": {
+    "groupName": "Math operations",
+    "parentNames": ["src/math.test.js"],
+    "chunk": "Console log output\n"
+  }
+}
+```
+
 ## Console Output Capture
 
 ### Capture Strategy
@@ -124,19 +201,46 @@ All adapters implement output capture to handle:
 - Uses capsys fixture
 - Process-based parallelization with xdist
 
-## Adding New Test Runners
+## Writing New Adapters
 
 ### Step 1: Create the Adapter
 
-Write adapter in the test runner's native language:
+Write adapter in the test runner's native language following the IPC event protocol:
+
+#### JavaScript Adapter Pattern
 ```javascript
-// For JavaScript runners
 class ThreePioReporter {
-  constructor() {
+  constructor(globalConfig, reporterOptions, reporterContext) {
     this.ipcPath = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
   }
-  // Implement runner-specific interface
+
+  onTestStart(test) {
+    // Send group discovery events for hierarchy
+    // Send testGroupStart for file and nested groups
+    // Start console capture
+  }
+
+  onTestCaseResult(test, testCaseResult) {
+    // Individual test - send testCase with parentNames
+  }
+
+  onTestResult(test, testResult) {
+    // Group complete - send testGroupResult
+    // Stop console capture
+  }
 }
+```
+
+#### Python Adapter Pattern
+```python
+class ThreePioPytestPlugin:
+    def __init__(self):
+        self.ipc_path = os.environ.get('THREEPIO_IPC_PATH')
+
+    def pytest_runtest_logreport(self, report):
+        # Process test results
+        # Send testCase events with parentNames hierarchy
+        # Send testGroupResult for completed groups
 ```
 
 ### Step 2: Add to Go Binary
@@ -164,7 +268,7 @@ In `internal/runner/definition.go`:
 3. Write comprehensive tests
 4. Update documentation
 
-## Best Practices
+## Development Best Practices
 
 ### Silent Operation
 - Never write to stdout/stderr directly
@@ -181,10 +285,11 @@ In `internal/runner/definition.go`:
 - Send events immediately
 - Clean up resources promptly
 
-### File Association
-- Always include test file path in events
-- Handle worker processes correctly
-- Track context switching
+### Group Hierarchy
+- Always include complete parentNames hierarchy in events
+- Send testGroupDiscovered for all ancestor groups
+- Handle worker processes correctly (Jest)
+- Track context switching (Vitest)
 
 ## Debugging Adapters
 
@@ -206,5 +311,5 @@ tail -f .3pio/debug.log
 ### Common Issues
 - **No events**: Check IPC path injection
 - **Missing output**: Verify capture patches
-- **Wrong file association**: Check context tracking
+- **Wrong group hierarchy**: Check parentNames tracking
 - **Adapter not found**: Ensure extraction succeeded
