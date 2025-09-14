@@ -36,6 +36,7 @@ type GoTestDefinition struct {
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool           // Track discovered groups to avoid duplicates
 	groupStarts      map[string]bool           // Track started groups
+	subgroupStats    map[string]*SubgroupStats  // Track test counts and timing for subgroups
 }
 
 // PackageInfo holds information about a Go package
@@ -81,6 +82,17 @@ type PackageGroupInfo struct {
 	NoTestFiles bool // True if package has no test files
 }
 
+// SubgroupStats tracks statistics for a subgroup (e.g., TestMain when it has subtests)
+type SubgroupStats struct {
+	TotalTests    int
+	PassedTests   int
+	FailedTests   int
+	SkippedTests  int
+	StartTime     time.Time
+	Duration      float64 // in seconds
+	Status        string
+}
+
 // IPCWriter handles writing IPC events
 type IPCWriter struct {
 	path string
@@ -104,6 +116,7 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		packageResultSent: make(map[string]bool),
 		discoveredGroups:  make(map[string]bool),
 		groupStarts:       make(map[string]bool),
+		subgroupStats:     make(map[string]*SubgroupStats),
 	}
 }
 
@@ -446,6 +459,72 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	// Send test case event with group hierarchy
 	outputStr := strings.Join(state.Output, "\n")
 	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, outputStr)
+
+	// Track subgroup statistics for parent groups
+	if len(suiteChain) > 0 {
+		// This is a subtest, update stats for its parent group
+		for i := 0; i < len(suiteChain); i++ {
+			groupHierarchy := append([]string{event.Package}, suiteChain[:i+1]...)
+			groupKey := strings.Join(groupHierarchy, "/")
+
+			if _, exists := g.subgroupStats[groupKey]; !exists {
+				g.subgroupStats[groupKey] = &SubgroupStats{
+					StartTime: time.Now(),
+				}
+			}
+
+			stats := g.subgroupStats[groupKey]
+			stats.TotalTests++
+			switch status {
+			case "PASS":
+				stats.PassedTests++
+			case "FAIL":
+				stats.FailedTests++
+				if stats.Status != "FAIL" {
+					stats.Status = "FAIL" // Fail takes precedence
+				}
+			case "SKIP":
+				stats.SkippedTests++
+			}
+
+			// Update status if not already failed
+			if stats.Status != "FAIL" && stats.PassedTests == stats.TotalTests {
+				stats.Status = "PASS"
+			}
+		}
+	} else {
+		// This is a top-level test (no subtests), check if it's a parent group
+		groupKey := event.Package + "/" + event.Test
+		if stats, exists := g.subgroupStats[groupKey]; exists {
+			// This test has subtests, send group result for it
+			stats.Duration = event.Elapsed
+
+			// Determine final status
+			if stats.Status == "" {
+				if stats.FailedTests > 0 {
+					stats.Status = "FAIL"
+				} else if stats.PassedTests == stats.TotalTests {
+					stats.Status = "PASS"
+				} else {
+					stats.Status = "SKIP"
+				}
+			}
+
+			// Send group result for this subgroup
+			totals := map[string]interface{}{
+				"total":   stats.TotalTests,
+				"passed":  stats.PassedTests,
+				"failed":  stats.FailedTests,
+				"skipped": stats.SkippedTests,
+			}
+
+			// The parent names for this group are just [package]
+			g.sendGroupResult(event.Test, []string{event.Package}, stats.Status, stats.Duration, totals)
+
+			// Clean up stats
+			delete(g.subgroupStats, groupKey)
+		}
+	}
 
 	// Clean up state
 	delete(g.testStates, key)

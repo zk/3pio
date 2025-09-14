@@ -744,6 +744,75 @@ func TestGoTestDefinition_ProcessEvent_ErrorCases(t *testing.T) {
 	}
 }
 
+// TestGoTestDefinition_SubgroupDuration tests that subgroups get proper duration
+func TestGoTestDefinition_SubgroupDuration(t *testing.T) {
+	g := NewGoTestDefinition(createTestLogger(t))
+
+	// Create a real IPCWriter for testing
+	tmpDir := t.TempDir()
+	ipcPath := filepath.Join(tmpDir, "test.jsonl")
+	ipcWriter, err := NewIPCWriter(ipcPath)
+	if err != nil {
+		t.Fatalf("Failed to create IPC writer: %v", err)
+	}
+	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
+
+	capture := NewTestIPCCapture(ipcPath)
+
+	// Process test events for package with subtest
+	events := []*GoTestEvent{
+		{Action: "run", Package: "example.com/test", Test: "TestMain"},
+		{Action: "run", Package: "example.com/test", Test: "TestMain/SubTest1"},
+		{Action: "pass", Package: "example.com/test", Test: "TestMain/SubTest1", Elapsed: 1.5},
+		{Action: "run", Package: "example.com/test", Test: "TestMain/SubTest2"},
+		{Action: "pass", Package: "example.com/test", Test: "TestMain/SubTest2", Elapsed: 2.3},
+		{Action: "pass", Package: "example.com/test", Test: "TestMain", Elapsed: 4.0},
+		{Action: "pass", Package: "example.com/test", Elapsed: 5.0},
+	}
+
+	for _, event := range events {
+		if err := g.processEvent(event); err != nil {
+			t.Errorf("Failed to process event: %v", err)
+		}
+	}
+
+	// Flush to ensure all events are written
+	_ = ipcWriter.Close()
+
+	// Check that we have group result events for subgroups
+	groupResults := capture.GetEventsByType("testGroupResult")
+
+	// We should have at least the package-level group result
+	if len(groupResults) < 1 {
+		t.Fatalf("Expected at least 1 group result event, got %d", len(groupResults))
+	}
+
+	// Check if we have group results for TestMain subgroup
+	foundTestMainResult := false
+	for _, event := range groupResults {
+		payload, ok := event["payload"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		groupName, _ := payload["groupName"].(string)
+		if groupName == "TestMain" {
+			foundTestMainResult = true
+
+			// Check that duration is set
+			duration, hasDuration := payload["duration"].(float64)
+			if !hasDuration || duration == 0 {
+				t.Errorf("TestMain subgroup should have duration, got %v", duration)
+			}
+		}
+	}
+
+	if !foundTestMainResult {
+		t.Error("Missing group result event for TestMain subgroup")
+	}
+}
+
 // Test concurrent test handling
 func TestGoTestDefinition_ConcurrentTests(t *testing.T) {
 	g := NewGoTestDefinition(createTestLogger(t))
