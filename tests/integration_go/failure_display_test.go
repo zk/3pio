@@ -11,11 +11,6 @@ import (
 )
 
 func TestFailureDisplayFormat(t *testing.T) {
-	// Skip on Ubuntu CI due to Go test JSON parsing differences
-	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" {
-		t.Skip("Skipping on Ubuntu CI due to Go test output format differences")
-	}
-
 	// Build 3pio binary
 	buildCmd := exec.Command("make", "build")
 	buildCmd.Dir = filepath.Join("..", "..")
