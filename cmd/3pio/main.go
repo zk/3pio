@@ -115,14 +115,24 @@ func runTestsCore(args []string) (int, error) {
 		if strings.Contains(err.Error(), "no test runner detected") {
 			fmt.Fprintf(os.Stderr, "\nError: Could not detect test runner from command: %s\n", strings.Join(args, " "))
 			fmt.Fprintf(os.Stderr, "\n3pio currently supports:\n")
+			fmt.Fprintf(os.Stderr, "\nTest Runners:\n")
 			fmt.Fprintf(os.Stderr, "  • Jest\n")
 			fmt.Fprintf(os.Stderr, "  • Vitest (requires v3.0+)\n")
 			fmt.Fprintf(os.Stderr, "  • pytest\n")
+			fmt.Fprintf(os.Stderr, "  • go test\n")
+			fmt.Fprintf(os.Stderr, "\nPackage Managers:\n")
+			fmt.Fprintf(os.Stderr, "  • npm\n")
+			fmt.Fprintf(os.Stderr, "  • yarn\n")
+			fmt.Fprintf(os.Stderr, "  • pnpm\n")
+			fmt.Fprintf(os.Stderr, "  • bun\n")
 			fmt.Fprintf(os.Stderr, "\nExample usage:\n")
 			fmt.Fprintf(os.Stderr, "  3pio npm test\n")
+			fmt.Fprintf(os.Stderr, "  3pio yarn test\n")
+			fmt.Fprintf(os.Stderr, "  3pio pnpm test\n")
 			fmt.Fprintf(os.Stderr, "  3pio npx jest\n")
 			fmt.Fprintf(os.Stderr, "  3pio npx vitest run\n")
 			fmt.Fprintf(os.Stderr, "  3pio pytest\n")
+			fmt.Fprintf(os.Stderr, "  3pio go test ./...\n")
 			return 1, err
 		}
 
