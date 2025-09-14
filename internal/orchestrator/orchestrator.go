@@ -150,7 +150,17 @@ func (o *Orchestrator) Run() error {
 	case "pytest_adapter.py":
 		detectedRunner = "pytest"
 	case "":
-		detectedRunner = "go test"
+		// Native runner - determine which one based on the definition type
+		switch runnerDef.(type) {
+		case *definitions.GoTestWrapper:
+			detectedRunner = "go test"
+		case *definitions.CargoTestWrapper:
+			detectedRunner = "cargo test"
+		case *definitions.NextestWrapper:
+			detectedRunner = "cargo nextest"
+		default:
+			detectedRunner = "unknown native"
+		}
 	default:
 		detectedRunner = "unknown"
 	}
@@ -253,7 +263,7 @@ func (o *Orchestrator) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
-	defer func() { _ = outputFile.Close() }()
+	// NOTE: We'll close outputFile after wg.Wait() to prevent race condition
 
 	// Create pipes for stdout and stderr
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -356,6 +366,11 @@ func (o *Orchestrator) Run() error {
 	// Wait for output capture to complete
 	wg.Wait()
 	o.logger.Debug("Output capture completed")
+
+	// NOW it's safe to close the output file after all goroutines are done
+	if err := outputFile.Close(); err != nil {
+		o.logger.Error("Failed to close output file: %v", err)
+	}
 
 	// All goroutines should be finished at this point
 	// (they were waited for via outputDone)

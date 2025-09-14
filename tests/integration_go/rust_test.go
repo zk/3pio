@@ -28,9 +28,9 @@ func TestCargoTestBasicProject(t *testing.T) {
 			expectPass: true,
 			minTests:   7,
 			checkOutput: []string{
-				"tests::test_add",
-				"tests::test_subtract",
-				"integration_tests::test_combined_operations",
+				"test_add",
+				"test_subtract",
+				"test_combined_operations",
 			},
 		},
 		{
@@ -39,9 +39,9 @@ func TestCargoTestBasicProject(t *testing.T) {
 			expectPass: true,
 			minTests:   15,
 			checkOutput: []string{
-				"app",
-				"core",
-				"utils",
+				"test_app_creation",        // from app crate
+				"test_engine_creation",     // from core crate
+				"test_format_output",       // from utils crate
 			},
 		},
 		{
@@ -79,23 +79,39 @@ func TestCargoTestBasicProject(t *testing.T) {
 				t.Errorf("Report file not found: %s", reportPath)
 			}
 
-			// Read report
-			reportContent, err := os.ReadFile(reportPath)
-			if err != nil {
-				t.Fatalf("Failed to read report: %v", err)
-			}
-			report := string(reportContent)
+			// Read all report files (main report and group reports)
+			runDir := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID)
+			allReports := ""
 
-			// Check for expected output
+			// Walk through all markdown files in the run directory
+			err := filepath.Walk(runDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if strings.HasSuffix(path, ".md") {
+					content, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+					allReports += string(content) + "\n"
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("Failed to read reports: %v", err)
+			}
+
+			// Check for expected output in all reports
 			for _, expected := range tc.checkOutput {
-				if !strings.Contains(report, expected) {
-					t.Errorf("Report missing expected content: %s", expected)
+				if !strings.Contains(allReports, expected) {
+					t.Errorf("Reports missing expected content: %s", expected)
 				}
 			}
 
-			// Check minimum test count
+			// Check minimum test count (use the main report for this)
 			if tc.minTests > 0 {
-				testCountStr := testutil.ExtractTestCount(report)
+				mainReport, _ := os.ReadFile(reportPath)
+				testCountStr := testutil.ExtractTestCount(string(mainReport))
 				if testCountStr < tc.minTests {
 					t.Errorf("Expected at least %d tests, found %d", tc.minTests, testCountStr)
 				}
@@ -140,18 +156,32 @@ func TestCargoTestWithFlags(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := testutil.RunThreepio(t, fixtureDir, tc.args...)
 
-			// Read report
-			reportPath := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID, "test-run.md")
-			reportContent, err := os.ReadFile(reportPath)
-			if err != nil {
-				t.Fatalf("Failed to read report: %v", err)
-			}
-			report := string(reportContent)
+			// Read all report files (main report and group reports)
+			runDir := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID)
+			allReports := ""
 
-			// Check expected content
+			// Walk through all markdown files in the run directory
+			err := filepath.Walk(runDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if strings.HasSuffix(path, ".md") {
+					content, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+					allReports += string(content) + "\n"
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("Failed to read reports: %v", err)
+			}
+
+			// Check expected content in all reports
 			for _, expected := range tc.contains {
-				if !strings.Contains(report, expected) {
-					t.Errorf("Report missing expected content: %s", expected)
+				if !strings.Contains(allReports, expected) {
+					t.Errorf("Reports missing expected content: %s", expected)
 				}
 			}
 		})
@@ -224,18 +254,32 @@ func TestCargoNextest(t *testing.T) {
 				t.Error("Expected failure but got success")
 			}
 
-			// Read report
-			reportPath := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID, "test-run.md")
-			reportContent, err := os.ReadFile(reportPath)
-			if err != nil {
-				t.Fatalf("Failed to read report: %v", err)
-			}
-			report := string(reportContent)
+			// Read all report files (main report and group reports)
+			runDir := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID)
+			allReports := ""
 
-			// Check expected content
+			// Walk through all markdown files in the run directory
+			err := filepath.Walk(runDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if strings.HasSuffix(path, ".md") {
+					content, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+					allReports += string(content) + "\n"
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("Failed to read reports: %v", err)
+			}
+
+			// Check expected content in all reports
 			for _, expected := range tc.checkOutput {
-				if !strings.Contains(report, expected) {
-					t.Errorf("Report missing expected content: %s", expected)
+				if !strings.Contains(allReports, expected) {
+					t.Errorf("Reports missing expected content: %s", expected)
 				}
 			}
 		})

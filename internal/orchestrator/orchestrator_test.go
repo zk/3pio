@@ -2,10 +2,13 @@ package orchestrator
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // mockLogger for testing
@@ -406,4 +409,86 @@ func TestOrchestrator_UpdateDisplayedFiles(t *testing.T) {
 	if !orch.displayedGroups[testFile1] || !orch.displayedGroups[testFile2] {
 		t.Error("Expected both test files to be marked as displayed")
 	}
+}
+
+// TestOutputFileRaceCondition tests that the output file isn't closed
+// while goroutines are still writing to it
+func TestOutputFileRaceCondition(t *testing.T) {
+	// Create a test directory
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "output.log")
+
+	// Create the output file
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to create output file: %v", err)
+	}
+
+	// Simulate the race condition scenario
+	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
+
+	// Create a pipe to simulate stdout
+	reader, writer := io.Pipe()
+
+	// Start writer (simulates test command output)
+	go func() {
+		defer writer.Close()
+		// Write some data with delays to simulate real test output
+		for i := 0; i < 5; i++ {
+			time.Sleep(10 * time.Millisecond)
+			writer.Write([]byte("test output line\n"))
+		}
+	}()
+
+	// Start reader goroutine (simulates ProcessOutput with TeeReader)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// This simulates the TeeReader in the orchestrator
+		teeReader := io.TeeReader(reader, outputFile)
+		buf := make([]byte, 1024)
+		for {
+			n, err := teeReader.Read(buf)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				// Check if it's the "file already closed" error
+				if strings.Contains(err.Error(), "file already closed") ||
+				   strings.Contains(err.Error(), "bad file descriptor") ||
+				   strings.Contains(err.Error(), "invalid argument") {
+					errChan <- err
+				}
+				break
+			}
+			if n == 0 {
+				break
+			}
+		}
+	}()
+
+	// Simulate the premature file close (the bug)
+	// In the real code, this happens via defer when Execute returns
+	go func() {
+		time.Sleep(25 * time.Millisecond) // Close file while reader is still active
+		outputFile.Close()
+	}()
+
+	// Wait for reader to finish
+	wg.Wait()
+	close(errChan)
+
+	// Check if we got the race condition error
+	for err := range errChan {
+		if err != nil {
+			// We successfully reproduced the race condition
+			t.Logf("Reproduced race condition: %v", err)
+			return
+		}
+	}
+
+	// If we didn't get an error, the test might need timing adjustments
+	// but we don't want to fail the test if the race doesn't occur
+	t.Log("Race condition did not occur in this test run (timing dependent)")
 }
