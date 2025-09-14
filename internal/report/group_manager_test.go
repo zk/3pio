@@ -126,7 +126,7 @@ func TestGroupManager_ProcessGroupResult(t *testing.T) {
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// First discover and start a group
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "test.js",
@@ -134,7 +134,7 @@ func TestGroupManager_ProcessGroupResult(t *testing.T) {
 		},
 	})
 
-	gm.ProcessGroupStart(ipc.GroupStartEvent{
+	_ = gm.ProcessGroupStart(ipc.GroupStartEvent{
 		EventType: string(ipc.EventTypeGroupStart),
 		Payload: ipc.GroupStartPayload{
 			GroupName:   "test.js",
@@ -310,7 +310,7 @@ func TestGroupManager_OutputCapture(t *testing.T) {
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a group
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "test.js",
@@ -355,7 +355,7 @@ func TestGroupManager_ReportGeneration(t *testing.T) {
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a hierarchy with tests
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "math.test.js",
@@ -363,7 +363,7 @@ func TestGroupManager_ReportGeneration(t *testing.T) {
 		},
 	})
 
-	gm.ProcessTestCase(ipc.GroupTestCaseEvent{
+	_ = gm.ProcessTestCase(ipc.GroupTestCaseEvent{
 		EventType: string(ipc.EventTypeTestCase),
 		Payload: ipc.TestCasePayload{
 			TestName:    "should add",
@@ -373,7 +373,7 @@ func TestGroupManager_ReportGeneration(t *testing.T) {
 		},
 	})
 
-	gm.ProcessTestCase(ipc.GroupTestCaseEvent{
+	_ = gm.ProcessTestCase(ipc.GroupTestCaseEvent{
 		EventType: string(ipc.EventTypeTestCase),
 		Payload: ipc.TestCasePayload{
 			TestName:    "should subtract",
@@ -387,7 +387,7 @@ func TestGroupManager_ReportGeneration(t *testing.T) {
 	})
 
 	// Complete the group
-	gm.ProcessGroupResult(ipc.GroupResultEvent{
+	_ = gm.ProcessGroupResult(ipc.GroupResultEvent{
 		EventType: string(ipc.EventTypeGroupResult),
 		Payload: ipc.GroupResultPayload{
 			GroupName:   "math.test.js",
@@ -440,7 +440,7 @@ func TestGroupManager_StatusPropagation(t *testing.T) {
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create parent and child groups
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "test.js",
@@ -448,7 +448,7 @@ func TestGroupManager_StatusPropagation(t *testing.T) {
 		},
 	})
 
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "Suite1",
@@ -456,7 +456,7 @@ func TestGroupManager_StatusPropagation(t *testing.T) {
 		},
 	})
 
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "Suite2",
@@ -465,7 +465,7 @@ func TestGroupManager_StatusPropagation(t *testing.T) {
 	})
 
 	// Complete child groups
-	gm.ProcessGroupResult(ipc.GroupResultEvent{
+	_ = gm.ProcessGroupResult(ipc.GroupResultEvent{
 		EventType: string(ipc.EventTypeGroupResult),
 		Payload: ipc.GroupResultPayload{
 			GroupName:   "Suite1",
@@ -474,7 +474,7 @@ func TestGroupManager_StatusPropagation(t *testing.T) {
 		},
 	})
 
-	gm.ProcessGroupResult(ipc.GroupResultEvent{
+	_ = gm.ProcessGroupResult(ipc.GroupResultEvent{
 		EventType: string(ipc.EventTypeGroupResult),
 		Payload: ipc.GroupResultPayload{
 			GroupName:   "Suite2",
@@ -499,7 +499,7 @@ func TestGroupManager_FinalReport(t *testing.T) {
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create multiple root groups
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "test1.js",
@@ -507,7 +507,7 @@ func TestGroupManager_FinalReport(t *testing.T) {
 		},
 	})
 
-	gm.ProcessTestCase(ipc.GroupTestCaseEvent{
+	_ = gm.ProcessTestCase(ipc.GroupTestCaseEvent{
 		EventType: string(ipc.EventTypeTestCase),
 		Payload: ipc.TestCasePayload{
 			TestName:    "test 1",
@@ -516,7 +516,7 @@ func TestGroupManager_FinalReport(t *testing.T) {
 		},
 	})
 
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "test2.js",
@@ -524,7 +524,7 @@ func TestGroupManager_FinalReport(t *testing.T) {
 		},
 	})
 
-	gm.ProcessTestCase(ipc.GroupTestCaseEvent{
+	_ = gm.ProcessTestCase(ipc.GroupTestCaseEvent{
 		EventType: string(ipc.EventTypeTestCase),
 		Payload: ipc.TestCasePayload{
 			TestName:    "test 2",
@@ -576,7 +576,7 @@ func TestGroupManager_Cleanup(t *testing.T) {
 	gm := NewGroupManager(tmpDir, "", log)
 
 	// Create a group and add pending updates
-	gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+	_ = gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
 		EventType: string(ipc.EventTypeGroupDiscovered),
 		Payload: ipc.GroupDiscoveredPayload{
 			GroupName:   "test.js",

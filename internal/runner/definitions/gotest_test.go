@@ -60,8 +60,8 @@ func createTestLogger(t testing.TB) *logger.FileLogger {
 	if tt, ok := t.(*testing.T); ok {
 		tmpDir := tt.TempDir()
 		oldDir, _ := os.Getwd()
-		os.Chdir(tmpDir)
-		tt.Cleanup(func() { os.Chdir(oldDir) })
+		_ = os.Chdir(tmpDir)
+		tt.Cleanup(func() { _ = os.Chdir(oldDir) })
 	}
 
 	// NewFileLogger creates its own log file in .3pio/debug.log
@@ -925,6 +925,6 @@ func BenchmarkGoTestDefinition_ProcessEvent(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		g.processEvent(event)
+		_ = g.processEvent(event)
 	}
 }
