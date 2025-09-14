@@ -19,15 +19,15 @@ type NextestDefinition struct {
 	ipcWriter  *IPCWriter
 
 	// Workspace and package tracking
-	workspaceName    string                       // Name of workspace if detected
-	packageGroups    map[string]*PackageGroupInfo // Map of package name to group info
-	discoveredGroups map[string]bool              // Track discovered groups to avoid duplicates
+	workspaceName    string                             // Name of workspace if detected
+	packageGroups    map[string]*NextestPackageGroupInfo // Map of package name to group info
+	discoveredGroups map[string]bool                    // Track discovered groups to avoid duplicates
 	groupStarts      map[string]bool              // Track started groups
 	testStates       map[string]*NextestTestState // Track test state
 }
 
-// PackageGroupInfo tracks information for a package group
-type PackageGroupInfo struct {
+// NextestPackageGroupInfo tracks information for a package group
+type NextestPackageGroupInfo struct {
 	Name      string
 	StartTime time.Time
 	Tests     []NextestTestInfo
@@ -66,7 +66,7 @@ type NextestEvent struct {
 func NewNextestDefinition(logger *logger.FileLogger) *NextestDefinition {
 	return &NextestDefinition{
 		logger:           logger,
-		packageGroups:    make(map[string]*PackageGroupInfo),
+		packageGroups:    make(map[string]*NextestPackageGroupInfo),
 		discoveredGroups: make(map[string]bool),
 		groupStarts:      make(map[string]bool),
 		testStates:       make(map[string]*NextestTestState),
@@ -239,7 +239,7 @@ func (n *NextestDefinition) processTestEvent(event *NextestEvent, testCount *int
 	if !n.groupStarts[packageName] {
 		n.sendGroupStart(packageName, parentNames)
 		n.groupStarts[packageName] = true
-		n.packageGroups[packageName] = &PackageGroupInfo{
+		n.packageGroups[packageName] = &NextestPackageGroupInfo{
 			Name:      packageName,
 			StartTime: time.Now(),
 			Tests:     []NextestTestInfo{},
@@ -458,13 +458,7 @@ func (n *NextestDefinition) sendIPCEvent(event map[string]interface{}) {
 		return
 	}
 
-	data, err := json.Marshal(event)
-	if err != nil {
-		n.logger.Debug("Failed to marshal IPC event: %v", err)
-		return
-	}
-
-	if _, err := n.ipcWriter.Write(data); err != nil {
+	if err := n.ipcWriter.WriteEvent(event); err != nil {
 		n.logger.Debug("Failed to write IPC event: %v", err)
 	}
 }

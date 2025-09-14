@@ -7,29 +7,29 @@ import (
 
 // CargoTestWrapper wraps CargoTestDefinition to implement the Definition interface from runner package
 type CargoTestWrapper struct {
-	impl *CargoTestDefinition
+	*CargoTestDefinition
 }
 
 // NewCargoTestWrapper creates a new wrapper for cargo test
 func NewCargoTestWrapper(impl *CargoTestDefinition) *CargoTestWrapper {
-	return &CargoTestWrapper{impl: impl}
+	return &CargoTestWrapper{CargoTestDefinition: impl}
 }
 
 // Matches checks if this runner can handle the given command
 func (c *CargoTestWrapper) Matches(command []string) bool {
-	return c.impl.Detect(command)
+	return c.CargoTestDefinition.Detect(command)
 }
 
 // GetTestFiles returns list of test files (empty for dynamic discovery)
 func (c *CargoTestWrapper) GetTestFiles(args []string) ([]string, error) {
-	return c.impl.GetTestFiles(args)
+	return c.CargoTestDefinition.GetTestFiles(args)
 }
 
 // BuildCommand builds the command with JSON output flags
 func (c *CargoTestWrapper) BuildCommand(args []string, adapterPath string) []string {
 	// cargo test uses native processing, no adapter needed
 	// Pass empty strings for ipcPath and runID as they're handled elsewhere
-	return c.impl.ModifyCommand(args, "", "")
+	return c.CargoTestDefinition.ModifyCommand(args, "", "")
 }
 
 // GetAdapterFileName returns empty as cargo test doesn't use an adapter
@@ -52,7 +52,7 @@ func (c *CargoTestWrapper) IsNative() bool {
 
 // GetNativeDefinition returns the underlying cargo test definition
 func (c *CargoTestWrapper) GetNativeDefinition() interface{} {
-	return c.impl
+	return c.CargoTestDefinition
 }
 
 // ProcessOutputWithEnv processes the output with environment variables set
@@ -68,5 +68,5 @@ func (c *CargoTestWrapper) ProcessOutputWithEnv(stdout io.Reader, ipcPath string
 		}
 	}()
 
-	return c.impl.ProcessOutput(stdout, ipcPath)
+	return c.CargoTestDefinition.ProcessOutput(stdout, ipcPath)
 }

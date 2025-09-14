@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -469,13 +468,7 @@ func (c *CargoTestDefinition) sendIPCEvent(event map[string]interface{}) {
 		return
 	}
 
-	data, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Debug("Failed to marshal IPC event: %v", err)
-		return
-	}
-
-	if _, err := c.ipcWriter.Write(data); err != nil {
+	if err := c.ipcWriter.WriteEvent(event); err != nil {
 		c.logger.Debug("Failed to write IPC event: %v", err)
 	}
 }

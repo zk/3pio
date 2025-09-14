@@ -192,11 +192,16 @@ func (o *Orchestrator) Run() error {
 	// Check if adapter is needed (empty adapter name means native runner)
 	adapterFileName := runnerDef.GetAdapterFileName()
 	if adapterFileName == "" {
-		// Native runner - no adapter needed (e.g., Go test)
+		// Native runner - no adapter needed (e.g., Go test, cargo test, nextest)
 		isNativeRunner = true
 		// Try to get the native definition using type assertion
-		if wrapper, ok := runnerDef.(*definitions.GoTestWrapper); ok {
+		switch wrapper := runnerDef.(type) {
+		case *definitions.GoTestWrapper:
 			nativeDef = wrapper.GoTestDefinition
+		case *definitions.CargoTestWrapper:
+			nativeDef = wrapper.CargoTestDefinition
+		case *definitions.NextestWrapper:
+			nativeDef = wrapper.NextestDefinition
 		}
 		testCommandSlice = runnerDef.BuildCommand(o.command, "")
 		o.logger.Debug("Using native runner for: %v", testCommandSlice)
