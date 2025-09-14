@@ -280,6 +280,12 @@ func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
 		return nil
 	}
 
+	// Debug: log all events for many-failures package
+	if strings.Contains(event.Package, "many-failures") {
+		fmt.Fprintf(os.Stderr, "DEBUG processEvent: action=%s, test=%s, package=%s\n",
+			event.Action, event.Test, event.Package)
+	}
+
 	switch event.Action {
 	case "start":
 		// Package execution starting
@@ -655,16 +661,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 				case "SKIP":
 					totals["skipped"] = totals["skipped"].(int) + 1
 				}
-			}
-
-			// Override status based on actual test results (fixes CI bug where
-			// package reports as PASS despite individual test failures)
-			if totals["failed"].(int) > 0 {
-				status = "FAIL"
-			} else if totals["passed"].(int) > 0 {
-				status = "PASS"
-			} else if totals["skipped"].(int) > 0 {
-				status = "SKIP"
 			}
 		}
 
