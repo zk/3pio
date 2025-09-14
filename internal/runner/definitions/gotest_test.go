@@ -875,9 +875,9 @@ func TestGoTestDefinition_DeeplyNestedSubgroups(t *testing.T) {
 	// 5. Package group
 
 	expectedGroups := map[string][]string{
-		"SubA": {"example.com/pkg", "TestParsed"},
-		"": {"example.com/pkg", "TestParsed", "SubA"},  // First empty group
-		"TestParsed": {"example.com/pkg"},
+		"SubA":            {"example.com/pkg", "TestParsed"},
+		"":                {"example.com/pkg", "TestParsed", "SubA"}, // First empty group
+		"TestParsed":      {"example.com/pkg"},
 		"example.com/pkg": {},
 	}
 

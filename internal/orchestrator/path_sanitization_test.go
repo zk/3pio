@@ -1,8 +1,8 @@
 package orchestrator
 
 import (
-	"testing"
 	"github.com/zk/3pio/internal/report"
+	"testing"
 )
 
 func TestSanitizePathConsistency(t *testing.T) {

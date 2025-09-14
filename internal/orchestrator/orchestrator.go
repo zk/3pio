@@ -35,13 +35,13 @@ type Orchestrator struct {
 	exitCode int
 
 	// Console output state
-	startTime       time.Time
+	startTime        time.Time
 	passedGroups     int
 	failedGroups     int
 	skippedGroups    int
 	totalGroups      int
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
-	lastCollected   int                  // Track last collection count to avoid duplicates
+	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
 	groupFailedTests map[string][]string  // Track failed test names by group
 	completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
@@ -71,9 +71,9 @@ func New(config Config) (*Orchestrator, error) {
 	}
 
 	return &Orchestrator{
-		runnerManager:   runner.NewManager(),
-		logger:          config.Logger,
-		command:         config.Command,
+		runnerManager:    runner.NewManager(),
+		logger:           config.Logger,
+		command:          config.Command,
 		displayedGroups:  make(map[string]bool),
 		groupStartTimes:  make(map[string]time.Time),
 		groupFailedTests: make(map[string][]string),
@@ -441,7 +441,6 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 	}
 	return absPath
 }
-
 
 // makeRelativePath normalizes paths to relative paths (matching report manager)
 func (o *Orchestrator) makeRelativePath(name string) string {

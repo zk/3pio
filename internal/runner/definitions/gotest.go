@@ -17,11 +17,11 @@ import (
 
 // GoTestDefinition implements support for Go's native test runner
 type GoTestDefinition struct {
-	logger        *logger.FileLogger
-	packageMap    map[string]*PackageInfo
-	testStates    map[string]*TestState
-	mu            sync.RWMutex
-	ipcWriter     *IPCWriter
+	logger     *logger.FileLogger
+	packageMap map[string]*PackageInfo
+	testStates map[string]*TestState
+	mu         sync.RWMutex
+	ipcWriter  *IPCWriter
 
 	// Package-level tracking
 	packageTestFiles  map[string][]string          // Map of package to its test files
@@ -36,7 +36,7 @@ type GoTestDefinition struct {
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool           // Track discovered groups to avoid duplicates
 	groupStarts      map[string]bool           // Track started groups
-	subgroupStats    map[string]*SubgroupStats  // Track test counts and timing for subgroups
+	subgroupStats    map[string]*SubgroupStats // Track test counts and timing for subgroups
 }
 
 // PackageInfo holds information about a Go package
@@ -84,13 +84,13 @@ type PackageGroupInfo struct {
 
 // SubgroupStats tracks statistics for a subgroup (e.g., TestMain when it has subtests)
 type SubgroupStats struct {
-	TotalTests    int
-	PassedTests   int
-	FailedTests   int
-	SkippedTests  int
-	StartTime     time.Time
-	Duration      float64 // in seconds
-	Status        string
+	TotalTests   int
+	PassedTests  int
+	FailedTests  int
+	SkippedTests int
+	StartTime    time.Time
+	Duration     float64 // in seconds
+	Status       string
 }
 
 // IPCWriter handles writing IPC events

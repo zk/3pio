@@ -21,7 +21,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Jest adapter with simple IPC path",
 			adapterName: "jest.js",
 			ipcPath:     "/tmp/test.jsonl",
-			runDir:       ".3pio/runs/20250911T085108-test-run",
+			runDir:      ".3pio/runs/20250911T085108-test-run",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -43,7 +43,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Vitest adapter with special characters in path",
 			adapterName: "vitest.js",
 			ipcPath:     "/home/user's files/.3pio/ipc/test.jsonl",
-			runDir:       ".3pio/runs/20250911T085108-special-chars",
+			runDir:      ".3pio/runs/20250911T085108-special-chars",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -62,7 +62,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Python adapter with IPC path injection",
 			adapterName: "pytest_adapter.py",
 			ipcPath:     "/var/tmp/.3pio/ipc/test.jsonl",
-			runDir:       ".3pio/runs/20250911T085108-python-test",
+			runDir:      ".3pio/runs/20250911T085108-python-test",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -84,7 +84,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Windows-style path with backslashes",
 			adapterName: "jest.js",
 			ipcPath:     `C:\Users\test\.3pio\ipc\test.jsonl`,
-			runDir:       ".3pio/runs/20250911T085108-windows-test",
+			runDir:      ".3pio/runs/20250911T085108-windows-test",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -98,7 +98,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Path with Unicode characters",
 			adapterName: "vitest.js",
 			ipcPath:     "/home/用户/.3pio/ipc/test.jsonl",
-			runDir:       ".3pio/runs/20250911T085108-unicode-test",
+			runDir:      ".3pio/runs/20250911T085108-unicode-test",
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
@@ -113,7 +113,7 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			name:        "Unknown adapter should fail",
 			adapterName: "unknown.js",
 			ipcPath:     "/tmp/test.jsonl",
-			runDir:       ".3pio/runs/20250911T085108-unknown",
+			runDir:      ".3pio/runs/20250911T085108-unknown",
 			wantErr:     true,
 			checkFunc:   nil,
 		},

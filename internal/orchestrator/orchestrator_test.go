@@ -163,7 +163,7 @@ func TestOrchestrator_TestCountsWithSkippedTests(t *testing.T) {
 	}
 
 	// Now the sum of passed + failed + skipped should equal total
-	if orch.passedGroups + orch.failedGroups + orch.skippedGroups != orch.totalGroups {
+	if orch.passedGroups+orch.failedGroups+orch.skippedGroups != orch.totalGroups {
 		t.Error("Expected passed + failed + skipped to equal total")
 	}
 }
