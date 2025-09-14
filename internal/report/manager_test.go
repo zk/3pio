@@ -117,3 +117,232 @@ func TestManager_HandleRunCompleteEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestManager_FinalizeStatus(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewVitestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger, "vitest", "npx vitest run")
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+
+	if err := manager.Initialize("npx vitest run"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Initial status should be RUNNING
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read initial report: %v", err)
+	}
+	if !strings.Contains(string(content), "status: RUNNING") {
+		t.Errorf("Expected initial status to be RUNNING")
+	}
+
+	// Call Finalize with exit code 0 (success)
+	if err := manager.Finalize(0); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	// Read the report file and check status
+	content, err = os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read finalized report: %v", err)
+	}
+
+	// Status should be COMPLETED after finalize
+	if !strings.Contains(string(content), "status: COMPLETED") {
+		t.Errorf("Expected status to be COMPLETED after Finalize, got:\n%s", content)
+	}
+
+	// Test that calling Finalize again doesn't change status
+	if err := manager.Finalize(1); err != nil {
+		t.Fatalf("Second Finalize failed: %v", err)
+	}
+
+	content, err = os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read report after second finalize: %v", err)
+	}
+
+	// Status should still be COMPLETED (not changed by second call)
+	if !strings.Contains(string(content), "status: COMPLETED") {
+		t.Errorf("Status should remain COMPLETED after second Finalize, got:\n%s", content)
+	}
+}
+
+func TestManager_FinalizeWithError(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npm test")
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+
+	if err := manager.Initialize("npm test"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Call Finalize with error details
+	if err := manager.Finalize(1, "Command failed with error"); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	// Read the report file and check status
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read finalized report: %v", err)
+	}
+
+	// Status should be ERRORED when error details are provided
+	if !strings.Contains(string(content), "status: ERRORED") {
+		t.Errorf("Expected status to be ERRORED when error details provided, got:\n%s", content)
+	}
+
+	// Check error details are in the report
+	if !strings.Contains(string(content), "Command failed with error") {
+		t.Errorf("Expected error details in report, got:\n%s", content)
+	}
+}
+
+func TestManager_ReportFormat(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewVitestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger, "vitest", "npx vitest --reporter /path/to/adapter run")
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+
+	if err := manager.Initialize("npx vitest run"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Simulate test events to populate the report
+	// Add a test group discovery
+	discoveredEvent := ipc.GroupDiscoveredEvent{
+		EventType: "testGroupDiscovered",
+		Payload: ipc.GroupDiscoveredPayload{
+			GroupName:   "math.test.js",
+			ParentNames: []string{},
+		},
+	}
+	manager.groupManager.ProcessGroupDiscovered(discoveredEvent)
+
+	startEvent := ipc.GroupStartEvent{
+		EventType: "testGroupStart",
+		Payload: ipc.GroupStartPayload{
+			GroupName:   "math.test.js",
+			ParentNames: []string{},
+		},
+	}
+	manager.groupManager.ProcessGroupStart(startEvent)
+
+	// Add test cases
+	testCase1 := ipc.GroupTestCaseEvent{
+		EventType: "testCase",
+		Payload: ipc.TestCasePayload{
+			TestName:    "should add numbers",
+			ParentNames: []string{"math.test.js"},
+			Status:      "PASS",
+			Duration:    1500, // milliseconds
+		},
+	}
+	manager.groupManager.ProcessTestCase(testCase1)
+
+	testCase2 := ipc.GroupTestCaseEvent{
+		EventType: "testCase",
+		Payload: ipc.TestCasePayload{
+			TestName:    "should multiply numbers",
+			ParentNames: []string{"math.test.js"},
+			Status:      "PASS",
+			Duration:    500, // milliseconds
+		},
+	}
+	manager.groupManager.ProcessTestCase(testCase2)
+
+	testCase3 := ipc.GroupTestCaseEvent{
+		EventType: "testCase",
+		Payload: ipc.TestCasePayload{
+			TestName:    "should divide numbers",
+			ParentNames: []string{"math.test.js"},
+			Status:      "FAIL",
+			Duration:    2000, // milliseconds
+			Error: &ipc.TestError{
+				Message: "Division error",
+			},
+		},
+	}
+	manager.groupManager.ProcessTestCase(testCase3)
+
+	// Complete the group
+	resultEvent := ipc.GroupResultEvent{
+		EventType: "testGroupResult",
+		Payload: ipc.GroupResultPayload{
+			GroupName:   "math.test.js",
+			ParentNames: []string{},
+			Status:      "FAIL",
+			Duration:    4000, // milliseconds
+		},
+	}
+	manager.groupManager.ProcessGroupResult(resultEvent)
+
+	// Force a write of the state
+	manager.writeState()
+
+	// Read the report file
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read report: %v", err)
+	}
+
+	reportContent := string(content)
+
+	// Check YAML frontmatter format
+	if !strings.Contains(reportContent, "modified_command: `npx vitest --reporter /path/to/adapter run`") {
+		t.Errorf("Expected modified_command wrapped in backticks, got: %s", reportContent)
+	}
+
+	// Check Summary section uses "test cases" terminology
+	expectedSummaryTerms := []string{
+		"Total test cases:",
+		"Test cases completed:",
+		"Test cases passed:",
+		"Test cases failed:",
+		"Test cases skipped:",
+	}
+
+	for _, term := range expectedSummaryTerms {
+		if !strings.Contains(reportContent, term) {
+			t.Errorf("Expected summary to contain '%s', but it wasn't found", term)
+		}
+	}
+
+	// Check for "Test group results" section with table format
+	if !strings.Contains(reportContent, "## Test group results") {
+		t.Errorf("Expected 'Test group results' section, but found: %s", reportContent)
+	}
+
+	// Check for table headers
+	if !strings.Contains(reportContent, "| Stat | Test | Duration | Report file |") {
+		t.Errorf("Expected table headers, but not found in report")
+	}
+
+	// Check for table separator
+	if !strings.Contains(reportContent, "| ---- | ---- | -------- | ----------- |") {
+		t.Errorf("Expected table separator, but not found in report")
+	}
+
+	// Check for correct table row format
+	if !strings.Contains(reportContent, "| FAIL | math.test.js |") {
+		t.Errorf("Expected table row for math.test.js, but not found")
+	}
+}
