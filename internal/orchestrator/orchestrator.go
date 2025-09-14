@@ -93,7 +93,9 @@ func (o *Orchestrator) Close() error {
 // Run executes the test command with 3pio instrumentation
 func (o *Orchestrator) Run() error {
 	// Ensure cleanup on exit
-	defer o.Close()
+	defer func() {
+		_ = o.Close()
+	}()
 
 	// Generate run ID
 	o.runID = generateRunID()

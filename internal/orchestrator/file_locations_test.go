@@ -29,7 +29,9 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create orchestrator: %v", err)
 	}
-	defer orch.Close()
+	defer func() {
+		_ = orch.Close()
+	}()
 
 	// Run the orchestrator which will initialize paths
 	// It will fail but that's ok - we just need initialization
