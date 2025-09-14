@@ -40,6 +40,27 @@ func NewGroupManager(runDir string, ipcPath string, logger *logger.FileLogger) *
 	}
 }
 
+// logDebug logs a debug message if logger is available
+func (gm *GroupManager) logDebug(format string, args ...interface{}) {
+	if gm.logger != nil {
+		gm.logger.Debug(format, args...)
+	}
+}
+
+// logInfo logs an info message if logger is available
+func (gm *GroupManager) logInfo(format string, args ...interface{}) {
+	if gm.logger != nil {
+		gm.logger.Info(format, args...)
+	}
+}
+
+// logError logs an error message if logger is available
+func (gm *GroupManager) logError(format string, args ...interface{}) {
+	if gm.logger != nil {
+		gm.logger.Error(format, args...)
+	}
+}
+
 // makeRelativePath converts an absolute path to a relative path if it's a file path
 func (gm *GroupManager) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
@@ -108,11 +129,11 @@ func (gm *GroupManager) ProcessGroupDiscovered(event ipc.GroupDiscoveredEvent) e
 	} else {
 		// Find or create parent groups
 		if err := gm.ensureParentHierarchy(group); err != nil {
-			gm.logger.Debug("Failed to ensure parent hierarchy: %v", err)
+			gm.logDebug("Failed to ensure parent hierarchy: %v", err)
 		}
 	}
 
-	gm.logger.Info("Discovered group: %s (ID: %s)",
+	gm.logInfo("Discovered group: %s (ID: %s)",
 		BuildHierarchicalPath(group), groupID)
 
 	return nil
@@ -159,7 +180,7 @@ func (gm *GroupManager) ProcessGroupStart(event ipc.GroupStartEvent) error {
 	// Schedule report update
 	gm.scheduleReportUpdate(groupID)
 
-	gm.logger.Info("Started group: %s", BuildHierarchicalPath(group))
+	gm.logInfo("Started group: %s", BuildHierarchicalPath(group))
 
 	return nil
 }
@@ -224,7 +245,7 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 	// Schedule report update
 	gm.scheduleReportUpdate(groupID)
 
-	gm.logger.Info("Completed group: %s [%s]",
+	gm.logInfo("Completed group: %s [%s]",
 		BuildHierarchicalPath(group), group.Status)
 
 	return nil
@@ -332,7 +353,7 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	// Schedule report update
 	gm.scheduleReportUpdate(parentID)
 
-	gm.logger.Info("Test case: %s → %s [%s]",
+	gm.logInfo("Test case: %s → %s [%s]",
 		BuildHierarchicalPathFromSlice(payload.ParentNames),
 		payload.TestName, testCase.Status)
 
@@ -561,7 +582,7 @@ func (gm *GroupManager) flushPendingUpdates() {
 	for groupID := range updates {
 		if group, exists := gm.groups[groupID]; exists {
 			if err := gm.generateGroupReport(group); err != nil {
-				gm.logger.Error("Failed to generate report for group %s: %v",
+				gm.logError("Failed to generate report for group %s: %v",
 					groupID, err)
 			}
 		}
@@ -844,7 +865,7 @@ func (gm *GroupManager) GenerateFinalReport() error {
 	// Generate reports for all groups
 	for _, group := range gm.groups {
 		if err := gm.generateGroupReport(group); err != nil {
-			gm.logger.Error("Failed to generate final report for group %s: %v",
+			gm.logError("Failed to generate final report for group %s: %v",
 				group.ID, err)
 		}
 	}
@@ -1000,7 +1021,7 @@ func (gm *GroupManager) Flush() {
 
 	for _, group := range gm.groups {
 		if err := gm.generateGroupReport(group); err != nil {
-			gm.logger.Error("Failed to generate report for group %s: %v",
+			gm.logError("Failed to generate report for group %s: %v",
 				group.ID, err)
 		}
 	}

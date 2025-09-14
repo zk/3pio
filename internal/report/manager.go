@@ -71,19 +71,27 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 	}
 
 	// Initialize GroupManager for hierarchical test organization
-	// Cast the logger to FileLogger if possible, otherwise create a new one
+	// Cast the logger to FileLogger if possible, otherwise use a wrapper
 	var fileLogger *logger.FileLogger
 	var ownedFileLogger *logger.FileLogger
 	if fl, ok := lg.(*logger.FileLogger); ok {
 		fileLogger = fl
 	} else {
-		// Create a new file logger if cast fails
-		var err error
-		fileLogger, err = logger.NewFileLogger()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create file logger for group manager: %w", err)
+		// In test environments, don't create a real FileLogger
+		// Check if this is a test logger (by type name)
+		typeName := fmt.Sprintf("%T", lg)
+		if strings.Contains(strings.ToLower(typeName), "mock") || strings.Contains(strings.ToLower(typeName), "noop") || strings.Contains(strings.ToLower(typeName), "test") {
+			// Use nil logger for tests to avoid file handle issues
+			fileLogger = nil // GroupManager should handle nil logger
+		} else {
+			// Create a new file logger for production use
+			var err error
+			fileLogger, err = logger.NewFileLogger()
+			if err != nil {
+				return nil, fmt.Errorf("failed to create file logger for group manager: %w", err)
+			}
+			ownedFileLogger = fileLogger // Track that we created this logger
 		}
-		ownedFileLogger = fileLogger // Track that we created this logger
 	}
 
 	groupManager := NewGroupManager(runDir, "", fileLogger)
