@@ -234,7 +234,7 @@ func TestManager_ReportFormat(t *testing.T) {
 			ParentNames: []string{},
 		},
 	}
-	manager.groupManager.ProcessGroupDiscovered(discoveredEvent)
+	_ = manager.groupManager.ProcessGroupDiscovered(discoveredEvent)
 
 	startEvent := ipc.GroupStartEvent{
 		EventType: "testGroupStart",
@@ -243,7 +243,7 @@ func TestManager_ReportFormat(t *testing.T) {
 			ParentNames: []string{},
 		},
 	}
-	manager.groupManager.ProcessGroupStart(startEvent)
+	_ = manager.groupManager.ProcessGroupStart(startEvent)
 
 	// Add test cases
 	testCase1 := ipc.GroupTestCaseEvent{
@@ -255,7 +255,7 @@ func TestManager_ReportFormat(t *testing.T) {
 			Duration:    1500, // milliseconds
 		},
 	}
-	manager.groupManager.ProcessTestCase(testCase1)
+	_ = manager.groupManager.ProcessTestCase(testCase1)
 
 	testCase2 := ipc.GroupTestCaseEvent{
 		EventType: "testCase",
@@ -266,7 +266,7 @@ func TestManager_ReportFormat(t *testing.T) {
 			Duration:    500, // milliseconds
 		},
 	}
-	manager.groupManager.ProcessTestCase(testCase2)
+	_ = manager.groupManager.ProcessTestCase(testCase2)
 
 	testCase3 := ipc.GroupTestCaseEvent{
 		EventType: "testCase",
@@ -280,7 +280,7 @@ func TestManager_ReportFormat(t *testing.T) {
 			},
 		},
 	}
-	manager.groupManager.ProcessTestCase(testCase3)
+	_ = manager.groupManager.ProcessTestCase(testCase3)
 
 	// Complete the group
 	resultEvent := ipc.GroupResultEvent{
@@ -292,10 +292,10 @@ func TestManager_ReportFormat(t *testing.T) {
 			Duration:    4000, // milliseconds
 		},
 	}
-	manager.groupManager.ProcessGroupResult(resultEvent)
+	_ = manager.groupManager.ProcessGroupResult(resultEvent)
 
 	// Force a write of the state
-	manager.writeState()
+	_ = manager.writeState()
 
 	// Read the report file
 	reportPath := filepath.Join(tempDir, "test-run.md")
