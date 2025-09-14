@@ -200,43 +200,49 @@ Example mappings:
    - `internal/runner/definitions/nextest.go` for cargo-nextest
 5. **Error Handling**: Exit with clear error if JSON parsing fails, no fallback
 
+## Implementation Status
+
+**Current Status**: Phase 1-3 mostly complete, cargo test working, nextest needs testing
+
 ## Implementation Phases
 
-### Phase 1: cargo test Support (Week 1-2)
-- [ ] Create `CargoTestDefinition` struct
-- [ ] Implement command detection and modification
-- [ ] Set RUSTC_BOOTSTRAP=1 in subprocess environment (not global)
-- [ ] Parse JSON events and map to IPC events
-- [ ] Test with single-crate projects
-- [ ] Return empty array from `GetTestFiles()` for dynamic discovery
+### Phase 1: cargo test Support ✅ COMPLETE
+- [x] Create `CargoTestDefinition` struct
+- [x] Implement command detection and modification
+- [x] Set RUSTC_BOOTSTRAP=1 in subprocess environment (not global)
+- [x] Parse JSON events and map to IPC events
+- [x] Test with single-crate projects
+- [x] Return empty array from `GetTestFiles()` for dynamic discovery
 
-### Phase 2: Hierarchical Support (Week 2-3)
-- [ ] Parse module paths into group hierarchy
-- [ ] Support nested test modules
+### Phase 2: Hierarchical Support ✅ MOSTLY COMPLETE
+- [x] Parse module paths into group hierarchy
+- [x] Support nested test modules
 - [ ] Handle workspace with multiple crates
-- [ ] Track duration and statistics per group
-- [ ] Support integration tests (tests/ directory)
+- [x] Track duration and statistics per group
+- [x] Support integration tests (tests/ directory)
 
-### Phase 3: cargo-nextest Support (Week 3-4)
-- [ ] Create `NextestDefinition` struct
-- [ ] Implement nextest-specific JSON parsing
+### Phase 3: cargo-nextest Support 🔧 IMPLEMENTED, NEEDS TESTING
+- [x] Create `NextestDefinition` struct
+- [x] Implement nextest-specific JSON parsing
 - [ ] Handle nextest's partition feature
-- [ ] Return empty array from `GetTestFiles()` for dynamic discovery
-- [ ] Test with large parallel test suites
+- [x] Return empty array from `GetTestFiles()` for dynamic discovery
+- [ ] Test with large parallel test suites (needs nextest installed)
 
-### Phase 4: Advanced Features (Week 4-5)
-- [ ] Doctest support for cargo test
+### Phase 4: Advanced Features ⏳ IN PROGRESS
+- [x] Doctest support for cargo test (basic - shows 0 tests)
 - [ ] Benchmark test handling (`cargo bench`)
 - [ ] Custom test harness detection
 - [ ] Handle test filtering patterns
 - [ ] Support cargo test flags (`--lib`, `--bins`, `--examples`)
 
-### Phase 5: Testing & Polish (Week 5-6)
-- [ ] Create comprehensive test fixtures
+### Phase 5: Testing & Polish 📝 TODO
+- [x] Create basic test fixture (rust-basic)
 - [ ] Handle edge cases (panics, timeouts, compilation failures)
 - [ ] Performance testing with large test suites
-- [ ] Documentation and examples
+- [x] Documentation and examples
 - [ ] Integration tests for both runners
+- [ ] Unit tests for CargoTestDefinition
+- [ ] Unit tests for NextestDefinition
 
 ## Challenges and Solutions
 
