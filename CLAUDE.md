@@ -54,10 +54,10 @@ goreleaser build --snapshot --clean
 make test
 
 # Run Go tests directly
-go test ./...
+3pio go test ./...
 
 # Run integration tests only
-go test ./tests/integration_go
+3pio go test ./tests/integration_go
 
 # Test with fixtures
 cd tests/fixtures/basic-jest && ../../../build/3pio npx jest
@@ -175,11 +175,13 @@ For detailed information about these issues and their solutions, see `docs/known
 - Adapters are prepared for embedding using `make adapters` which runs `scripts/prepare-adapters.sh`
 - When asked to update documentation find a place that fits in `docs/`. If no good file exists for the information create it.
 - Always use the logger class when logging. See `internal/logger/file_logger.go`.
+- After making changes lint and `gofmt`.
+- Before opening a pr, lint and `gofmt`.
 
 
 ## Running tests in this project.
 
-Always use 3pio to run tests in this repository. The command is `build/3pio`. Here is the help documentation:
+Always use 3pio to run tests in this repository. The command is `3pio`. Here is the help documentation:
 
 3pio translates test runs into a format optimized for AI agents, providing
 context-optimized console output and file-based records.

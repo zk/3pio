@@ -1,17 +1,12 @@
 package manyfailures
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 func TestPass1(t *testing.T) {
 	// This test passes
 }
 
 func TestFail1(t *testing.T) {
-	// Create a marker file to verify this version is running
-	_ = os.WriteFile("CI_TEST_MARKER_v3.txt", []byte("TestFail1 executed"), 0644)
 	t.Errorf("First failure message - this test must fail")
 	t.Fatal("FORCE FAILURE - this should never pass")
 }

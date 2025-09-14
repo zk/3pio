@@ -633,14 +633,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 		// Send the package group result
 		status := strings.ToUpper(event.Action)
 
-		// Check if this is a package with no test files
-		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
-			if pkgGroup.NoTestFiles && status == "SKIP" {
-				// Mark this specially so orchestrator can display ???
-				status = "NOTESTS"
-			}
-		}
-
 		// Calculate totals from tracked tests
 		totals := map[string]interface{}{
 			"total":   0,
@@ -661,6 +653,24 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 				case "SKIP":
 					totals["skipped"] = totals["skipped"].(int) + 1
 				}
+			}
+
+			// Override status based on actual test results (fixes CI bug where
+			// package reports as PASS despite individual test failures)
+			if totals["failed"].(int) > 0 {
+				status = "FAIL"
+			} else if totals["passed"].(int) > 0 {
+				status = "PASS"
+			} else if totals["skipped"].(int) > 0 {
+				status = "SKIP"
+			}
+		}
+
+		// Check if this is a package with no test files
+		if pkgGroup, ok := g.packageGroups[event.Package]; ok {
+			if pkgGroup.NoTestFiles && status == "SKIP" {
+				// Mark this specially so orchestrator can display ???
+				status = "NOTESTS"
 			}
 		}
 
