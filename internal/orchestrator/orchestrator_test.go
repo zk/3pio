@@ -321,11 +321,6 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 		t.Error(".3pio/runs directory was not created")
 	}
 
-	// Check that ipc directory was created
-	ipcDir := filepath.Join(threepioDir, "ipc")
-	if _, err := os.Stat(ipcDir); os.IsNotExist(err) {
-		t.Error(".3pio/ipc directory was not created")
-	}
 }
 
 func TestOrchestrator_ConsoleLogging(t *testing.T) {

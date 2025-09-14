@@ -99,6 +99,9 @@ func (o *Orchestrator) Run() error {
 	o.runID = generateRunID()
 	o.runDir = filepath.Join(".3pio", "runs", o.runID)
 
+	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
+	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
+
 	// Print greeting and command
 	testCommand := strings.Join(o.command, " ")
 	fmt.Println()
@@ -118,14 +121,6 @@ func (o *Orchestrator) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to detect test runner: %w", err)
 	}
-
-
-	// Setup IPC
-	ipcDir, err := ipc.EnsureIPCDirectory()
-	if err != nil {
-		return fmt.Errorf("failed to setup IPC directory: %w", err)
-	}
-	o.ipcPath = filepath.Join(ipcDir, fmt.Sprintf("%s.jsonl", o.runID))
 
 	// Create IPC manager
 	o.ipcManager, err = ipc.NewManager(o.ipcPath, o.logger)
@@ -611,8 +606,8 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 	// Always use embedded adapters in production
-	// Pass IPC path and run ID for injection
-	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runID)
+	// Pass IPC path and run directory for injection
+	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}

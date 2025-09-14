@@ -23,13 +23,13 @@ var (
 )
 
 // GetAdapterPath returns the path to an extracted adapter with IPC path injected
-func GetAdapterPath(name string, ipcPath string, runID string) (string, error) {
+func GetAdapterPath(name string, ipcPath string, runDir string) (string, error) {
 	// No caching needed since each run gets its own adapter
-	return extractAdapter(name, ipcPath, runID)
+	return extractAdapter(name, ipcPath, runDir)
 }
 
 // extractAdapter extracts an embedded adapter with IPC path injected
-func extractAdapter(name string, ipcPath string, runID string) (string, error) {
+func extractAdapter(name string, ipcPath string, runDir string) (string, error) {
 	var content []byte
 	var filename string
 	var isESM bool
@@ -77,8 +77,8 @@ func extractAdapter(name string, ipcPath string, runID string) (string, error) {
 
 	content = []byte(contentStr)
 
-	// Use run ID for adapter directory (e.g., "20250911T085108-feisty-han-solo")
-	adapterDir := filepath.Join(".3pio", "adapters", runID)
+	// Use run directory for adapter location
+	adapterDir := filepath.Join(runDir, "adapters")
 	if err := os.MkdirAll(adapterDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create adapter directory: %w", err)
 	}
