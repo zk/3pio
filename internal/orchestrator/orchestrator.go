@@ -843,7 +843,7 @@ func generateRunID() string {
 		"cranky", "bouncy", "quirky", "sleepy", "dopey",
 		"sassy", "goofy", "wacky", "silly", "funky",
 		"nutty", "zany", "loopy", "kooky", "batty",
-		"fuzzy", "bubbly", "snappy", "zippy", "perky",
+		"fuzzy", "bubbly", "snappy", "zippy", "rowdy",
 		"cheeky", "spunky", "feisty", "frisky", "peppy",
 	}
 
