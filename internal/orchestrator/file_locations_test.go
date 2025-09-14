@@ -11,8 +11,8 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 	oldCwd, _ := os.Getwd()
-	os.Chdir(tempDir)
-	defer os.Chdir(oldCwd)
+	_ = os.Chdir(tempDir)
+	defer func() { _ = os.Chdir(oldCwd) }()
 
 	// Create a mock package.json for runner detection
 	packageJSON := `{"name": "test-project", "scripts": {"test": "echo test"}}`
@@ -21,7 +21,7 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	}
 
 	config := Config{
-		Command: []string{"npm", "test"},  // Use npm test which will be recognized
+		Command: []string{"npm", "test"}, // Use npm test which will be recognized
 		Logger:  &mockLogger{},
 	}
 
@@ -62,8 +62,8 @@ func TestAdapterExtraction_FileLocations(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 	oldCwd, _ := os.Getwd()
-	os.Chdir(tempDir)
-	defer os.Chdir(oldCwd)
+	_ = os.Chdir(tempDir)
+	defer func() { _ = os.Chdir(oldCwd) }()
 
 	runID := "20250913T180000-test-run"
 	runDir := filepath.Join(".3pio", "runs", runID)
