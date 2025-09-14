@@ -227,6 +227,12 @@ func (o *Orchestrator) Run() error {
 	// Set environment
 	cmd.Env = append(os.Environ(), fmt.Sprintf("THREEPIO_IPC_PATH=%s", o.ipcPath))
 
+	// Add RUSTC_BOOTSTRAP=1 for cargo test to enable JSON output
+	if len(o.command) >= 2 && o.command[0] == "cargo" && o.command[1] == "test" {
+		cmd.Env = append(cmd.Env, "RUSTC_BOOTSTRAP=1")
+		o.logger.Debug("Added RUSTC_BOOTSTRAP=1 for cargo test JSON output")
+	}
+
 	// Connect stdin to allow interactive prompts
 	cmd.Stdin = os.Stdin
 

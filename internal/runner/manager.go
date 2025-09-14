@@ -40,6 +40,13 @@ func NewManager() *Manager {
 	// Register Go test runner (native, no adapter)
 	m.Register("go", definitions.NewGoTestWrapper(fileLogger))
 
+	// Register Rust test runners (native, no adapters)
+	cargoImpl := definitions.NewCargoTestDefinition(fileLogger)
+	m.Register("cargo", definitions.NewCargoTestWrapper(cargoImpl))
+
+	nextestImpl := definitions.NewNextestDefinition(fileLogger)
+	m.Register("nextest", definitions.NewNextestWrapper(nextestImpl))
+
 	return m
 }
 
