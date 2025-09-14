@@ -51,9 +51,8 @@ Data flows from test runners → adapters → group events → group hierarchy �
 Documentation for understanding and working on the 3pio codebase - system design, implementation details, and development guides.
 
 - **[Architecture](./architecture/architecture.md)** - Complete system architecture, components, and data flow
-- **[Test Runner Adapters](./architecture/test-runner-adapters.md)** - Adapter implementation, embedding, and framework support
+- **[Test Runner Adapters](./architecture/test-runner-adapters.md)** - Adapter implementation, writing guides, and framework support
 - **[Output Handling](./architecture/output-handling.md)** - Console capture strategies and parallel execution handling
-- **[Writing Adapters](./architecture/writing-adapters.md)** - Guide for adding new test runner support
 - **[Debugging](./architecture/debugging.md)** - Troubleshooting guide and debug logs
 
 ### Planning & Design
@@ -62,9 +61,6 @@ Documentation for understanding and working on the 3pio codebase - system design
 - **[Future Vision](./future-vision.md)** - Universal test reporting across all languages
 - **[Future Plans](./future-plans.md)** - SBOM, signing, and cleanup features
 
-### Implementation Details
-
-- **[pytest Plugin API](./implementation-details/pytest-plugin-api.md)** - pytest adapter implementation specifics
 
 ### Operations & Troubleshooting
 

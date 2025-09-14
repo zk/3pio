@@ -331,17 +331,17 @@ func TestManager_ReportFormat(t *testing.T) {
 		t.Errorf("Expected 'Test group results' section, but found: %s", reportContent)
 	}
 
-	// Check for table headers
-	if !strings.Contains(reportContent, "| Stat | Test | Duration | Report file |") {
-		t.Errorf("Expected table headers, but not found in report")
+	// Check for table headers - should match individual group report format
+	if !strings.Contains(reportContent, "| Status | Name | Tests | Duration | Report |") {
+		t.Errorf("Expected table headers '| Status | Name | Tests | Duration | Report |', but not found in report")
 	}
 
 	// Check for table separator
-	if !strings.Contains(reportContent, "| ---- | ---- | -------- | ----------- |") {
+	if !strings.Contains(reportContent, "|--------|------|-------|----------|--------|") {
 		t.Errorf("Expected table separator, but not found in report")
 	}
 
-	// Check for correct table row format
+	// Check for correct table row format (status, name, tests summary, duration, report path)
 	if !strings.Contains(reportContent, "| FAIL | math.test.js |") {
 		t.Errorf("Expected table row for math.test.js, but not found")
 	}

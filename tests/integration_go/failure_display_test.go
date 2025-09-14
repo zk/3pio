@@ -77,7 +77,7 @@ func TestFailureDisplayFormat(t *testing.T) {
 		if !strings.Contains(output, "  See .3pio/runs/") {
 			t.Errorf("Expected to see report path in output")
 		}
-		if !strings.Contains(output, "/reports/github_com_zk_3pio_tests_fixtures_many-failures/index.md") {
+		if !strings.Contains(output, "/reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") {
 			t.Errorf("Expected to see correct report path format")
 		}
 	})

@@ -368,8 +368,8 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 	// Test group results section with table format
 	if len(m.groupManager.GetRootGroups()) > 0 {
 		sb.WriteString("## Test group results\n\n")
-		sb.WriteString("| Stat | Test | Duration | Report file |\n")
-		sb.WriteString("| ---- | ---- | -------- | ----------- |\n")
+		sb.WriteString("| Status | Name | Tests | Duration | Report |\n")
+		sb.WriteString("|--------|------|-------|----------|--------|\n")
 
 		for _, group := range m.groupManager.GetRootGroups() {
 			statusStr := strings.ToUpper(string(group.Status))
@@ -377,6 +377,25 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 				statusStr = "PENDING"
 			}
 			filename := filepath.Base(group.Name)
+
+			// Tests column - show breakdown of test results like individual group reports
+			var testsStr string
+			if group.Stats.TotalTests > 0 {
+				parts := []string{}
+				if group.Stats.PassedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
+				}
+				if group.Stats.FailedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", group.Stats.FailedTests))
+				}
+				if group.Stats.SkippedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
+				}
+				testsStr = strings.Join(parts, ", ")
+			} else {
+				testsStr = "0 tests"
+			}
+
 			durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
 
 			// Generate report file path
@@ -386,7 +405,7 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 				reportFile = "./" + relPath
 			}
 
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", statusStr, filename, durationStr, reportFile))
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", statusStr, filename, testsStr, durationStr, reportFile))
 		}
 	}
 }
