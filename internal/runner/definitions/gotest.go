@@ -280,7 +280,6 @@ func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
 		return nil
 	}
 
-
 	switch event.Action {
 	case "start":
 		// Package execution starting
@@ -599,7 +598,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-
 	// Update package info
 	if pkg, ok := g.packageMap[event.Package]; ok {
 		pkg.Status = strings.ToUpper(event.Action)
@@ -642,7 +640,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			"failed":  0,
 			"skipped": 0,
 		}
-
 
 		// If we have a package group with tests, use those totals
 		if pkgGroup, ok := g.packageGroups[event.Package]; ok && len(pkgGroup.Tests) > 0 {
