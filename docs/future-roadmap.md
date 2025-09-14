@@ -24,6 +24,13 @@ Run multiple test commands in a single 3pio session:
 - Support environment variable substitution
 - Handle complex variable references
 
+### Performance Optimizations
+- **Remove `go list` dependency**: Currently Go test uses `go list` to get package metadata, but this adds latency (~200-500ms) and isn't strictly necessary since tests are discovered dynamically anyway
+  - Investigate removing `runGoList()` call in `GetTestFiles()`
+  - Would make Go test startup faster and more consistent with other runners
+  - Package information could be derived from test events themselves
+  - Consider impact on workspace/module support
+
 ## Medium-term Goals
 
 ### Additional Test Runners
