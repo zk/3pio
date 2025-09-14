@@ -90,8 +90,18 @@ func (c *CargoTestDefinition) Detect(args []string) bool {
 		return true
 	}
 
+	// Check for "cargo +<toolchain> test" command
+	if args[0] == "cargo" && len(args) > 2 && strings.HasPrefix(args[1], "+") && args[2] == "test" {
+		return true
+	}
+
 	// Check for full path to cargo binary
 	if strings.HasSuffix(args[0], "/cargo") && len(args) > 1 && args[1] == "test" {
+		return true
+	}
+
+	// Check for full path with toolchain
+	if strings.HasSuffix(args[0], "/cargo") && len(args) > 2 && strings.HasPrefix(args[1], "+") && args[2] == "test" {
 		return true
 	}
 

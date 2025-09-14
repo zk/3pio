@@ -89,8 +89,18 @@ func (n *NextestDefinition) Detect(args []string) bool {
 		return true
 	}
 
+	// Check for "cargo +<toolchain> nextest" command
+	if args[0] == "cargo" && len(args) > 2 && strings.HasPrefix(args[1], "+") && args[2] == "nextest" {
+		return true
+	}
+
 	// Check for full path to cargo binary with nextest
 	if strings.HasSuffix(args[0], "/cargo") && len(args) > 1 && args[1] == "nextest" {
+		return true
+	}
+
+	// Check for full path with toolchain
+	if strings.HasSuffix(args[0], "/cargo") && len(args) > 2 && strings.HasPrefix(args[1], "+") && args[2] == "nextest" {
 		return true
 	}
 

@@ -202,7 +202,7 @@ Example mappings:
 
 ## Implementation Status
 
-**Current Status**: Phase 1-3 mostly complete, cargo test working, nextest needs testing
+**Current Status**: Phases 1-4 complete! Both cargo test and cargo-nextest fully functional with advanced features
 
 ## Implementation Phases
 
@@ -239,15 +239,30 @@ Example mappings:
 - **Advantage over cargo test**: Correctly identifies crate names in workspace mode
 - Successfully handles all test states: pass, fail, skip/ignore
 
-### Phase 4: Advanced Features ⏳ IN PROGRESS
-- [x] Doctest support for cargo test (basic - shows 0 tests)
-- [ ] Benchmark test handling (`cargo bench`)
-- [ ] Custom test harness detection
-- [ ] Handle test filtering patterns
-- [ ] Support cargo test flags (`--lib`, `--bins`, `--examples`)
+### Phase 4: Advanced Features ✅ COMPLETE
+- [x] Doctest support for cargo test (fully working)
+- [x] Benchmark test handling (`cargo test --benches`)
+- [x] Custom test harness detection (criterion benchmarks supported)
+- [x] Handle test filtering patterns (e.g., `cargo test test_name`)
+- [x] Support cargo test flags (`--lib`, `--bins`, `--examples`, `--doc`)
+- [x] Support toolchain specifiers (e.g., `cargo +nightly test`)
+- [x] Support nextest partition feature (`--partition count:1/2`)
+- [x] Created comprehensive test fixtures with all test types
+
+**Implementation Notes:**
+- Test filtering works transparently - patterns are passed through to test runner
+- Cargo flags like `--lib`, `--bins`, `--examples`, `--doc` work correctly
+- Toolchain specifiers (`+nightly`, `+stable`) are detected and handled
+- Nextest partition feature works out of the box for distributed testing
+- Created comprehensive fixture with unit tests, integration tests, doctests, examples, and binaries
+- Benchmarks can be run as tests using `cargo test --benches`
+- Note: `cargo bench` itself outputs different format and would need separate implementation
 
 ### Phase 5: Testing & Polish 📝 TODO
 - [x] Create basic test fixture (rust-basic)
+- [x] Create workspace test fixture (rust-workspace)
+- [x] Create comprehensive test fixture (rust-comprehensive)
+- [x] Create benchmark test fixture (rust-benchmarks)
 - [ ] Handle edge cases (panics, timeouts, compilation failures)
 - [ ] Performance testing with large test suites
 - [x] Documentation and examples
