@@ -26,7 +26,7 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 
 	// Clean up any existing runs
 	threePioDir := filepath.Join(fixtureDir, ".3pio")
-	os.RemoveAll(threePioDir)
+	_ = os.RemoveAll(threePioDir)
 
 	// Run a test that we know will fail (string.test.js has a failing test)
 	cmd := exec.Command(threePioBinary, "npx", "jest", "string.test.js")
