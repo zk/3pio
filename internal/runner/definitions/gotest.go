@@ -644,9 +644,7 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 		// If we have a package group with tests, use those totals
 		if pkgGroup, ok := g.packageGroups[event.Package]; ok && len(pkgGroup.Tests) > 0 {
 			totals["total"] = len(pkgGroup.Tests)
-			g.logger.Debug("Package %s has %d tracked tests", event.Package, len(pkgGroup.Tests))
 			for _, test := range pkgGroup.Tests {
-				g.logger.Debug("  Test %s: status=%s", test.Name, test.Status)
 				switch test.Status {
 				case "PASS":
 					totals["passed"] = totals["passed"].(int) + 1
@@ -657,12 +655,8 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 				}
 			}
 
-			g.logger.Debug("Package %s totals: passed=%d, failed=%d, skipped=%d",
-				event.Package, totals["passed"], totals["failed"], totals["skipped"])
-
 			// Override status based on actual test results (fixes CI bug where
 			// package reports as PASS despite individual test failures)
-			originalStatus := status
 			if totals["failed"].(int) > 0 {
 				status = "FAIL"
 			} else if totals["passed"].(int) > 0 {
@@ -670,12 +664,6 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			} else if totals["skipped"].(int) > 0 {
 				status = "SKIP"
 			}
-
-			if originalStatus != status {
-				g.logger.Debug("Package %s status corrected: %s -> %s", event.Package, originalStatus, status)
-			}
-		} else {
-			g.logger.Debug("Package %s has no tracked tests or package group not found", event.Package)
 		}
 
 		// Check if this is a package with no test files
