@@ -280,11 +280,6 @@ func (g *GoTestDefinition) processEvent(event *GoTestEvent) error {
 		return nil
 	}
 
-	// Debug: log all events for many-failures package
-	if strings.Contains(event.Package, "many-failures") {
-		fmt.Fprintf(os.Stderr, "DEBUG processEvent: action=%s, test=%s, package=%s\n",
-			event.Action, event.Test, event.Package)
-	}
 
 	switch event.Action {
 	case "start":
