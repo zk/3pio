@@ -36,15 +36,32 @@ As of September 2025, path sanitization has been centralized to use a single fun
 1. **Consistency** - The displayed "See..." path in console output matches the actual directory created
 2. **Maintainability** - Only one sanitization function to maintain and test
 3. **Predictability** - Users can rely on consistent path transformations
+4. **No Duplication** - Eliminates the risk of different sanitization logic causing mismatches
 
 ### Components
 
 - **Report Manager** (`internal/report/`) - Uses `SanitizeGroupName` when creating report directories
 - **Orchestrator** (`internal/orchestrator/`) - Uses the same `SanitizeGroupName` when displaying report paths in console output
 
+### Implementation Details
+
+The console output generation in `orchestrator.go:701` uses:
+```go
+reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, report.SanitizeGroupName(group.Name))
+```
+
+The directory creation in `group_path.go` uses the same `SanitizeGroupName` function, ensuring perfect consistency between what users see and what actually exists on disk.
+
 ## Testing
 
-The `TestSanitizePathConsistency` test in `internal/orchestrator/path_sanitization_test.go` verifies that path sanitization produces consistent results across the codebase.
+Path sanitization consistency is verified through multiple test layers:
+
+1. **Unit Tests**: `TestSanitizePathConsistency` in `internal/orchestrator/path_sanitization_test.go` verifies that path sanitization produces expected results
+2. **Integration Tests**: `TestConsoleOutputMatchesActualDirectoryStructure` in `tests/integration_go/path_consistency_test.go` verifies that console output exactly matches actual directory structure by:
+   - Running a failing test to trigger the "See..." message
+   - Extracting the displayed path from console output
+   - Verifying the actual directory exists with the same name
+   - Ensuring perfect match between displayed and actual paths
 
 ## Migration Notes
 

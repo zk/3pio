@@ -56,7 +56,7 @@ You may want to add that to your CLAUDE.md / AGENTS.md / GEMINI.md. Another opti
 
 ## Usage
 
-Prefix any test command with `3pio`, works with any flags or arugments.
+Tell your agent to prefix any test command with `3pio`, works with any flags or arugments.
 
 ```bash
 $ 3pio npm test
@@ -84,6 +84,126 @@ Total time:  29.350s
 ```
 
 Console output is focused on just which tests failed and provides path information on how to find out more.
+
+## Examples
+
+```markdown
+Run tests using 3pio and invesgitate root causes of any failures. Report back.
+```
+
+### Understanding test failures
+
+```bash
+> Summarize all test failures from the last test run
+
+⏺ Read(.3pio/runs/20250913T204935-batty-spock/reports/_test_system_mcp_tools_scroll_test_js/mcp_tool_scro
+      ll/core_functionality/index.md)
+  ⎿  Read 41 lines (ctrl+o to expand)
+
+⏺ Read(.3pio/runs/20250913T204935-batty-spock/reports/_test_system_mcp_tools_scroll_test_js/mcp_tool_scro
+      ll/tool_interactions/index.md)
+  ⎿  Read 38 lines (ctrl+o to expand)
+
+⏺ Read(.3pio/runs/20250913T204935-batty-spock/reports/_test_system_mcp_tools_scroll_test_js/mcp_tool_scro
+      ll/smooth_scrolling_behavior/index.md)
+  ⎿  Read 28 lines (ctrl+o to expand)
+
+⏺ Summary of All Test Failures from Last Test Run
+
+  Test Results Overview: 5 failures across 4 test groups
+
+  ---
+  ❌ Core Functionality (2 failures)
+
+  1. "should scroll to coordinates" (7.40s)
+    - Error: expect(received).toBeGreaterThan(expected) // Expected: > 0, Received: 0
+    - Issue: Event collection not capturing scroll events (0 events found)
+    - Location: scroll.test.js:80:35
+  2. "should capture DOM mutation events during scroll" (6.72s)
+    - Error: expect(received).toBeGreaterThan(expected) // Expected: > 0, Received: 0
+    - Issue: DOM mutation events not being captured (0 events found)
+    - Location: scroll.test.js:187:37
+
+  ---
+  ❌ Error Handling (1 failure)
+
+  3. "should fail with invalid selector" (6.25s)
+    - Error: expect(received).toContain(expected) // Expected substring: "Element not found", Received:
+   "Batch execution failed"
+    - Issue: Error message propagation - correct failure detected but wrong error text
+    - Location: scroll.test.js:198:28
+    - Status: ✅ PARTIALLY FIXED - Now correctly returns success: false
+
+  ---
+  ❌ Tool Interactions (1 failure)
+
+  4. "should work with getPageState to verify scroll position" (6.72s)
+    - Error: MCP error -32602: Invalid arguments for tool getPageState: Required object parameter
+  undefined
+    - Issue: Parameter validation - getPageState expects object parameter but receives undefined
+    - Location: scroll.test.js:346:27
+    - Status: ✅ ALREADY FIXED - This is the getPageState schema issue I addressed
+
+  ---
+  ❌ Smooth Scrolling Behavior (1 failure)
+
+  5. "should capture intermediate scroll positions during smooth scroll" (7.74s)
+    - Error: expect(received).toBeGreaterThan(expected) // Expected: > 1, Received: 1
+    - Issue: Event collection not capturing multiple intermediate scroll events
+    - Location: scroll.test.js:412:35
+
+  ---
+  Failure Pattern Analysis
+
+  ✅ SUCCESS: My fixes resolved the critical success/failure propagation issue
+  - Tests now correctly return success: false for failures
+  - Parameter validation issues are resolved
+
+  🔧 REMAINING ISSUES: All related to event collection mechanism
+  - 4 out of 5 failures are event collection problems (expecting > 0 events, receiving 0)
+  - 1 failure is error message detail propagation
+
+  📊 IMPACT:
+  - Critical system bugs: ✅ FIXED
+  - Event collection: ❌ Needs investigation (affects scroll events, DOM mutations, smooth scroll
+  tracking)
+```
+
+
+### Test duration by file / group
+
+```bash
+> Give me the durations by test group
+
+⏺ Read(.3pio/runs/20250913T204935-batty-spock/reports/_test_system_mcp_tools_scroll_test_js/index.md)
+  ⎿  Read 23 lines (ctrl+o to expand)
+
+⏺ Read(.3pio/runs/20250913T204935-batty-spock/reports/_test_system_mcp_tools_scroll_test_js/mcp_tool_scro
+      ll/index.md)
+  ⎿  Read 29 lines (ctrl+o to expand)
+
+⏺ Here are the test durations by test group:
+
+  Test Group Durations
+
+  | Status | Test Group                | Tests              | Duration |
+  |--------|---------------------------|--------------------|----------|
+  | ❌ FAIL | Core Functionality        | 4 passed, 2 failed | 111.1s   |
+  | ❌ FAIL | Error Handling            | 2 passed, 1 failed | 69.7s    |
+  | ✅ PASS | Consistency               | 2 passed           | 50.6s    |
+  | ❌ FAIL | Tool Interactions         | 2 passed, 1 failed | 36.0s    |
+  | ✅ PASS | Scrollable Containers     | 1 passed           | 14.5s    |
+  | ❌ FAIL | Smooth Scrolling Behavior | 1 failed           | 7.7s     |
+
+  Total Duration: 111.3s (~1 minute 51 seconds)
+
+  Key Observations:
+  - Core Functionality took the longest at 111.1s but had 4 passing tests
+  - Error Handling (where I made my fixes) took 69.7s with 2 passing tests
+  - Consistency and Scrollable Containers groups are fully passing
+  - The groups with longer durations generally had more passing tests, suggesting the time is spent on
+  successful test execution rather than just timeouts
+```
 
 
 ## How it works

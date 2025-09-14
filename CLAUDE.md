@@ -175,3 +175,30 @@ For detailed information about these issues and their solutions, see `docs/known
 - Adapters are prepared for embedding using `make adapters` which runs `scripts/prepare-adapters.sh`
 - When asked to update documentation find a place that fits in `docs/`. If no good file exists for the information create it.
 - Always use the logger class when logging. See `internal/logger/file_logger.go`.
+
+
+## Running tests in this project.
+
+Always use 3pio to run tests in this repository. The command is `build/3pio`. Here is the help documentation:
+
+3pio translates test runs into a format optimized for AI agents, providing
+context-optimized console output and file-based records.
+
+Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
+• test-run.md  - Main report with test summary and individual test results
+• output.log   - Complete stdout/stderr output from the entire test run
+• logs/*.log   - Per-file output with test case demarcation
+
+Examples:
+  3pio npm test                    # Run npm test script
+  3pio npm test -- tests/unit      # Pass arguments to npm test
+  3pio npx jest                    # Run Jest directly
+  3pio npx vitest run              # Run Vitest
+  3pio pytest                      # Run pytest
+
+Usage:
+  3pio [your test command] | [flags]
+
+Flags:
+  -h, --help      help for 3pio
+  -v, --version   version for 3pio
