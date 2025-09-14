@@ -515,10 +515,8 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if already finalized
-	if m.state != nil && (m.state.Status == "COMPLETE" || m.state.Status == "ERROR") {
-		return nil // Already finalized
-	}
+	// Always close resources, even if already finalized
+	// This ensures cleanup happens even on repeated calls
 
 	// Flush all pending group reports
 	if m.groupManager != nil {
@@ -537,8 +535,8 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 		m.ownedFileLogger = nil
 	}
 
-	// Update final status if we have state
-	if m.state != nil {
+	// Update final status if we have state and it's not already finalized
+	if m.state != nil && m.state.Status != "COMPLETE" && m.state.Status != "ERROR" {
 		// Only set ERROR status for actual command errors, not test failures
 		if len(errorDetails) > 0 && errorDetails[0] != "" {
 			m.state.Status = "ERROR"
