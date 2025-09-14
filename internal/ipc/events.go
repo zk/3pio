@@ -6,9 +6,7 @@ import "time"
 type EventType string
 
 const (
-	// Legacy events removed: stdoutChunk, stderrChunk, testFileStart, testFileResult
-	// New group events
-	EventTypeTestCase         EventType = "testCase" // New group-based testCase
+	EventTypeTestCase         EventType = "testCase"
 	EventTypeRunComplete      EventType = "runComplete"
 	EventTypeCollectionStart  EventType = "collectionStart"
 	EventTypeCollectionError  EventType = "collectionError"
@@ -30,9 +28,6 @@ const (
 type Event interface {
 	Type() EventType
 }
-
-// Legacy event types removed: StdoutChunkEvent, StderrChunkEvent, TestFileStartEvent, TestCaseEvent, TestFileResultEvent
-// These have been replaced by group-based events
 
 // RunCompleteEvent indicates that the test runner has completed
 type RunCompleteEvent struct {

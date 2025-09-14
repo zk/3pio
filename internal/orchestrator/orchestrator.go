@@ -469,16 +469,6 @@ func sanitizePathForFilesystem(filePath string) string {
 	return cleanPath
 }
 
-// getRelativePath converts a file path to a relative path starting with ./
-func (o *Orchestrator) getRelativePath(filePath string) string {
-	cwd, _ := os.Getwd()
-	relativePath := "./" + filepath.Base(filePath) // Use basename as fallback
-	if relPath, err := filepath.Rel(cwd, filePath); err == nil {
-		relativePath = "./" + relPath
-	}
-	return relativePath
-}
-
 // makeRelativePath normalizes paths to relative paths (matching report manager)
 func (o *Orchestrator) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
@@ -551,8 +541,6 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			}
 		}
 
-	// Legacy file-based events removed - only group events are supported
-
 	case ipc.GroupTestCaseEvent:
 		// Forward to report manager FIRST
 		if err := o.reportManager.HandleEvent(e); err != nil {
@@ -574,7 +562,6 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			}
 		}
 
-		// Legacy TestFileResultEvent removed - using group events instead
 	}
 }
 
@@ -760,110 +747,6 @@ func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 	return failedTests
 }
 
-// displayFailedSubgroups recursively displays subgroups that contain failures
-func (o *Orchestrator) displayFailedSubgroups(group *report.TestGroup, parentPath string) {
-	// Build current path using raw groupNames
-	var currentPath string
-	if parentPath == "" {
-		// For the root, use the raw groupName
-		currentPath = group.Name
-	} else {
-		// For subgroups, append to parent path
-		currentPath = parentPath + " > " + group.Name
-	}
-
-	// Check direct test failures in this group
-	hasDirectFailures := false
-	for _, testCase := range group.TestCases {
-		if testCase.Status == report.TestStatusFail {
-			hasDirectFailures = true
-			break
-		}
-	}
-
-	// Debug logging to understand what's happening
-	if parentPath == "" {
-		o.logger.Debug("displayFailedSubgroups for root group %s: hasDirectFailures=%v, testCases=%d",
-			group.Name, hasDirectFailures, len(group.TestCases))
-		for _, tc := range group.TestCases {
-			if tc.Status == report.TestStatusFail {
-				o.logger.Debug("  Failed test case: %s", tc.Name)
-			}
-		}
-	}
-
-	// If this subgroup has direct test failures, show it
-	if hasDirectFailures && parentPath != "" {
-		// Show the subgroup path for non-root groups
-		fmt.Printf("  FAIL   %s\n", currentPath)
-
-		// Show the failed tests
-		for _, testCase := range group.TestCases {
-			if testCase.Status == report.TestStatusFail {
-				fmt.Printf("    x %s\n", testCase.Name)
-				if testCase.Error != nil && testCase.Error.Message != "" {
-					// Show first line of error
-					lines := strings.Split(strings.TrimSpace(testCase.Error.Message), "\n")
-					if len(lines) > 0 {
-						fmt.Printf("      %s\n", lines[0])
-					}
-				}
-			}
-		}
-	} else if hasDirectFailures && parentPath == "" {
-		// For root groups, just show the failed tests without the group header
-		for _, testCase := range group.TestCases {
-			if testCase.Status == report.TestStatusFail {
-				fmt.Printf("  x %s\n", testCase.Name)
-				if testCase.Error != nil && testCase.Error.Message != "" {
-					// Show first line of error
-					lines := strings.Split(strings.TrimSpace(testCase.Error.Message), "\n")
-					if len(lines) > 0 {
-						fmt.Printf("    %s\n", lines[0])
-					}
-				}
-			}
-		}
-	}
-
-	// Recursively check subgroups
-	for _, subgroup := range group.Subgroups {
-		if subgroup.HasFailures() {
-			o.displayFailedSubgroups(subgroup, currentPath)
-		}
-	}
-}
-
-// displayLegacyFileResult removed - using group-based display instead
-
-// getTestCaseConsoleIcon returns an icon for individual test cases in console output
-func getTestCaseConsoleIcon(status ipc.TestStatus) string {
-	switch status {
-	case ipc.TestStatusPass:
-		return "✓"
-	case ipc.TestStatusFail:
-		return "x"
-	case ipc.TestStatusSkip:
-		return "o"
-	default:
-		return "-" // Running or unknown
-	}
-}
-
-// getTestFileConsoleIcon returns an icon for file-level status in console output
-func getTestFileConsoleIcon(status ipc.TestStatus) string {
-	switch status {
-	case ipc.TestStatusPass:
-		return "✓"
-	case ipc.TestStatusFail:
-		return "x"
-	case ipc.TestStatusSkip:
-		return "o"
-	default:
-		return "-"
-	}
-}
-
 // getGroupStatusString returns a status string for groups in console output
 func getGroupStatusString(status ipc.TestStatus) string {
 	switch status {
@@ -878,34 +761,6 @@ func getGroupStatusString(status ipc.TestStatus) string {
 	default:
 		return "PENDING"
 	}
-}
-
-// buildHierarchicalPath builds the full hierarchical path for a group
-func (o *Orchestrator) buildHierarchicalPath(group *report.TestGroup) string {
-	// Build the full path from parent names + group name
-	var parts []string
-
-	// Start with file path (first parent or the group itself if root)
-	if len(group.ParentNames) == 0 {
-		// This is a root group (file)
-		parts = append(parts, o.getRelativePath(group.Name))
-	} else {
-		// Add all parent names
-		for i, parentName := range group.ParentNames {
-			if i == 0 {
-				// First parent is usually the file path
-				parts = append(parts, o.getRelativePath(parentName))
-			} else {
-				// Other parents are group names
-				parts = append(parts, parentName)
-			}
-		}
-		// Add this group's name
-		parts = append(parts, group.Name)
-	}
-
-	// Join with " > " separator as specified in the plan
-	return strings.Join(parts, " > ")
 }
 
 // convertStringToTestStatus converts a string status to ipc.TestStatus

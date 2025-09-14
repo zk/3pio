@@ -5,7 +5,7 @@ const (
 	EventTypeGroupDiscovered EventType = "testGroupDiscovered"
 	EventTypeGroupStart      EventType = "testGroupStart"
 	EventTypeGroupResult     EventType = "testGroupResult"
-	EventTypeGroupTestCase   EventType = "testCase" // Reuse existing testCase type with group hierarchy
+	EventTypeGroupTestCase   EventType = "testCase"
 	EventTypeGroupStdout     EventType = "groupStdout"
 	EventTypeGroupStderr     EventType = "groupStderr"
 )
@@ -116,9 +116,6 @@ type OutputChunkPayload struct {
 	ParentNames []string `json:"parentNames,omitempty"` // Full hierarchy
 	Chunk       string   `json:"chunk"`                 // The output chunk
 	Timestamp   int64    `json:"timestamp,omitempty"`
-
-	// Legacy field for backward compatibility (will be removed)
-	FilePath string `json:"filePath,omitempty"`
 }
 
 // GenericEvent is used for parsing unknown event types

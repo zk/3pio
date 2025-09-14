@@ -147,7 +147,6 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	defer m.mu.Unlock()
 
 	switch e := event.(type) {
-	// Legacy file-based events removed - only group events are supported now
 
 	case ipc.CollectionErrorEvent:
 		return m.handleCollectionError(e)
@@ -194,14 +193,6 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 
 	return nil
 }
-
-// Legacy handleTestFileStart removed
-
-// Legacy handleTestCase removed
-
-// Legacy handleTestFileResult removed
-
-// Legacy stdout/stderr chunk handlers removed - now handled by group events
 
 // handleCollectionError handles collection error events (pytest specific)
 func (m *Manager) handleCollectionError(event ipc.CollectionErrorEvent) error {
@@ -268,7 +259,6 @@ func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
 
 // registerTestFileInternal registers a test file (internal, assumes lock held)
 func (m *Manager) registerTestFileInternal(filePath string) {
-	// Legacy file registration removed - handled by group manager
 	// File-based reports are no longer created
 	// Groups are created on-demand by the group manager
 }
@@ -421,8 +411,6 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 	}
 }
 
-// Legacy generateLegacyReport removed
-
 // generateGroupReportSection generates a hierarchical report section for a group
 func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGroup, indent int) {
 	indentStr := strings.Repeat("  ", indent)
@@ -516,43 +504,6 @@ func getTestCaseStatusIcon(status TestStatus) string {
 	}
 }
 
-// getTotalDuration calculates total duration from all test files
-func (m *Manager) getTotalDuration() float64 {
-	totalDuration := 0.0
-	for _, tf := range m.state.TestFiles {
-		for _, tc := range tf.TestCases {
-			if tc.Duration > 0 {
-				totalDuration += tc.Duration / 1000.0 // Convert ms to seconds
-			}
-		}
-	}
-	return totalDuration
-}
-
-// getTestFileStatusText returns the status text for test file results section
-func getTestFileStatusText(status ipc.TestStatus) string {
-	switch status {
-	case ipc.TestStatusPass:
-		return "PASS"
-	case ipc.TestStatusFail:
-		return "FAIL"
-	case ipc.TestStatusSkip:
-		return "SKIP"
-	default:
-		return "PEND"
-	}
-}
-
-// Legacy updateTestRunReport removed
-
-// Legacy generateIndividualFileReport removed
-
-// writeIndividualFileReport writes the structured report for a single test file
-func (m *Manager) writeIndividualFileReport(filePath string) error {
-	// Legacy file reports removed - now handled by group manager
-	return nil
-}
-
 // Finalize completes the test run and closes all resources
 func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
@@ -591,88 +542,6 @@ func (m *Manager) normalizePath(filePath string) string {
 	}
 	return absPath
 }
-
-// sanitizePathForFilesystem sanitizes a file path to preserve directory structure
-// while preventing directory traversal and filesystem issues
-func sanitizePathForFilesystem(filePath string) string {
-	// Clean the path to normalize it
-	cleanPath := filepath.Clean(filePath)
-
-	// Try to make the path relative to the current working directory
-	cwd, err := os.Getwd()
-	if err == nil {
-		if absPath, err := filepath.Abs(cleanPath); err == nil {
-			if relPath, err := filepath.Rel(cwd, absPath); err == nil {
-				cleanPath = relPath
-			}
-		}
-	}
-
-	// Remove specific extensions while preserving JS/TS extensions
-	// This ensures the report path matches what we show in console output
-	ext := filepath.Ext(cleanPath)
-	switch ext {
-	case ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs":
-		// Keep JavaScript/TypeScript extensions
-	case ".go", ".py", ".rb", ".java", ".c", ".cpp", ".rs":
-		// Remove other language extensions
-		cleanPath = strings.TrimSuffix(cleanPath, ext)
-	}
-
-	// Handle paths that start with ".." by replacing with "_UP"
-	parts := strings.Split(cleanPath, string(filepath.Separator))
-
-	// Filter out empty parts and sanitize
-	var filteredParts []string
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
-		if part == ".." {
-			filteredParts = append(filteredParts, "_UP")
-		} else if part == "." {
-			// Skip current directory markers unless it's the only part
-			if len(parts) > 1 {
-				continue
-			}
-			filteredParts = append(filteredParts, "_DOT")
-		} else {
-			// Sanitize other problematic characters in each part
-			part = strings.ReplaceAll(part, ":", "_")
-			part = strings.ReplaceAll(part, "*", "_")
-			part = strings.ReplaceAll(part, "?", "_")
-			part = strings.ReplaceAll(part, "\"", "_")
-			part = strings.ReplaceAll(part, "<", "_")
-			part = strings.ReplaceAll(part, ">", "_")
-			part = strings.ReplaceAll(part, "|", "_")
-			filteredParts = append(filteredParts, part)
-		}
-	}
-
-	// If we end up with no parts, use a default
-	if len(filteredParts) == 0 {
-		return "test"
-	}
-
-	// Rejoin the sanitized parts
-	return filepath.Join(filteredParts...)
-}
-
-// getTestCaseIcon returns an icon for individual test cases
-func getTestCaseIcon(status ipc.TestStatus) string {
-	switch status {
-	case ipc.TestStatusPass:
-		return "✓"
-	case ipc.TestStatusFail:
-		return "✕"
-	case ipc.TestStatusSkip:
-		return "○"
-	default:
-		return "~" // Running or unknown
-	}
-}
-
-// Legacy updateIndividualFileReport removed
 
 // GetRootGroups returns root groups from the group manager for console display
 func (m *Manager) GetRootGroups() []*TestGroup {

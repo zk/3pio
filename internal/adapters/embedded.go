@@ -22,9 +22,6 @@ var (
 	pytestAdapter []byte
 )
 
-// Removed adapterCache as we no longer cache adapters
-// Each run gets its own unique adapter instance
-
 // GetAdapterPath returns the path to an extracted adapter with IPC path injected
 func GetAdapterPath(name string, ipcPath string, runID string) (string, error) {
 	// No caching needed since each run gets its own adapter

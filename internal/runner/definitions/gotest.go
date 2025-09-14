@@ -502,7 +502,8 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 	parentNames := g.buildHierarchyFromPackage(event.Package, suiteChain)
 
 	// Send test case event with group hierarchy
-	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, state.Output)
+	outputStr := strings.Join(state.Output, "\n")
+	g.sendTestCaseWithGroups(finalTestName, parentNames, status, event.Elapsed, outputStr)
 
 	// Clean up state
 	delete(g.testStates, key)
@@ -827,13 +828,6 @@ func (g *GoTestDefinition) parseTestHierarchy(testName string) (suiteChain []str
 	}
 	return []string{}, testName
 }
-
-func (g *GoTestDefinition) buildHierarchyFromFile(filePath string, suiteChain []string) []string {
-	hierarchy := []string{filePath}
-	hierarchy = append(hierarchy, suiteChain...)
-	return hierarchy
-}
-
 func (g *GoTestDefinition) buildHierarchyFromPackage(packageName string, suiteChain []string) []string {
 	hierarchy := []string{packageName}
 	hierarchy = append(hierarchy, suiteChain...)
@@ -1000,57 +994,27 @@ func (g *GoTestDefinition) sendGroupResult(groupName string, parentNames []strin
 	}
 }
 
-func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames []string, status string, duration float64, output []string) {
-	payload := map[string]interface{}{
-		"testName":    testName,
-		"parentNames": parentNames,
-		"status":      status,
-		"duration":    duration * 1000, // Convert seconds to milliseconds
+// sendTestCaseWithGroups sends a test case event with group hierarchy
+func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames []string, status string, duration float64, output string) {
+	event := map[string]interface{}{
+		"eventType": "testCase",
+		"payload": map[string]interface{}{
+			"testName":    testName,
+			"parentNames": parentNames,
+			"status":      status,
+			"duration":    int64(duration * 1000), // Convert to milliseconds
+		},
 	}
 
-	if status == "FAIL" && len(output) > 0 {
-		payload["error"] = map[string]interface{}{
-			"message": strings.Join(output, ""),
+	// Add error details for failed tests
+	if status == "FAIL" && output != "" {
+		event["payload"].(map[string]interface{})["error"] = map[string]interface{}{
+			"message": output,
 		}
 	}
 
-	event := map[string]interface{}{
-		"eventType": "testCase",
-		"payload":   payload,
-	}
-
 	if err := g.ipcWriter.WriteEvent(event); err != nil {
-		g.logger.Error("Failed to send testCase: %v", err)
-	}
-}
-
-// sendTestFileStart removed - using group events instead
-
-func (g *GoTestDefinition) sendTestCase(filePath, testName, suiteName, status string, duration float64, output []string) {
-	payload := map[string]interface{}{
-		"filePath": filePath,
-		"testName": testName,
-		"status":   status,
-		"duration": duration * 1000, // Convert seconds to milliseconds
-	}
-
-	if suiteName != "" {
-		payload["suiteName"] = suiteName
-	}
-
-	if status == "FAIL" && len(output) > 0 {
-		payload["error"] = map[string]interface{}{
-			"message": strings.Join(output, ""),
-		}
-	}
-
-	event := map[string]interface{}{
-		"eventType": "testCase",
-		"payload":   payload,
-	}
-
-	if err := g.ipcWriter.WriteEvent(event); err != nil {
-		g.logger.Error("Failed to send testCase: %v", err)
+		g.logger.Debug("Failed to write test case event: %v", err)
 	}
 }
 
