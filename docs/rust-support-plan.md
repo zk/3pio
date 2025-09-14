@@ -187,6 +187,19 @@ Example mappings:
         └── index.md
 ```
 
+## Implementation Decisions
+
+### Key Design Choices
+1. **Both Runners**: Implement cargo test and cargo-nextest simultaneously
+2. **Workspace Structure**: Use hierarchical workspace parent structure:
+   - Workspace root as parent group
+   - Individual crates as child groups
+3. **Test Name Display**: Show full test paths without truncation
+4. **File Organization**: Two separate files:
+   - `internal/runner/definitions/cargo.go` for cargo test
+   - `internal/runner/definitions/nextest.go` for cargo-nextest
+5. **Error Handling**: Exit with clear error if JSON parsing fails, no fallback
+
 ## Implementation Phases
 
 ### Phase 1: cargo test Support (Week 1-2)
