@@ -13,6 +13,23 @@ import (
 	"github.com/zk/3pio/internal/logger"
 )
 
+// Helper function to convert interface slice to string slice
+func convertToStringSlice(i interface{}) []string {
+	if i == nil {
+		return []string{}
+	}
+	arr, ok := i.([]interface{})
+	if !ok {
+		return []string{}
+	}
+	result := make([]string, len(arr))
+	for idx, item := range arr {
+		str, _ := item.(string)
+		result[idx] = str
+	}
+	return result
+}
+
 // TestIPCCapture helps capture IPC events for testing
 type TestIPCCapture struct {
 	ipcPath string
@@ -810,6 +827,84 @@ func TestGoTestDefinition_SubgroupDuration(t *testing.T) {
 
 	if !foundTestMainResult {
 		t.Error("Missing group result event for TestMain subgroup")
+	}
+}
+
+// Test deeply nested subgroups with empty names
+func TestGoTestDefinition_DeeplyNestedSubgroups(t *testing.T) {
+	g := NewGoTestDefinition(createTestLogger(t))
+	tmpDir := t.TempDir()
+	ipcPath := filepath.Join(tmpDir, "test.jsonl")
+	ipcWriter, _ := NewIPCWriter(ipcPath)
+	g.ipcWriter = ipcWriter
+	t.Cleanup(func() { _ = ipcWriter.Close() })
+	capture := NewTestIPCCapture(ipcPath)
+
+	// Simulate deeply nested test with empty group names (like ParsedTarget tests)
+	now := time.Now()
+	events := []*GoTestEvent{
+		{Action: "start", Package: "example.com/pkg", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA", Time: now},
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA/", Time: now},  // Empty subgroup
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA//", Time: now}, // Another empty subgroup
+		{Action: "run", Package: "example.com/pkg", Test: "TestParsed/SubA///DeepTest", Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA///DeepTest", Elapsed: 0.1, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA//", Elapsed: 0.2, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA/", Elapsed: 0.3, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed/SubA", Elapsed: 0.4, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Test: "TestParsed", Elapsed: 0.5, Time: now},
+		{Action: "pass", Package: "example.com/pkg", Elapsed: 1.0, Time: now},
+	}
+
+	// Process all events
+	for _, event := range events {
+		if err := g.processEvent(event); err != nil {
+			t.Fatalf("Failed to process event: %v", err)
+		}
+	}
+
+	// Check that we have group result events for all intermediate groups
+	groupResults := capture.GetEventsByType("testGroupResult")
+
+	// We should have group results for:
+	// 1. SubA (with parent [pkg, TestParsed])
+	// 2. Empty group (with parent [pkg, TestParsed, SubA])
+	// 3. Another empty group (with parent [pkg, TestParsed, SubA, ""])
+	// 4. TestParsed (with parent [pkg])
+	// 5. Package group
+
+	expectedGroups := map[string][]string{
+		"SubA": {"example.com/pkg", "TestParsed"},
+		"": {"example.com/pkg", "TestParsed", "SubA"},  // First empty group
+		"TestParsed": {"example.com/pkg"},
+		"example.com/pkg": {},
+	}
+
+	foundGroups := make(map[string]bool)
+	for _, event := range groupResults {
+		payload := event["payload"].(map[string]interface{})
+		groupName := payload["groupName"].(string)
+		parentNames := convertToStringSlice(payload["parentNames"])
+
+		// Check duration is set for non-package groups
+		if groupName != "example.com/pkg" {
+			duration, hasDuration := payload["duration"].(float64)
+			if !hasDuration || duration == 0 {
+				t.Errorf("Group %s (parents: %v) should have duration, got %v", groupName, parentNames, duration)
+			}
+		}
+
+		key := groupName + ":" + strings.Join(parentNames, "/")
+		foundGroups[key] = true
+	}
+
+	// Check that we have the expected groups
+	for groupName, expectedParents := range expectedGroups {
+		key := groupName + ":" + strings.Join(expectedParents, "/")
+		if !foundGroups[key] {
+			t.Errorf("Missing group result for group '%s' with parents %v", groupName, expectedParents)
+		}
 	}
 }
 

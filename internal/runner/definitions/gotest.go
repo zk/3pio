@@ -492,6 +492,39 @@ func (g *GoTestDefinition) handleTestResult(event *GoTestEvent) {
 				stats.Status = "PASS"
 			}
 		}
+
+		// Check if this subtest itself is a parent group (has further subtests)
+		// If it is, send a group result for it
+		groupKey := event.Package + "/" + event.Test
+		if stats, exists := g.subgroupStats[groupKey]; exists {
+			// This subtest has its own subtests, send group result for it
+			stats.Duration = event.Elapsed
+
+			// Determine final status
+			if stats.Status == "" {
+				if stats.FailedTests > 0 {
+					stats.Status = "FAIL"
+				} else if stats.PassedTests == stats.TotalTests {
+					stats.Status = "PASS"
+				} else {
+					stats.Status = "SKIP"
+				}
+			}
+
+			// Send group result for this subgroup
+			totals := map[string]interface{}{
+				"total":   stats.TotalTests,
+				"passed":  stats.PassedTests,
+				"failed":  stats.FailedTests,
+				"skipped": stats.SkippedTests,
+			}
+
+			// Build parent names for this subgroup
+			g.sendGroupResult(finalTestName, parentNames, stats.Status, stats.Duration, totals)
+
+			// Clean up stats
+			delete(g.subgroupStats, groupKey)
+		}
 	} else {
 		// This is a top-level test (no subtests), check if it's a parent group
 		groupKey := event.Package + "/" + event.Test
