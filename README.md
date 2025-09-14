@@ -304,7 +304,7 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 3. **Dev tool, not CI tool**: 3pio is designed to be used at dev time by your agent. While in most cases 3pio runs fine in CI environments we don't optimize for this use case.
 
 
-## Future working
+## Future work
 
 - All the test runners
 - Improve output context efficiency

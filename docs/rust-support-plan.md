@@ -64,7 +64,7 @@ func (c *CargoTestDefinition) Detect(args []string) bool {
 // ModifyCommand adds JSON output flags
 func (c *CargoTestDefinition) ModifyCommand(cmd []string) []string {
     // Adds: -- -Z unstable-options --format json --report-time
-    // Sets: RUSTC_BOOTSTRAP=1 environment variable
+    // Note: RUSTC_BOOTSTRAP=1 will be set in process environment at spawn time
 }
 ```
 
@@ -192,7 +192,7 @@ Example mappings:
 ### Phase 1: cargo test Support (Week 1-2)
 - [ ] Create `CargoTestDefinition` struct
 - [ ] Implement command detection and modification
-- [ ] Handle RUSTC_BOOTSTRAP environment variable
+- [ ] Set RUSTC_BOOTSTRAP=1 in subprocess environment (not global)
 - [ ] Parse JSON events and map to IPC events
 - [ ] Test with single-crate projects
 - [ ] Return empty array from `GetTestFiles()` for dynamic discovery
@@ -230,10 +230,10 @@ Example mappings:
 ### Challenge 1: Unstable JSON Format
 **Problem**: cargo test's JSON output requires unstable features
 **Solution**:
-- Set `RUSTC_BOOTSTRAP=1` environment variable
-- Document requirement clearly
+- Set `RUSTC_BOOTSTRAP=1` in subprocess environment only (not global)
+- Transparent to users - handled automatically by 3pio
 - Monitor stabilization progress (rust-lang/rust#49359)
-- Provide fallback text parsing mode if needed
+- If JSON fails, suggest cargo-nextest as alternative
 
 ### Challenge 2: Test Discovery
 **Problem**: No pre-execution test discovery needed
