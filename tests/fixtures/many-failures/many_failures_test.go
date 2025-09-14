@@ -1,17 +1,21 @@
 package manyfailures
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestPass1(t *testing.T) {
 	// This test passes
 }
 
 func TestFail1(t *testing.T) {
-	t.Fatal("FORCE FAILURE 1 - this should never pass")
+	// Always fail with current timestamp to prevent caching
+	t.Fatalf("FORCE FAILURE 1 at %v - this should never pass", time.Now().UnixNano())
 }
 
 func TestFail2(t *testing.T) {
-	t.Fatal("FORCE FAILURE 2 - this should never pass")
+	t.Fatalf("FORCE FAILURE 2 at %v - this should never pass", time.Now().UnixNano())
 }
 
 func TestPass2(t *testing.T) {
@@ -22,15 +26,15 @@ func TestPass2(t *testing.T) {
 }
 
 func TestFail3(t *testing.T) {
-	t.Fatal("FORCE FAILURE 3 - this should never pass")
+	t.Fatalf("FORCE FAILURE 3 at %v - this should never pass", time.Now().UnixNano())
 }
 
 func TestFail4(t *testing.T) {
-	t.Fatal("FORCE FAILURE 4 - this should never pass")
+	t.Fatalf("FORCE FAILURE 4 at %v - this should never pass", time.Now().UnixNano())
 }
 
 func TestFail5(t *testing.T) {
-	t.Fatal("FORCE FAILURE 5 - this should never pass")
+	t.Fatalf("FORCE FAILURE 5 at %v - this should never pass", time.Now().UnixNano())
 }
 
 func TestPass3(t *testing.T) {
