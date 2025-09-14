@@ -7,6 +7,8 @@ func TestPass1(t *testing.T) {
 }
 
 func TestFail1(t *testing.T) {
+	// Force output to ensure test is actually running
+	t.Log("TestFail1 is executing in CI")
 	t.Errorf("First failure message - this test must fail")
 	t.Fatal("FORCE FAILURE - this should never pass")
 }

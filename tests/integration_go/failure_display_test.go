@@ -38,8 +38,8 @@ func TestFailureDisplayFormat(t *testing.T) {
 		t.Fatalf("Failed to get absolute fixture path: %v", err)
 	}
 
-	// Run 3pio with the test fixture
-	cmd := exec.Command(binaryPath, "go", "test", ".")
+	// Run 3pio with the test fixture (use -count=1 to disable test caching)
+	cmd := exec.Command(binaryPath, "go", "test", "-count=1", ".")
 	cmd.Dir = fixtureDir
 
 	var stdout, stderr bytes.Buffer
