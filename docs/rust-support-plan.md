@@ -214,12 +214,14 @@ Example mappings:
 - [x] Test with single-crate projects
 - [x] Return empty array from `GetTestFiles()` for dynamic discovery
 
-### Phase 2: Hierarchical Support ✅ MOSTLY COMPLETE
+### Phase 2: Hierarchical Support ✅ COMPLETE
 - [x] Parse module paths into group hierarchy
 - [x] Support nested test modules
-- [ ] Handle workspace with multiple crates
+- [x] Handle workspace with multiple crates (tests run but crate names not in JSON)
 - [x] Track duration and statistics per group
 - [x] Support integration tests (tests/ directory)
+
+**Note**: Workspace support is functional but has a limitation - cargo test's JSON output doesn't include crate names when using `--workspace`. Tests from all crates are grouped by their module names (tests, integration_tests) rather than by crate. Full crate-level grouping would require parsing non-JSON output lines.
 
 ### Phase 3: cargo-nextest Support 🔧 IMPLEMENTED, NEEDS TESTING
 - [x] Create `NextestDefinition` struct
