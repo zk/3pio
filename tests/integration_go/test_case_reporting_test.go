@@ -118,10 +118,11 @@ func TestReportFileGeneration(t *testing.T) {
 			return err
 		}
 		if !info.IsDir() && strings.HasSuffix(info.Name(), "index.md") {
-			if strings.Contains(path, "math.test.js") {
+			// Note: paths are sanitized with underscores replacing dots and slashes
+			if strings.Contains(path, "math_test") {
 				foundMathReport = true
 			}
-			if strings.Contains(path, "string.test.js") {
+			if strings.Contains(path, "string_test") {
 				foundStringReport = true
 			}
 		}

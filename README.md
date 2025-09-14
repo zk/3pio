@@ -111,6 +111,14 @@ Console output is focused on just which tests failed and provides path informati
 3. **Dev tool, not CI tool**: 3pio is designed to be used at dev time by your agent. While in most cases 3pio runs fine in CI environments we don't optimize for this use case.
 
 
+## Future working
+
+- All the test runners
+- Improve output context efficiency
+  - Remove duplication in console output (current: RUNNING <file> and PASS <file>, both not needed)
+  - Consider moving non-signpost frontmatter properties to end of report files
+
+
 ## License
 
 MIT

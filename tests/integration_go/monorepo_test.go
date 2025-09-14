@@ -69,10 +69,11 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 		}
 		if !info.IsDir() && strings.HasSuffix(info.Name(), "index.md") {
 			// Check if this report is for package-a or package-b
-			if strings.Contains(path, "math.test.js") {
+			// Note: paths are sanitized with underscores replacing dots and slashes
+			if strings.Contains(path, "math_test") {
 				foundPackageAReports = true
 			}
-			if strings.Contains(path, "string.test.js") {
+			if strings.Contains(path, "string_test") {
 				foundPackageBReports = true
 			}
 		}
