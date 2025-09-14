@@ -81,8 +81,19 @@ func New(config Config) (*Orchestrator, error) {
 	}, nil
 }
 
+// Close closes the orchestrator and cleans up resources
+func (o *Orchestrator) Close() error {
+	if o.runnerManager != nil {
+		return o.runnerManager.Close()
+	}
+	return nil
+}
+
 // Run executes the test command with 3pio instrumentation
 func (o *Orchestrator) Run() error {
+	// Ensure cleanup on exit
+	defer o.Close()
+
 	// Generate run ID
 	o.runID = generateRunID()
 	o.runDir = filepath.Join(".3pio", "runs", o.runID)

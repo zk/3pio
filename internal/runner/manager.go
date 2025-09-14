@@ -14,6 +14,14 @@ type Manager struct {
 	logger  *logger.FileLogger
 }
 
+// Close closes the manager and its resources
+func (m *Manager) Close() error {
+	if m.logger != nil {
+		return m.logger.Close()
+	}
+	return nil
+}
+
 // NewManager creates a new runner manager
 func NewManager() *Manager {
 	// Create a logger for the manager
