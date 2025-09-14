@@ -535,7 +535,6 @@ func countSkippedTestCases(group *TestGroup) int {
 	}
 } */
 
-
 // Finalize completes the test run and closes all resources
 func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
