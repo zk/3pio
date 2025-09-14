@@ -515,6 +515,11 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Check if already finalized
+	if m.state != nil && (m.state.Status == "COMPLETE" || m.state.Status == "ERROR") {
+		return nil // Already finalized
+	}
+
 	// Flush all pending group reports
 	if m.groupManager != nil {
 		m.groupManager.Flush()
@@ -523,24 +528,30 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	// Close output.log
 	if m.outputFile != nil {
 		_ = m.outputFile.Close()
+		m.outputFile = nil
 	}
 
 	// Close our owned FileLogger if we created one
 	if m.ownedFileLogger != nil {
 		_ = m.ownedFileLogger.Close()
+		m.ownedFileLogger = nil
 	}
 
-	// Update final status
-	// Only set ERROR status for actual command errors, not test failures
-	if len(errorDetails) > 0 && errorDetails[0] != "" {
-		m.state.Status = "ERROR"
-		m.state.ErrorDetails = errorDetails[0]
-	} else {
-		m.state.Status = "COMPLETE"
+	// Update final status if we have state
+	if m.state != nil {
+		// Only set ERROR status for actual command errors, not test failures
+		if len(errorDetails) > 0 && errorDetails[0] != "" {
+			m.state.Status = "ERROR"
+			m.state.ErrorDetails = errorDetails[0]
+		} else {
+			m.state.Status = "COMPLETE"
+		}
+
+		// Write final state
+		return m.writeState()
 	}
 
-	// Write final state
-	return m.writeState()
+	return nil
 }
 
 // normalizePath normalizes a file path for comparison

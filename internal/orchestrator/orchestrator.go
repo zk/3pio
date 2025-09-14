@@ -168,6 +168,12 @@ func (o *Orchestrator) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to create report manager: %w", err)
 	}
+	// Ensure report manager is finalized even on early return
+	defer func() {
+		if o.reportManager != nil {
+			_ = o.reportManager.Finalize(o.exitCode, "")
+		}
+	}()
 
 	// Initialize report
 	args := strings.Join(o.command, " ")
