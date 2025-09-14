@@ -879,10 +879,12 @@ func TestIPCWriter(t *testing.T) {
 	}
 }
 
-// Test buildTestToFileMap
-func TestGoTestDefinition_BuildTestToFileMap(t *testing.T) {
-	// This test would require mocking the go list command execution
-	// For now, we'll test the parsing logic with mock data
+// Test that buildTestToFileMap has been removed (legacy code cleanup)
+func TestGoTestDefinition_BuildTestToFileMapRemoved(t *testing.T) {
+	// This test verifies that the legacy buildTestToFileMap functionality has been removed
+	// Go tests operate at package level, not file level, so the mapping provided no value
+	// and caused performance issues on large repositories
+
 	g := NewGoTestDefinition(createTestLogger(t))
 
 	// Mock package info
@@ -894,23 +896,21 @@ func TestGoTestDefinition_BuildTestToFileMap(t *testing.T) {
 		},
 	}
 
-	// Mock the listTestsInPackage response
-	// This would normally come from parsing go test output
-	// For this test, we'll just verify the structure is set up correctly
+	// Verify that getFilePathForTest now directly uses package-based mapping
+	filePath := g.getFilePathForTest("github.com/test/pkg", "TestSomething")
 
-	if err := g.buildTestToFileMap(); err != nil {
-		// This might fail if go is not available, which is ok for unit test
-		t.Logf("buildTestToFileMap returned error (expected if go not available): %v", err)
+	// Should return the first test file from the package or empty if not found
+	if filePath != "" {
+		// Check that it's using the package-based mapping
+		if !strings.Contains(filePath, "foo_test.go") && !strings.Contains(filePath, "bar_test.go") {
+			t.Errorf("getFilePathForTest returned unexpected path: %s", filePath)
+		}
 	}
 
-	// Verify the test map structure exists
-	if g.testToFileMap == nil {
-		g.testToFileMap = make(map[string]string)
-	}
-
-	// The map should be initialized even if empty
-	if g.testToFileMap == nil {
-		t.Error("testToFileMap not initialized")
+	// Test with unknown package
+	unknownPath := g.getFilePathForTest("unknown/package", "TestUnknown")
+	if unknownPath != "" {
+		t.Errorf("Expected empty path for unknown package, got: %s", unknownPath)
 	}
 }
 

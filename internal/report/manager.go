@@ -123,27 +123,18 @@ func (m *Manager) UpdateModifiedCommand(command string) {
 }
 
 // Initialize sets up the initial test run state
-func (m *Manager) Initialize(testFiles []string, args string) error {
+func (m *Manager) Initialize(args string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	now := time.Now()
 	m.state = &ipc.TestRunState{
-		Timestamp:      now,
-		Status:         "RUNNING",
-		UpdatedAt:      now,
-		Arguments:      args,
-		TotalFiles:     len(testFiles),
-		FilesCompleted: 0,
-		FilesPassed:    0,
-		FilesFailed:    0,
-		FilesSkipped:   0,
-		TestFiles:      make([]ipc.TestFile, 0),
-	}
-
-	// Register known test files (static discovery)
-	for _, file := range testFiles {
-		m.registerTestFileInternal(file)
+		Timestamp: now,
+		Status:    "RUNNING",
+		UpdatedAt: now,
+		Arguments: args,
+		// File-based tracking removed - using group-based model
+		TestFiles: make([]ipc.TestFile, 0),
 	}
 
 	// Write output.log header
@@ -212,9 +203,6 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 func (m *Manager) handleCollectionError(event ipc.CollectionErrorEvent) error {
 	filePath := event.Payload.FilePath
 
-	// Ensure file is registered
-	m.ensureTestFileRegisteredInternal(filePath)
-
 	// Find the test file and set execution error
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
@@ -238,9 +226,6 @@ func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Ensure file is registered
-	m.ensureTestFileRegisteredInternal(filePath)
-
 	// Find the test file and set execution error
 	normalizedPath := m.normalizePath(filePath)
 	for i := range m.state.TestFiles {
@@ -254,28 +239,7 @@ func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
 	return m.scheduleWrite()
 }
 
-// ensureTestFileRegisteredInternal ensures a test file is registered (internal, assumes lock held)
-func (m *Manager) ensureTestFileRegisteredInternal(filePath string) {
-	// Normalize the incoming file path
-	normalizedPath := m.normalizePath(filePath)
-
-	// Check if already registered (compare normalized paths)
-	for _, tf := range m.state.TestFiles {
-		if m.normalizePath(tf.File) == normalizedPath {
-			return
-		}
-	}
-
-	// Register new file
-	m.registerTestFileInternal(filePath)
-	m.state.TotalFiles++
-}
-
-// registerTestFileInternal registers a test file (internal, assumes lock held)
-func (m *Manager) registerTestFileInternal(filePath string) {
-	// File-based reports are no longer created
-	// Groups are created on-demand by the group manager
-}
+// Legacy file registration methods removed - using group-based model
 
 // scheduleWrite schedules a debounced state write
 func (m *Manager) scheduleWrite() error {
@@ -319,22 +283,16 @@ func (m *Manager) generateMarkdownReport() string {
 
 	// Map internal status to spec status
 	var statusText string
-	// Check if all tests are actually completed
-	pendingFiles := m.state.TotalFiles - m.state.FilesCompleted
-	if m.state.Status == "COMPLETE" && pendingFiles > 0 {
-		// Override to RUNNING if there are still pending files
+	// Use group-based tracking for completion status
+	switch m.state.Status {
+	case "RUNNING":
 		statusText = "RUNNING"
-	} else {
-		switch m.state.Status {
-		case "RUNNING":
-			statusText = "RUNNING"
-		case "COMPLETE":
-			statusText = "COMPLETED"
-		case "ERROR":
-			statusText = "ERRORED"
-		default:
-			statusText = "PENDING"
-		}
+	case "COMPLETE":
+		statusText = "COMPLETED"
+	case "ERROR":
+		statusText = "ERRORED"
+	default:
+		statusText = "PENDING"
 	}
 
 	// YAML frontmatter

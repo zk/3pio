@@ -42,10 +42,9 @@ func TestManager_Initialize(t *testing.T) {
 	defer func() { _ = manager.Finalize(0) }()
 
 	// Test with empty test files list (dynamic discovery)
-	testFiles := []string{}
 	args := "npm test"
 
-	if err := manager.Initialize(testFiles, args); err != nil {
+	if err := manager.Initialize(args); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
@@ -76,10 +75,9 @@ func TestManager_InitializeWithStaticFiles(t *testing.T) {
 	defer func() { _ = manager.Finalize(0) }()
 
 	// Test with static test files
-	testFiles := []string{"math.test.js", "string.test.js"}
 	args := "npx jest"
 
-	if err := manager.Initialize(testFiles, args); err != nil {
+	if err := manager.Initialize(args); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
@@ -98,7 +96,7 @@ func TestManager_HandleRunCompleteEvent(t *testing.T) {
 	}
 	defer func() { _ = manager.Finalize(0) }()
 
-	if err := manager.Initialize([]string{}, "npm test"); err != nil {
+	if err := manager.Initialize("npm test"); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 

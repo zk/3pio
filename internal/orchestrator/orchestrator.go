@@ -118,12 +118,6 @@ func (o *Orchestrator) Run() error {
 		return fmt.Errorf("failed to detect test runner: %w", err)
 	}
 
-	// Get test files (may be empty for dynamic discovery)
-	testFiles, err := runnerDef.GetTestFiles(o.command)
-	if err != nil {
-		o.logger.Debug("Could not get test files upfront: %v", err)
-		testFiles = []string{} // Use dynamic discovery
-	}
 
 	// Setup IPC
 	ipcDir, err := ipc.EnsureIPCDirectory()
@@ -188,7 +182,7 @@ func (o *Orchestrator) Run() error {
 
 	// Initialize report
 	args := strings.Join(o.command, " ")
-	if err := o.reportManager.Initialize(testFiles, args); err != nil {
+	if err := o.reportManager.Initialize(args); err != nil {
 		return fmt.Errorf("failed to initialize report: %w", err)
 	}
 
