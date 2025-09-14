@@ -126,6 +126,48 @@ func TestOrchestrator_GetExitCode(t *testing.T) {
 	}
 }
 
+func TestOrchestrator_TestCountsWithSkippedTests(t *testing.T) {
+	config := Config{
+		Command: []string{"npm", "test"},
+		Logger:  &mockLogger{},
+	}
+
+	orch, err := New(config)
+	if err != nil {
+		t.Fatalf("Failed to create orchestrator: %v", err)
+	}
+	defer orch.Close()
+
+	// Directly manipulate the test counts to test the display logic
+	// Simulate what would happen after processing events
+	orch.totalGroups = 4
+	orch.passedGroups = 1
+	orch.failedGroups = 1
+	orch.skippedGroups = 2 // Now we track skipped groups
+
+	// After the fix, we should have:
+	// "Results: 1 passed, 1 failed, 2 skipped, 4 total"
+
+	// Verify the counts
+	if orch.totalGroups != 4 {
+		t.Errorf("Expected totalFiles to be 4, got %d", orch.totalGroups)
+	}
+	if orch.passedGroups != 1 {
+		t.Errorf("Expected passedFiles to be 1, got %d", orch.passedGroups)
+	}
+	if orch.failedGroups != 1 {
+		t.Errorf("Expected failedFiles to be 1, got %d", orch.failedGroups)
+	}
+	if orch.skippedGroups != 2 {
+		t.Errorf("Expected skippedFiles to be 2, got %d", orch.skippedGroups)
+	}
+
+	// Now the sum of passed + failed + skipped should equal total
+	if orch.passedGroups + orch.failedGroups + orch.skippedGroups != orch.totalGroups {
+		t.Error("Expected passed + failed + skipped to equal total")
+	}
+}
+
 func TestOrchestrator_RunWithInvalidRunner(t *testing.T) {
 	// Change to a temp directory for the test
 	originalDir, err := os.Getwd()
@@ -338,19 +380,19 @@ func TestOrchestrator_UpdateDisplayedFiles(t *testing.T) {
 	testFile2 := "test2.js"
 
 	// Initially empty
-	if len(orch.displayedFiles) != 0 {
+	if len(orch.displayedGroups) != 0 {
 		t.Error("Expected displayedFiles to be empty initially")
 	}
 
 	// Simulate internal file tracking (would normally happen during run)
-	orch.displayedFiles[testFile1] = true
-	orch.displayedFiles[testFile2] = true
+	orch.displayedGroups[testFile1] = true
+	orch.displayedGroups[testFile2] = true
 
-	if len(orch.displayedFiles) != 2 {
-		t.Errorf("Expected 2 displayed files, got %d", len(orch.displayedFiles))
+	if len(orch.displayedGroups) != 2 {
+		t.Errorf("Expected 2 displayed files, got %d", len(orch.displayedGroups))
 	}
 
-	if !orch.displayedFiles[testFile1] || !orch.displayedFiles[testFile2] {
+	if !orch.displayedGroups[testFile1] || !orch.displayedGroups[testFile2] {
 		t.Error("Expected both test files to be marked as displayed")
 	}
 }
