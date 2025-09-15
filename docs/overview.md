@@ -55,16 +55,21 @@ Documentation for understanding and working on the 3pio codebase - system design
 - **[Output Handling](./architecture/output-handling.md)** - Console capture strategies and parallel execution handling
 - **[Debugging](./architecture/debugging.md)** - Troubleshooting guide and debug logs
 
-### Planning & Design
+### Implementation & Support
 
+- **[Rust Support](./rust-support.md)** - Complete Rust test runner implementation with cargo test and cargo-nextest
+- **[Make Support](./make-support.md)** - Makefile parsing and test command extraction (future feature)
+- **[Test Organization](./test-organization.md)** - Path sanitization, group counting, and hierarchy handling
+
+### Standards & Guidelines
+
+- **[Integration Test Standards](./integration-test-standards.md)** - Testing requirements and Windows CI guidelines
 - **[Design Decisions](./design-decisions.md)** - Key architectural choices and their rationale
-- **[Future Vision](./future-vision.md)** - Universal test reporting across all languages
-- **[Future Plans](./future-plans.md)** - SBOM, signing, and cleanup features
-
 
 ### Operations & Troubleshooting
 
 - **[Known Issues](./known-issues.md)** - Current limitations and workarounds
+- **[Future Roadmap](./future-roadmap.md)** - Planned enhancements and long-term vision
 
 ## Output Structure
 
@@ -78,9 +83,11 @@ Documentation for understanding and working on the 3pio codebase - system design
 │           ├── src_components_button_test_js/  # File group directory
 │           │   ├── index.md                    # File-level tests
 │           │   └── button_rendering/           # Nested describe block
-│           │       └── with_props.md          # Nested test results
+│           │       └── with_props/            # Nested test suite
+│           │           └── index.md           # Nested test results
 │           └── test_math_py/                   # Python file group
-│               └── testmathoperations.md       # Class-based tests
+│               └── testmathoperations/         # Class-based test directory
+│                   └── index.md                # Class test methods
 ├── ipc/
 │   └── *.jsonl                                # Inter-process communication events
 └── debug.log                                   # System debug information
@@ -89,7 +96,7 @@ Documentation for understanding and working on the 3pio codebase - system design
 ## Key Concepts
 
 - **Universal Group Abstractions**: Hierarchical test organization (files → describes → suites → tests)
-- **Test Discovery Modes**: Static (files known upfront) vs Dynamic (files discovered during execution)
+- **Dynamic Test Discovery**: Tests discovered during execution (standard approach for all runners)
 - **Group Events**: Group discovery, start, test cases with hierarchy, and group results
 - **Hierarchical Reports**: Nested directory structure mirroring test organization
 - **Debounced Writes**: Performance optimization for frequent file updates

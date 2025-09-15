@@ -15,13 +15,18 @@ All debug logs are written to `.3pio/debug.log` in your project directory. This 
 
 The debug log captures the complete lifecycle of test execution across all components. The CLI orchestrator logs session boundaries, test runner detection, process management, and IPC event processing. Each test adapter (Jest, Vitest, pytest) logs its lifecycle events including initialization, test file discovery, execution progress, and completion status. Any errors, missing environment variables, or IPC communication issues are also logged with full context to aid in troubleshooting.
 
-### Error Handling and Console Output
+### Logging Policy
 
-3pio distinguishes between different types of errors:
+**All logging goes to `.3pio/debug.log`** - no debug output to console:
 
-- **Critical Errors**: Problems that prevent test execution (e.g., test runner not found, failed to start process) are displayed to stderr for immediate visibility
-- **Parsing Errors**: Issues parsing IPC events or test output are logged to debug.log only, not shown in console
-- **Internal Errors**: Non-critical issues like malformed event data are logged as DEBUG level to avoid cluttering console output
+- **Debug/Info/Warning**: Written to debug.log only
+- **Errors**: Written to debug.log (may also show user-friendly message in console)
+- **Critical Failures**: User-facing error message to stderr, full details in debug.log
+
+The console is reserved for:
+- Test execution progress (from test runners)
+- Final test results summary
+- Critical error messages that require user action
 
 This ensures the console remains clean and focused on test results while comprehensive debugging information is available in the debug.log file.
 

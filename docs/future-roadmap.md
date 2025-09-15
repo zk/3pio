@@ -2,7 +2,7 @@
 
 ## Near-term Enhancements
 
-### Make Support (In Progress)
+### Make Support (Future Work)
 - Parse Makefiles to extract test commands
 - Support common test target patterns
 - Transform commands to include 3pio adapters
@@ -25,11 +25,12 @@ Run multiple test commands in a single 3pio session:
 - Handle complex variable references
 
 ### Performance Optimizations
-- **Remove `go list` dependency**: Currently Go test uses `go list` to get package metadata, but this adds latency (~200-500ms) and isn't strictly necessary since tests are discovered dynamically anyway
-  - Investigate removing `runGoList()` call in `GetTestFiles()`
-  - Would make Go test startup faster and more consistent with other runners
-  - Package information could be derived from test events themselves
-  - Consider impact on workspace/module support
+- **✅ COMPLETED: Removed `go list` dependency**: Go test no longer uses `go list` for package metadata
+  - Eliminated ~200-500ms startup latency
+  - Tests are discovered dynamically from JSON output
+  - Package information is derived from test events themselves
+  - Go test startup is now faster and consistent with other runners
+  - Module/workspace support maintained through dynamic discovery
 
 ## Medium-term Goals
 

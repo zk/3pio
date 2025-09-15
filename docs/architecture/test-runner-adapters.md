@@ -16,13 +16,58 @@ Test runner adapters are specialized reporters that 3pio injects into test runne
 
 ### IPC Path Injection
 
-Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
+IPC paths are injected directly into adapter code at runtime:
 - Template markers in source: `/*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/` (JavaScript)
 - Template markers in source: `#__IPC_PATH__#"WILL_BE_REPLACED"#__IPC_PATH__#` (Python)
-- Each test run gets its own adapter instance in `.3pio/adapters/[runID]/`
+- Each test run gets its own adapter instance in `.3pio/runs/[runID]/adapters/`
 - Ensures 100% reliability in monorepos and complex process hierarchies
+- Adapters are automatically cleaned up when the run directory is removed
 
 ## Test Runner Support
+
+### Rust: Cargo Test (Native)
+
+**Implementation**: Native JSON processing without external adapter
+- No adapter file required - processes `cargo test --format json` output directly
+- `CargoTestDefinition` in `internal/runner/definitions/cargo.go`
+- Automatically adds `-Z unstable-options --format json --report-time` flags
+- Requires `RUSTC_BOOTSTRAP=1` environment variable for JSON format
+- Parses crate::module::test hierarchy from test names
+- Tracks test state and groups by crate/module structure
+
+**Special Considerations**:
+- Uses Rust's unstable JSON output format (requires nightly features)
+- Processes stdout directly in the orchestrator
+- Supports nested module hierarchy with "::" separator
+- Handles workspace projects with multiple crates
+- Maps test failures to structured error information
+- Tracks duration and execution statistics per test
+
+**Detection Patterns**:
+- `cargo test` commands
+- `cargo +<toolchain> test` with Rust toolchain specification
+- Full path cargo binaries with test subcommand
+
+### Rust: Cargo Nextest (Native)
+
+**Implementation**: Native libtest-json processing without external adapter
+- No adapter file required - processes `cargo nextest --message-format libtest-json` output
+- `NextestDefinition` in `internal/runner/definitions/nextest.go`
+- Automatically adds `--message-format libtest-json` flag
+- Requires `NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1` environment variable
+- Enhanced parallel execution and filtering capabilities over standard cargo test
+
+**Special Considerations**:
+- Uses libtest-json format (more structured than cargo test)
+- Better handling of parallel test execution
+- Supports advanced filtering and partitioning features
+- Workspace-aware with package-level grouping
+- Real-time test progress reporting
+
+**Detection Patterns**:
+- `cargo nextest` commands (with or without `run` subcommand)
+- `cargo +<toolchain> nextest` with Rust toolchain specification
+- Full path cargo binaries with nextest subcommand
 
 ### Go Test (Native)
 
@@ -30,7 +75,7 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 - No adapter file required - processes `go test -json` output directly
 - `GoTestDefinition` in `internal/runner/definitions/gotest.go`
 - Automatically adds `-json` flag if not present
-- Maps packages to test files via `go list -json`
+- Package information derived dynamically from test events
 - Tracks test state for parallel test attribution
 - Handles cached test results with CACH status
 
@@ -40,6 +85,7 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 - Supports subtests with "/" separator in names
 - Handles parallel test output with pause/cont state tracking
 - Detects cached packages and reports them separately
+- No longer uses `go list` - packages discovered from test output
 
 ### Jest Adapter
 
@@ -53,7 +99,7 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 **Special Considerations**:
 - testResult.console is always undefined (verified with Jest 29.x)
 - Must patch both console methods AND stdout/stderr writers
-- No default reporter included (clean output)
+- **NO default reporter included** - Clean, deduplicated output
 - Reporter flag must come LAST in command line
 
 ### Vitest Adapter
@@ -70,7 +116,7 @@ Since v0.0.1, IPC paths are injected directly into adapter code at runtime:
 **Special Considerations**:
 - Uses V3 module hooks for real-time progress in parallel mode
 - Module hooks (`onTestModule*`) work across worker processes
-- Default reporter included for better UX
+- **Default reporter INCLUDED** - Better UX with familiar Vitest output
 - `vitest list` unreliable (runs in watch mode)
 - Dynamic test discovery when files unknown upfront
 - Sends individual test case events with status, duration, and errors
@@ -190,16 +236,34 @@ All adapters implement output capture to handle:
 - No default reporter → All output through 3pio
 - Must capture at multiple levels
 - Worker process architecture considerations
+- Clean, minimal console output
 
 **Vitest**:
 - Default reporter included → Dual output
 - Global capture with context switching
 - Thread-based parallelization
+- Users see familiar Vitest progress indicators
 
 **pytest**:
 - Plugin architecture → Different capture mechanism
 - Uses capsys fixture
 - Process-based parallelization with xdist
+
+### Why Different Reporter Configurations?
+
+The difference between Jest and Vitest reporter inclusion is **intentional and optimized** for each framework:
+
+**Jest (No Default Reporter)**:
+- Jest's default reporter can be verbose and duplicate information
+- Removing it provides cleaner, more focused output
+- 3pio becomes the single source of truth for test results
+- Prevents confusing duplicate progress indicators
+
+**Vitest (Includes Default Reporter)**:
+- Vitest's reporter is more streamlined and user-friendly
+- Users expect and rely on Vitest's real-time progress updates
+- The dual output approach doesn't create confusion
+- Better developer experience with familiar output format
 
 ## Writing New Adapters
 

@@ -86,17 +86,18 @@ JavaScript and Python reporters embedded in the Go binary:
 4. Runner Manager detects test runner
 5. Orchestrator creates directory structure
 6. For adapter-based runners (Jest/Vitest/pytest):
-   - Embedded adapters extracted to temp directory
-   - Command modified to include adapter
-7. For native runners (Go test):
-   - Command modified to add `-json` flag
+   - Embedded adapters extracted to `.3pio/runs/[runID]/adapters/`
+   - Command modified to include adapter path
+7. For native runners (Go test, Cargo test):
+   - Command modified to add JSON output flags (`-json` for Go, `--format json` for Rust)
    - No adapter extraction needed
 8. Report Manager initialized with Group Manager
 9. IPC Manager starts watching for events
 10. Orchestrator spawns test process with modified command
-11. For adapter-based runners:
-    - Test adapter discovers group hierarchy
-    - Sends testGroupDiscovered events for all groups
+11. Test discovery happens dynamically during execution:
+    - Adapter-based runners: Test files discovered as they execute
+    - Native runners: Tests discovered from JSON output stream
+    - No pre-execution discovery or dry runs performed
     - Sends testGroupStart when groups begin execution
     - Sends testCase events with parent hierarchy
     - Sends testGroupResult when groups complete
@@ -208,16 +209,23 @@ Note: Collection events provide immediate feedback during test discovery phase
 │   └── [runID]/
 │       ├── test-run.md                         # Main report with group hierarchy
 │       ├── output.log                          # Complete stdout/stderr
+│       ├── adapters/                           # Extracted test adapters
+│       │   ├── jest.js                        # Jest reporter (if applicable)
+│       │   ├── vitest.js                      # Vitest reporter (if applicable)
+│       │   └── pytest_adapter.py              # pytest plugin (if applicable)
 │       └── reports/                            # Hierarchical group reports
 │           ├── src_components_button_test_js/  # File group directory
 │           │   ├── index.md                    # File-level tests
-│           │   ├── button_rendering.md         # Describe block tests
-│           │   └── button_rendering/           # Nested describe
-│           │       ├── with_props.md          # Nested tests
-│           │       └── without_props.md       # Nested tests
+│           │   └── button_rendering/           # Nested describe directory
+│           │       ├── index.md                # Describe block tests
+│           │       ├── with_props/            # Nested test suite
+│           │       │   └── index.md            # Tests in this suite
+│           │       └── without_props/         # Nested test suite
+│           │           └── index.md            # Tests in this suite
 │           └── test_math_py/                   # Python file group
 │               ├── index.md                    # Module-level tests
-│               └── testmathoperations.md       # Class-based tests
+│               └── testmathoperations/         # Class-based test directory
+│                   └── index.md                # Class test methods
 ├── ipc/
 │   └── [runID].jsonl                          # IPC communication
 └── debug.log                                   # Debug logging
@@ -247,8 +255,9 @@ tests/                  # Integration tests and fixtures
 
 ### Embedded Adapters
 - Compiled into binary for zero dependencies
-- Extracted at runtime with IPC path injection
-- Each run gets unique adapter instance
+- Extracted at runtime to `.3pio/runs/[runID]/adapters/`
+- Each run gets unique adapter instance with IPC path injection
+- Automatically cleaned up with run directory
 
 ### File-Based IPC
 - Simple, reliable cross-platform mechanism

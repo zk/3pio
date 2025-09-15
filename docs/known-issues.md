@@ -2,22 +2,23 @@
 
 This document describes known issues, limitations, and workarounds for 3pio.
 
-## Dynamic Test Discovery
+## Test Discovery
 
-3pio supports two modes of test discovery:
+3pio uses **dynamic test discovery** as the standard approach:
 
-### Static Discovery
-- Used when test files can be determined upfront (e.g., explicit file arguments, Jest's `--listTests`)
-- Shows list of files before running tests
-- Pre-creates all log files
-
-### Dynamic Discovery
-- Used when test files cannot be determined upfront (e.g., `npm run test` with Vitest)
-- Files are discovered and registered as they send their first event
+### Dynamic Discovery (Current Standard)
+- Test files are discovered during execution, not beforehand
+- Files are registered as they send their first event
 - Shows "Test files will be discovered and reported as they run"
-- Log files created on demand
+- Log files and reports created on demand as tests execute
+- Works consistently across all test runners (Jest, Vitest, pytest, Go test, Cargo test)
 
-The system automatically chooses the appropriate mode based on the test runner and command.
+### Static Discovery (Legacy - To Be Removed)
+- Legacy code exists for pre-execution test discovery but is no longer used
+- Some stubs remain in the codebase but will be removed in future updates
+- All test runners now use dynamic discovery for consistency
+
+**Note**: The `GetTestFiles()` method intentionally returns an empty array for all runners to enable dynamic discovery.
 
 ## Test Runner Detection
 
@@ -42,16 +43,26 @@ When using `npm run test` with Vitest, the reporter arguments must be properly s
 
 ### Console Output Handling
 
-Jest's handling of console output has several important characteristics that affect how 3pio captures test output:
+**Important**: Jest and Vitest have intentionally different reporter configurations in 3pio:
+
+#### Jest Configuration
+Jest's handling of console output has several important characteristics:
 
 1. **testResult.console is always undefined** - Despite being documented in the Jest Reporter API, this property is not populated in practice (verified with Jest 29.x)
 2. **Direct stdout/stderr writes bypass Jest** - Using `process.stdout.write()` or `process.stderr.write()` directly will output immediately without Jest's formatting
 3. **Console methods are intercepted** - Methods like `console.log()` are captured and formatted with stack traces by Jest
-4. **3pio does NOT include the default reporter** - When 3pio runs Jest with `--reporters`, it intentionally excludes the default reporter. This means:
+4. **Jest does NOT include the default reporter** - When 3pio runs Jest with `--reporters`, it intentionally excludes the default reporter. This means:
    - No duplicate output in the console
    - All test output is captured via IPC events with file path associations
    - Individual test log files are created from IPC events, not by parsing output.log
-   - This is a deliberate design choice to prevent output duplication and maintain clean console output
+   - Clean, minimal console output with only 3pio's formatted results
+
+#### Vitest Configuration
+**Vitest DOES include the default reporter** - This is an intentional difference from Jest:
+   - Provides better user experience with familiar Vitest output
+   - Users see progress indicators and test results in real-time
+   - 3pio captures output in parallel without interfering with the default reporter
+   - This dual output approach works well with Vitest's architecture
 
 For detailed investigation and implications, see [Jest Console Handling](./jest-console-handling.md).
 
@@ -95,36 +106,46 @@ Error: Could not resolve a module for a custom reporter.
   Module name: --coverage
 ```
 
-## Coverage Mode Limitations
+## Coverage Mode - UNSUPPORTED
 
-### Coverage Reporting Interference
+### ⚠️ Coverage Mode is Not Supported
 
-When test runners are executed with coverage enabled (e.g., `--coverage` flag), 3pio may fail to capture individual test results:
+**3pio does not support running tests with coverage enabled.** Coverage mode interferes with 3pio's ability to capture test results and should not be used together.
 
-#### Affected Commands
+#### Affected Commands (Will Not Work Properly)
 - `vitest --coverage` or `vitest run --coverage`
 - `jest --coverage` or `jest --collectCoverage`
 - `pytest --cov=module`
+- Any test command with coverage flags
 
-#### Symptoms
-- Tests run successfully but 3pio only captures the final summary
-- `test-run.md` shows 0 files despite tests executing
-- `output.log` contains test results but individual test tracking is lost
+#### Why Coverage is Incompatible
+- Coverage instrumentation changes how test runners output results
+- Coverage reporters take precedence over 3pio's custom reporters
+- This prevents 3pio's adapters from receiving test events
+- Results in 0 test files being tracked despite tests executing
 
-#### Why This Happens
-Coverage instrumentation changes how test runners output results. The coverage reporter often takes precedence over custom reporters, preventing 3pio's adapter from receiving test events.
+#### Symptoms When Coverage is Enabled
+- `test-run.md` shows 0 files despite tests running
+- `output.log` contains test output but no structured test tracking
+- Individual test results are not captured
 
-#### Workaround
-Run tests without coverage during development:
+#### Recommendation
+Run tests without coverage when using 3pio:
 ```bash
 # Instead of
-3pio npm test:ci  # (which includes --coverage)
+3pio npm run test:coverage
+3pio jest --coverage
+3pio vitest --coverage
 
 # Use
-3pio npm test -- --run --no-coverage
+3pio npm test
+3pio jest
+3pio vitest run
 ```
 
-**Note**: This primarily affects CI/CD workflows where coverage is mandatory. For day-to-day development, developers typically run tests without coverage for faster feedback.
+**Note**: If you need both test results tracking (via 3pio) and coverage data, run them separately:
+1. Use 3pio for test execution and result tracking
+2. Run coverage separately without 3pio for coverage metrics
 
 ## Environment Variables
 
@@ -154,8 +175,9 @@ This is not expected to cause issues in normal operation but is documented for t
 
 3pio requires write access to the project directory to function properly:
 
-- **Required directories**: `.3pio/runs/`, `.3pio/ipc/`, `.3pio/adapters/` (or future `.3pio/runs/[runID]/adapter/`)
-- **Files created**: Test adapters, IPC communication files, test reports, and log files
+- **Required directories**: `.3pio/runs/`, `.3pio/ipc/`, `.3pio/runs/[runID]/adapters/`
+- **Files created**: Test adapters (in `[runID]/adapters/`), IPC communication files, test reports, and log files
+- **Adapter extraction**: Each test run extracts adapters to `.3pio/runs/[runID]/adapters/` for isolation
 - **Common failure scenarios**:
   - Running in read-only containers
   - CI/CD environments with restricted permissions
