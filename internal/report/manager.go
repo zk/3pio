@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/zk/3pio/internal/ipc"
-	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/runner"
 )
 
@@ -26,7 +25,6 @@ type Manager struct {
 	groupManager *GroupManager
 
 	// Track if we created our own FileLogger that needs closing
-	ownedFileLogger *logger.FileLogger
 
 	// File handles for incremental writing
 	fileHandles map[string]*os.File
@@ -43,12 +41,6 @@ type Manager struct {
 	maxWaitTime  time.Duration
 }
 
-// Logger interface for debug logging
-type Logger interface {
-	Debug(format string, args ...interface{})
-	Error(format string, args ...interface{})
-	Info(format string, args ...interface{})
-}
 
 // NewManager creates a new report manager
 func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRunner string, modifiedCommand string) (*Manager, error) {
@@ -71,30 +63,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 	}
 
 	// Initialize GroupManager for hierarchical test organization
-	// Cast the logger to FileLogger if possible, otherwise use a wrapper
-	var fileLogger *logger.FileLogger
-	var ownedFileLogger *logger.FileLogger
-	if fl, ok := lg.(*logger.FileLogger); ok {
-		fileLogger = fl
-	} else {
-		// In test environments, don't create a real FileLogger
-		// Check if this is a test logger (by type name)
-		typeName := fmt.Sprintf("%T", lg)
-		if strings.Contains(strings.ToLower(typeName), "mock") || strings.Contains(strings.ToLower(typeName), "noop") || strings.Contains(strings.ToLower(typeName), "test") {
-			// Use nil logger for tests to avoid file handle issues
-			fileLogger = nil // GroupManager should handle nil logger
-		} else {
-			// Create a new file logger for production use
-			var err error
-			fileLogger, err = logger.NewFileLogger()
-			if err != nil {
-				return nil, fmt.Errorf("failed to create file logger for group manager: %w", err)
-			}
-			ownedFileLogger = fileLogger // Track that we created this logger
-		}
-	}
-
-	groupManager := NewGroupManager(runDir, "", fileLogger)
+	groupManager := NewGroupManager(runDir, "", lg)
 
 	return &Manager{
 		runDir:          runDir,
@@ -103,7 +72,6 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		detectedRunner:  detectedRunner,
 		modifiedCommand: modifiedCommand,
 		groupManager:    groupManager,
-		ownedFileLogger: ownedFileLogger,
 		fileHandles:     make(map[string]*os.File),
 		fileBuffers:     make(map[string][]string),
 		debouncers:      make(map[string]*time.Timer),
@@ -555,10 +523,6 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	}
 
 	// Close our owned FileLogger if we created one
-	if m.ownedFileLogger != nil {
-		_ = m.ownedFileLogger.Close()
-		m.ownedFileLogger = nil
-	}
 
 	// Update final status if we have state and it's not already finalized
 	if m.state != nil && m.state.Status != "COMPLETE" && m.state.Status != "ERROR" {

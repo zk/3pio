@@ -100,8 +100,7 @@ class ThreepioReporter:
     
     def _log_debug(self, message: str) -> None:
         """Log a debug message."""
-        if os.environ.get("THREEPIO_DEBUG") == "1":
-            self._log("DEBUG", message)
+        self._log("DEBUG", message)
 
     def get_group_id(self, hierarchy):
         """Generate a unique ID for a group path."""

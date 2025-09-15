@@ -267,8 +267,23 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading output: %w", err)
+	// Check for scanner error but don't fail immediately - we need to finalize groups
+	scanErr := scanner.Err()
+	if scanErr != nil {
+		g.logger.Debug("Scanner encountered error (will finalize groups anyway): %v", scanErr)
+	}
+
+	// Finalize any pending groups even if scanner had an error
+	g.logger.Debug("Finalizing pending groups...")
+	g.finalizePendingGroups()
+
+	if scanErr != nil {
+		// Log the error but don't fail - we've already processed the events
+		g.logger.Debug("Scanner error (may be due to pipe closing): %v", scanErr)
+		// Only return error if it's not a closed pipe error
+		if !strings.Contains(scanErr.Error(), "file already closed") && !strings.Contains(scanErr.Error(), "closed pipe") {
+			return fmt.Errorf("error reading output: %w", scanErr)
+		}
 	}
 
 	return nil
@@ -667,6 +682,9 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 		// Send GroupResult for the package
 		g.sendGroupResult(event.Package, []string{}, status, event.Elapsed, totals)
 
+		// Clear the started flag since we've sent the result
+		delete(g.packageStarted, event.Package)
+
 		g.logger.Debug("Sent package result for %s: status=%s, duration=%.2fs, tests=%d",
 			event.Package, status, event.Elapsed, totals["total"])
 	}
@@ -953,6 +971,62 @@ func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames [
 
 	if err := g.ipcWriter.WriteEvent(event); err != nil {
 		g.logger.Debug("Failed to write test case event: %v", err)
+	}
+}
+
+// finalizePendingGroups sends group results for any groups that haven't been finalized
+func (g *GoTestDefinition) finalizePendingGroups() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Check if there are any package groups that haven't been finalized
+	for pkgName, pkgGroup := range g.packageGroups {
+		// Check if this package has been started but not completed
+		if _, started := g.packageStarted[pkgName]; started {
+			// Check if we already sent a result for this package
+			// (packageStarted is set when we send the group start, and should be cleared when we send result)
+			g.logger.Debug("Checking if package %s needs finalization", pkgName)
+
+			// Calculate totals from tracked tests
+			totals := map[string]interface{}{
+				"total":   0,
+				"passed":  0,
+				"failed":  0,
+				"skipped": 0,
+			}
+
+			status := "FAIL" // Default to FAIL if incomplete
+
+			if len(pkgGroup.Tests) > 0 {
+				totals["total"] = len(pkgGroup.Tests)
+				for _, test := range pkgGroup.Tests {
+					switch test.Status {
+					case "PASS":
+						totals["passed"] = totals["passed"].(int) + 1
+					case "FAIL":
+						totals["failed"] = totals["failed"].(int) + 1
+					case "SKIP":
+						totals["skipped"] = totals["skipped"].(int) + 1
+					}
+				}
+
+				// Determine status based on test results
+				if totals["failed"].(int) > 0 {
+					status = "FAIL"
+				} else if totals["passed"].(int) > 0 {
+					status = "PASS"
+				} else if totals["skipped"].(int) > 0 {
+					status = "SKIP"
+				}
+			}
+
+			g.logger.Debug("Finalizing incomplete package %s with status %s (passed=%d, failed=%d, skipped=%d)",
+				pkgName, status, totals["passed"], totals["failed"], totals["skipped"])
+			g.sendGroupResult(pkgName, []string{}, status, 0, totals)
+
+			// Clear the started flag so we don't finalize again
+			delete(g.packageStarted, pkgName)
+		}
 	}
 }
 

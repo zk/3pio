@@ -177,9 +177,7 @@ var Logger = class _Logger {
     this.info("Initialization complete", config);
   }
   debug(message, data) {
-    if (process.env.THREEPIO_DEBUG === "1") {
-      this.writeLog("DEBUG", message, data);
-    }
+    this.writeLog("DEBUG", message, data);
   }
   info(message, data) {
     this.writeLog("INFO", message, data);

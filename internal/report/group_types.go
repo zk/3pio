@@ -13,6 +13,7 @@ const (
 	TestStatusPass    TestStatus = "PASS"
 	TestStatusFail    TestStatus = "FAIL"
 	TestStatusSkip    TestStatus = "SKIP"
+	TestStatusNoTests TestStatus = "NO_TESTS"
 )
 
 // TestGroup represents a hierarchical group of tests (file, describe block, class, etc.)
