@@ -146,6 +146,14 @@ func (o *Orchestrator) Close() error {
 }
 
 // Run executes the test command with 3pio instrumentation
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (o *Orchestrator) Run() error {
 	// Ensure cleanup on exit
 	defer func() {
@@ -505,16 +513,44 @@ func (o *Orchestrator) Run() error {
 
 	// Finalize report
 	var errorDetails string
+	var shouldShowError bool
 	if commandErr != nil {
-		// Only include error details for actual command errors (not test failures)
-		// If tests were processed, this is just a test failure, not a command error
-		if o.totalGroups == 0 {
+		// Check if this is a configuration/startup error vs test failures
+		// Configuration errors happen when we have very few or no test groups
+		// or when the exit code suggests a setup problem
+		isConfigError := o.totalGroups == 0 ||
+			(o.exitCode != 0 && o.exitCode != 1 && o.totalGroups < 2) ||
+			(o.passedGroups == 0 && o.failedGroups == 0 && o.exitCode != 0)
+
+		if isConfigError {
 			errorDetails = commandErr.Error()
 
 			// Include stderr content if available for command errors
 			stderrContent := strings.TrimSpace(o.stderrCapture.String())
 			if stderrContent != "" {
 				errorDetails = stderrContent
+			}
+
+			// For config errors, also check output.log for error details
+			if errorDetails == "exit status 1" || errorDetails == "exit status 2" {
+				// Read first part of output.log to get actual error message
+				if outputContent, err := os.ReadFile(outputPath); err == nil {
+					lines := strings.Split(string(outputContent), "\n")
+					// Look for error indicators in first 50 lines
+					for i := 0; i < len(lines) && i < 50; i++ {
+						line := strings.TrimSpace(lines[i])
+						if strings.Contains(line, "Error") || strings.Contains(line, "error") ||
+							strings.Contains(line, "preset") || strings.Contains(line, "Cannot") ||
+							strings.Contains(line, "Failed") {
+							// Found error details, use them
+							errorDetails = strings.Join(lines[i:min(i+10, len(lines))], "\n")
+							shouldShowError = true
+							break
+						}
+					}
+				}
+			} else {
+				shouldShowError = true
 			}
 		}
 	}
@@ -532,7 +568,8 @@ func (o *Orchestrator) Run() error {
 	fmt.Println()
 
 	// Print error details if command failed and we have error details
-	if commandErr != nil && errorDetails != "" {
+	if (commandErr != nil && errorDetails != "" && shouldShowError) ||
+	   (commandErr != nil && o.totalGroups == 0 && errorDetails != "") {
 		fmt.Printf("Error: %s\n", errorDetails)
 		fmt.Println()
 	}

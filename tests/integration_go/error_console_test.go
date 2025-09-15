@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,14 +65,73 @@ func findLatestRunDir(t *testing.T, projectDir string) string {
 	return filepath.Join(runsDir, latestDir)
 }
 
+// Helper function to recursively copy a directory
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Get the relative path from src
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		// Create the destination path
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			// Create directory
+			return os.MkdirAll(dstPath, info.Mode())
+		} else {
+			// Copy file
+			srcFile, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer srcFile.Close()
+
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+				return err
+			}
+
+			dstFile, err := os.Create(dstPath)
+			if err != nil {
+				return err
+			}
+			defer dstFile.Close()
+
+			// Copy the file content
+			if _, err = io.Copy(dstFile, srcFile); err != nil {
+				return err
+			}
+
+			// Preserve file permissions
+			return os.Chmod(dstPath, info.Mode())
+		}
+	})
+}
+
 // TestErrorReportingToConsole verifies that errors are properly displayed to the user
 func TestErrorReportingToConsole(t *testing.T) {
 	t.Parallel()
 
-	// Use the jest-config-error fixture
-	fixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
-	if _, err := os.Stat(fixtureDir); err != nil {
-		t.Skipf("Fixture directory not found: %s", fixtureDir)
+	// Use the jest-config-error fixture by copying it to a temp directory
+	sourceFixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
+	if _, err := os.Stat(sourceFixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", sourceFixtureDir)
+	}
+
+	// Create a temporary directory for this test
+	tempDir := t.TempDir()
+	fixtureDir := filepath.Join(tempDir, "jest-config-error")
+
+	// Copy the fixture to the temp directory
+	err := copyDir(sourceFixtureDir, fixtureDir)
+	if err != nil {
+		t.Fatalf("Failed to copy fixture: %v", err)
 	}
 
 	// Run 3pio and capture output
@@ -97,10 +157,20 @@ func TestErrorReportingToConsole(t *testing.T) {
 func TestErrorDetailsInReport(t *testing.T) {
 	t.Parallel()
 
-	// Use the jest-config-error fixture
-	fixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
-	if _, err := os.Stat(fixtureDir); err != nil {
-		t.Skipf("Fixture directory not found: %s", fixtureDir)
+	// Use the jest-config-error fixture by copying it to a temp directory
+	sourceFixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
+	if _, err := os.Stat(sourceFixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", sourceFixtureDir)
+	}
+
+	// Create a temporary directory for this test
+	tempDir := t.TempDir()
+	fixtureDir := filepath.Join(tempDir, "jest-config-error")
+
+	// Copy the fixture to the temp directory
+	err := copyDir(sourceFixtureDir, fixtureDir)
+	if err != nil {
+		t.Fatalf("Failed to copy fixture: %v", err)
 	}
 
 	// Run 3pio
@@ -147,10 +217,20 @@ func TestErrorDetailsInReport(t *testing.T) {
 func TestJestConfigError(t *testing.T) {
 	t.Parallel()
 
-	// Use the jest-ts-config-error fixture
-	fixtureDir := filepath.Join("..", "fixtures", "jest-ts-config-error")
-	if _, err := os.Stat(fixtureDir); err != nil {
-		t.Skipf("Fixture directory not found: %s", fixtureDir)
+	// Use the jest-ts-config-error fixture by copying it to a temp directory
+	sourceFixtureDir := filepath.Join("..", "fixtures", "jest-ts-config-error")
+	if _, err := os.Stat(sourceFixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", sourceFixtureDir)
+	}
+
+	// Create a temporary directory for this test
+	tempDir := t.TempDir()
+	fixtureDir := filepath.Join(tempDir, "jest-ts-config-error")
+
+	// Copy the fixture to the temp directory
+	err := copyDir(sourceFixtureDir, fixtureDir)
+	if err != nil {
+		t.Fatalf("Failed to copy fixture: %v", err)
 	}
 
 	// Run 3pio

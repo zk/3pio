@@ -105,20 +105,12 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 		}
 	}
 
-	// Verify output.log has proper content
+	// Verify output.log has content (no header anymore - direct output capture)
 	outputLogContent := readFile(t, filepath.Join(runDir, "output.log"))
 
-	expectedLogSections := []string{
-		"# 3pio Test Output Log",
-		"# Timestamp:",
-		"# Command:",
-		"# ---",
-	}
-
-	for _, section := range expectedLogSections {
-		if !strings.Contains(outputLogContent, section) {
-			t.Errorf("output.log should contain '%s'", section)
-		}
+	// Just verify the file exists and has content
+	if len(outputLogContent) == 0 {
+		t.Error("output.log should contain test output")
 	}
 }
 

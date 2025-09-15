@@ -4,8 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -16,37 +14,6 @@ var (
 	// Fixtures directory
 	fixturesDir = "../fixtures"
 )
-
-func getBinaryPath() string {
-	if runtime.GOOS == "windows" {
-		return "../../build/3pio.exe"
-	}
-	return "../../build/3pio"
-}
-
-// Helper function to get the latest run directory
-func getLatestRunDir(t *testing.T, projectPath string) string {
-	runsDir := filepath.Join(projectPath, ".3pio", "runs")
-	entries, err := os.ReadDir(runsDir)
-	if err != nil {
-		t.Fatalf("Failed to read runs directory: %v", err)
-	}
-
-	var runDirs []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			runDirs = append(runDirs, entry.Name())
-		}
-	}
-
-	if len(runDirs) == 0 {
-		t.Fatal("No run directories found")
-	}
-
-	sort.Strings(runDirs)
-	latestRun := runDirs[len(runDirs)-1]
-	return filepath.Join(runsDir, latestRun)
-}
 
 // Helper function to clean .3pio directory
 func cleanProjectOutput(projectPath string) error {
@@ -221,25 +188,15 @@ func TestOutputLogContent(t *testing.T) {
 	outputLogPath := filepath.Join(runDir, "output.log")
 	content := readFile(t, outputLogPath)
 
-	// Check header
-	if !strings.Contains(content, "# 3pio Test Output Log") {
-		t.Error("output.log should contain header")
+	// Check that output.log has content (no header anymore - direct output capture)
+	// Just verify the file exists and has some test output
+	if len(content) == 0 {
+		t.Error("output.log should contain test output")
 	}
 
-	if !strings.Contains(content, "# Timestamp:") {
-		t.Error("output.log should contain timestamp")
-	}
-
-	if !strings.Contains(content, "# Command: npx vitest run math.test.js string.test.js") {
-		t.Error("output.log should contain executed command")
-	}
-
-	if !strings.Contains(content, "# This file contains all stdout/stderr output from the test run.") {
-		t.Error("output.log should contain description")
-	}
-
-	if !strings.Contains(content, "# ---") {
-		t.Error("output.log should contain separator")
+	// Verify it contains some test-related output
+	if !strings.Contains(content, "test") && !strings.Contains(content, "Test") && !strings.Contains(content, "PASS") {
+		t.Error("output.log should contain test execution output")
 	}
 }
 

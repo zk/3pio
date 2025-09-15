@@ -55,10 +55,10 @@ func TestNpmSeparatorHandling(t *testing.T) {
 		t.Error("npm separator test should create proper report structure")
 	}
 
-	// Check that the output.log contains the correct command
+	// Check that the output.log has content (no header anymore)
 	outputContent := readFile(t, outputLogPath)
-	if !strings.Contains(outputContent, "# Command: npm test -- example.test.js") {
-		t.Error("output.log should contain the correct command with separator")
+	if len(outputContent) == 0 {
+		t.Error("output.log should contain test output")
 	}
 }
 

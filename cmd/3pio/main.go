@@ -84,6 +84,12 @@ Flags:
 
 // runTestsCore contains the core logic for running tests (testable)
 func runTestsCore(args []string) (int, error) {
+	// Check for unsupported modes
+	if err := checkUnsupportedModes(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1, err
+	}
+
 	// Create file logger
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
@@ -148,4 +154,73 @@ func runTests(args []string) error {
 	exitCode, _ := runTestsCore(args)
 	os.Exit(exitCode)
 	return nil // Never reached, but needed for signature
+}
+
+// checkUnsupportedModes checks for watch mode and coverage mode
+func checkUnsupportedModes(args []string) error {
+	// Join all args to check for flags
+	cmdStr := strings.Join(args, " ")
+
+	// Check for watch mode
+	watchPatterns := []string{
+		"--watch",
+		"--watchAll",
+		" -w ", // Short form with spaces to avoid matching --workspace
+		" -w\t", // Short form with tab
+		"pytest-watch",
+		"ptw", // pytest-watch alias
+	}
+
+	// Also check for -w at the end or beginning of args
+	for _, arg := range args {
+		if arg == "-w" {
+			return fmt.Errorf("watch mode is not supported. Please run tests in single-run mode without -w flag")
+		}
+	}
+
+	// Special case: plain 'vitest' without 'run' defaults to watch mode
+	if len(args) > 0 && strings.Contains(cmdStr, "vitest") && !strings.Contains(cmdStr, "run") {
+		// Check if it's actually vitest command
+		for _, arg := range args {
+			if strings.HasSuffix(arg, "vitest") || arg == "vitest" {
+				// Check if 'run' is in subsequent args
+				hasRun := false
+				for _, a := range args {
+					if a == "run" {
+						hasRun = true
+						break
+					}
+				}
+				if !hasRun {
+					return fmt.Errorf("watch mode is not supported. Vitest defaults to watch mode. Please use 'vitest run' for single-run mode")
+				}
+			}
+		}
+	}
+
+	for _, pattern := range watchPatterns {
+		if strings.Contains(cmdStr, pattern) {
+			return fmt.Errorf("watch mode is not supported. Please run tests in single-run mode without %s flag", pattern)
+		}
+	}
+
+	// Check for coverage mode
+	coveragePatterns := []string{
+		"--coverage",
+		"--collectCoverage",
+		"--cov",
+		"--cov-report",
+		"nyc",
+		"c8",
+		"tarpaulin",
+		"llvm-cov",
+	}
+
+	for _, pattern := range coveragePatterns {
+		if strings.Contains(cmdStr, pattern) {
+			return fmt.Errorf("coverage mode is not supported. Please run tests without coverage flags")
+		}
+	}
+
+	return nil
 }
