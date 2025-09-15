@@ -775,18 +775,18 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 			// Name column
 			nameStr := subgroup.Name
 
-			// Tests column - show breakdown of test results
+			// Tests column - show breakdown of test results (using recursive counts)
 			var testsStr string
-			if subgroup.Stats.TotalTests > 0 {
+			if subgroup.Stats.TotalTestsRecursive > 0 {
 				parts := []string{}
-				if subgroup.Stats.PassedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d passed", subgroup.Stats.PassedTests))
+				if subgroup.Stats.PassedTestsRecursive > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", subgroup.Stats.PassedTestsRecursive))
 				}
-				if subgroup.Stats.FailedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d failed", subgroup.Stats.FailedTests))
+				if subgroup.Stats.FailedTestsRecursive > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", subgroup.Stats.FailedTestsRecursive))
 				}
-				if subgroup.Stats.SkippedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d skipped", subgroup.Stats.SkippedTests))
+				if subgroup.Stats.SkippedTestsRecursive > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", subgroup.Stats.SkippedTestsRecursive))
 				}
 				testsStr = strings.Join(parts, ", ")
 			} else {
