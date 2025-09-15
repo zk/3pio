@@ -23,10 +23,7 @@ func (m *Manager) Close() error {
 }
 
 // NewManager creates a new runner manager
-func NewManager() *Manager {
-	// Create a logger for the manager
-	fileLogger, _ := logger.NewFileLogger()
-
+func NewManager(fileLogger *logger.FileLogger) *Manager {
 	m := &Manager{
 		runners: make(map[string]Definition),
 		logger:  fileLogger,

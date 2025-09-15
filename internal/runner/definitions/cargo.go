@@ -1,16 +1,28 @@
 package definitions
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/zk/3pio/internal/logger"
 )
+
+// runningTestBinaryRegex matches "Running /path/to/target/debug/deps/crate_name-hash"
+var runningTestBinaryRegex = regexp.MustCompile(`Running .*/target/.*/deps/(.*?)-[a-f0-9]+`)
+
+// Keep these for backwards compatibility if needed
+var runningUnittestsRegex = regexp.MustCompile(`Running unittests .* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
+var runningIntegrationTestsRegex = regexp.MustCompile(`Running tests/.* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
+
+// docTestsRegex matches "Doc-tests crate_name" with optional leading whitespace
+var docTestsRegex = regexp.MustCompile(`^\s*Doc-tests\s+(.+)$`)
 
 // CargoTestDefinition implements support for Rust's cargo test runner
 type CargoTestDefinition struct {
@@ -20,10 +32,21 @@ type CargoTestDefinition struct {
 
 	// Workspace and crate tracking
 	workspaceName    string                    // Name of workspace if detected
+	currentCrate     string                    // Currently executing crate
+	crateTestCounts  map[string]int            // Expected test count per crate from suite events
+	crateTestsSeen   map[string]int            // Number of tests seen so far per crate
 	crateGroups      map[string]*CrateGroupInfo // Map of crate name to group info
+	crateMetadata    map[string]*CrateMetadata  // Map of crate name to metadata from Cargo.toml
 	discoveredGroups map[string]bool            // Track discovered groups to avoid duplicates
 	groupStarts      map[string]bool            // Track started groups
 	testStates       map[string]*CargoTestState // Track test state
+}
+
+// CrateMetadata stores metadata from Cargo.toml
+type CrateMetadata struct {
+	Name        string
+	Description string
+	Version     string
 }
 
 // CrateGroupInfo tracks information for a crate group
@@ -67,7 +90,10 @@ type CargoTestEvent struct {
 func NewCargoTestDefinition(logger *logger.FileLogger) *CargoTestDefinition {
 	return &CargoTestDefinition{
 		logger:           logger,
+		crateTestCounts:  make(map[string]int),
+		crateTestsSeen:   make(map[string]int),
 		crateGroups:      make(map[string]*CrateGroupInfo),
+		crateMetadata:    make(map[string]*CrateMetadata),
 		discoveredGroups: make(map[string]bool),
 		groupStarts:      make(map[string]bool),
 		testStates:       make(map[string]*CargoTestState),
@@ -129,7 +155,7 @@ func (c *CargoTestDefinition) ModifyCommand(cmd []string, ipcPath, runID string)
 		result = append(result, "--")
 	}
 
-	// Add JSON output flags
+	// Add JSON output flags (RUSTC_BOOTSTRAP=1 is set in orchestrator to enable on stable)
 	result = append(result, "-Z", "unstable-options", "--format", "json", "--report-time")
 
 	return result
@@ -146,8 +172,9 @@ func (c *CargoTestDefinition) RequiresAdapter() bool {
 	return false
 }
 
-// ProcessOutput reads cargo test JSON output and converts to IPC events
-func (c *CargoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error {
+// ProcessOutput reads combined cargo test output (stderr + stdout) and converts to IPC events
+// The combined stream has "Running unittests" stderr lines immediately before JSON stdout
+func (c *CargoTestDefinition) ProcessOutput(combinedOutput io.Reader, ipcPath string) error {
 	// Initialize IPC writer
 	var err error
 	c.ipcWriter, err = NewIPCWriter(ipcPath)
@@ -160,32 +187,147 @@ func (c *CargoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) er
 		}
 	}()
 
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	// Load cargo metadata for crate descriptions
+	c.loadCargoMetadata()
 
-		// Try to parse as JSON
-		var event CargoTestEvent
-		if err := json.Unmarshal(line, &event); err != nil {
-			// Not JSON, might be compilation output or other messages
-			c.logger.Debug("Non-JSON output from cargo test: %s", string(line))
-			continue
+	lineCount := 0
+	jsonEventCount := 0
+	totalBytes := 0
+
+	// Chunk reading with partial line handling for real-time processing
+	// Use LARGER chunks for faster reading to keep up with output
+	buffer := make([]byte, 256*1024) // 256KB chunks for aggressive reading
+	var partial []byte
+
+	for {
+		n, err := combinedOutput.Read(buffer)
+		if n > 0 {
+			totalBytes += n
+			// Append partial line from previous iteration
+			data := append(partial, buffer[:n]...)
+
+			// Split into lines
+			lines := bytes.Split(data, []byte{'\n'})
+
+			// Process all complete lines (all except the last one)
+			for i := 0; i < len(lines)-1; i++ {
+				line := string(lines[i])
+				if len(line) > 0 { // Process non-empty lines
+					lineCount++
+					c.processLineData(line, &jsonEventCount)
+				}
+			}
+
+			// Save the last piece as partial for next iteration
+			// (it might be incomplete if we're in the middle of a line)
+			partial = lines[len(lines)-1]
 		}
 
-		// Process the event
-		if err := c.processEvent(&event); err != nil {
-			c.logger.Debug("Error processing cargo test event: %v", err)
+		if err != nil {
+			if err == io.EOF {
+				// Process final partial line if it exists
+				if len(partial) > 0 {
+					lineCount++
+					line := string(partial)
+					c.processLineData(line, &jsonEventCount)
+				}
+				c.logger.Debug("Reached EOF after reading %d bytes", totalBytes)
+				break
+			} else if strings.Contains(err.Error(), "file already closed") {
+				// Process final partial line even on pipe closure
+				if len(partial) > 0 {
+					lineCount++
+					line := string(partial)
+					c.processLineData(line, &jsonEventCount)
+				}
+				c.logger.Debug("Pipe closed after reading %d bytes: %v", totalBytes, err)
+				break
+			} else {
+				// Log other errors but continue reading
+				c.logger.Debug("Read error at byte %d: %v, continuing", totalBytes, err)
+				// Try to continue reading even on errors
+				continue
+			}
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading cargo test output: %w", err)
-	}
+	// Log processing summary
+	c.logger.Debug("ProcessOutput completed: %d total lines, %d JSON events processed", lineCount, jsonEventCount)
 
-	// Send final events for any pending groups
+	// Send final events for any remaining groups
 	c.finalizePendingGroups()
 
+	// Send runComplete event to signal processing is done
+	runCompleteEvent := map[string]interface{}{
+		"eventType": "runComplete",
+		"payload":   map[string]interface{}{},
+	}
+	if err := c.ipcWriter.WriteEvent(runCompleteEvent); err != nil {
+		c.logger.Debug("Failed to send runComplete event: %v", err)
+	}
+
 	return nil
+}
+
+// loadCargoMetadata loads crate metadata from cargo metadata command
+func (c *CargoTestDefinition) loadCargoMetadata() {
+	// TODO: In a full implementation, we would run `cargo metadata --format-version 1`
+	// and parse the JSON output to get crate descriptions. For now, we'll use
+	// a simplified approach that could be extended later.
+	c.logger.Debug("Loading cargo metadata (placeholder for now)")
+}
+
+
+// processLineData processes a single line of cargo test output
+func (c *CargoTestDefinition) processLineData(line string, jsonEventCount *int) {
+	// Check if this is a "Running unittests" line from stderr
+	if matches := runningUnittestsRegex.FindStringSubmatch(line); matches != nil {
+		crateName := matches[1]
+		c.mu.Lock()
+		c.currentCrate = crateName
+		c.logger.Debug("Set current crate to: %s (unit tests)", crateName)
+		c.mu.Unlock()
+		return
+	}
+
+	// Check if this is a "Running tests/..." line for integration tests
+	if matches := runningIntegrationTestsRegex.FindStringSubmatch(line); matches != nil {
+		testName := matches[1]
+		c.mu.Lock()
+		c.currentCrate = testName
+		c.logger.Debug("Set current crate to: %s (integration tests)", testName)
+		c.mu.Unlock()
+		return
+	}
+
+	// Check if this is a "Doc-tests" line
+	if strings.Contains(line, "Doc-tests") {
+		c.logger.Debug("Found Doc-tests line: %s", line)
+		if matches := docTestsRegex.FindStringSubmatch(line); matches != nil {
+			crateName := matches[1]
+			docCrateName := "doc:" + crateName
+			c.mu.Lock()
+			c.currentCrate = docCrateName
+			c.logger.Debug("Set current crate to: %s (doc tests)", docCrateName)
+			c.mu.Unlock()
+			return
+		} else {
+			c.logger.Debug("Doc-tests line did not match regex: %s", line)
+		}
+	}
+
+	// Try to parse as JSON event
+	var event CargoTestEvent
+	if err := json.Unmarshal([]byte(line), &event); err != nil {
+		// Not JSON, might be compilation output or other messages
+		return
+	}
+
+	*jsonEventCount++
+	// Process the JSON event with current crate context
+	if err := c.processEvent(&event); err != nil {
+		c.logger.Debug("Error processing cargo test event: %v", err)
+	}
 }
 
 // processEvent processes a single cargo test JSON event
@@ -207,15 +349,85 @@ func (c *CargoTestDefinition) processEvent(event *CargoTestEvent) error {
 
 // processSuiteEvent handles suite-level events (test run start/end)
 func (c *CargoTestDefinition) processSuiteEvent(event *CargoTestEvent) error {
+	c.logger.Debug("Processing suite event - Event: %s, TestCount: %d, Passed: %d, Failed: %d",
+		event.Event, event.TestCount, event.Passed, event.Failed)
+
 	switch event.Event {
 	case "started":
+		// A suite started event tells us how many tests to expect
+		// The currentCrate should already be set by the previous stderr "Running" line
+		if c.currentCrate != "" {
+			// Record expected test count for this crate
+			c.crateTestCounts[c.currentCrate] = event.TestCount
+			c.crateTestsSeen[c.currentCrate] = 0
+
+			c.logger.Debug("Suite started for crate %s with %d tests", c.currentCrate, event.TestCount)
+		} else {
+			c.logger.Debug("Suite started but no current crate set (test count: %d)", event.TestCount)
+		}
+
 		// Send collection start event
+		c.logger.Debug("Sending collectionStart with test count: %d", event.TestCount)
 		c.sendCollectionStart(event.TestCount)
 	case "ok", "failed":
+		// Suite finished - this means all tests for the current crate are done
+		if c.currentCrate != "" {
+			crateName := c.currentCrate
+			c.logger.Debug("Suite finished for crate %s (passed: %d, failed: %d)",
+				crateName, event.Passed, event.Failed)
+
+			// For suites with 0 tests, we need to create and complete the group now
+			// since no test events will be generated
+			totalTests := event.Passed + event.Failed + event.Ignored
+			if totalTests == 0 {
+				// Check if this is a doc-test
+				var displayCrateName string
+				if strings.HasPrefix(crateName, "doc:") {
+					// Doc-test: display as "Doc-tests <crate>"
+					actualCrateName := strings.TrimPrefix(crateName, "doc:")
+					displayCrateName = "Doc-tests " + actualCrateName
+				} else {
+					// Regular test: convert underscores to hyphens for display
+					displayCrateName = strings.ReplaceAll(crateName, "_", "-")
+				}
+
+				// Send group discovered
+				if !c.discoveredGroups[crateName] {
+					c.sendGroupDiscovered(displayCrateName, nil)
+					c.discoveredGroups[crateName] = true
+				}
+
+				// Send group start
+				if !c.groupStarts[crateName] {
+					c.sendGroupStart(displayCrateName, nil)
+					c.groupStarts[crateName] = true
+				}
+
+				// Send group result with 0 tests and duration from exec_time
+				durationMs := event.ExecTime * 1000
+				// Groups with 0 tests should have NO_TESTS status
+				c.sendGroupResult(displayCrateName, nil, "NO_TESTS", durationMs, 0, 0, 0)
+
+				c.logger.Debug("Sent group events for empty suite: %s", displayCrateName)
+			}
+
+			// Check if we've seen all expected tests
+			if expected, ok := c.crateTestCounts[crateName]; ok {
+				seen := c.crateTestsSeen[crateName]
+				actualTotal := event.Passed + event.Failed + event.Ignored
+				if seen != expected && seen != actualTotal {
+					c.logger.Debug("Warning: Expected %d tests for crate %s but saw %d (suite reports %d)",
+						expected, crateName, seen, actualTotal)
+				}
+			}
+
+			// Clear current crate since this suite is done
+			c.currentCrate = ""
+		}
+
 		// Send collection finish event
+		c.logger.Debug("Sending collectionFinish with test count: %d", event.TestCount)
 		c.sendCollectionFinish(event.TestCount)
-		// Finalize any remaining groups
-		c.finalizePendingGroups()
 	}
 	return nil
 }
@@ -226,15 +438,29 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 		return nil
 	}
 
-	// Parse test name to extract crate and module hierarchy
-	// Format: crate::module::submodule::test_name
+	// Use the current crate context
+	crateName := c.currentCrate
+	if crateName == "" {
+		// No current crate - this shouldn't happen in normal flow
+		c.logger.Debug("No current crate context for test: %s", event.Name)
+		return nil
+	}
+
+	// Track that we've seen a test for this crate
+	c.crateTestsSeen[crateName]++
+
+	// Log progress for debugging
+	if expected, ok := c.crateTestCounts[crateName]; ok {
+		seen := c.crateTestsSeen[crateName]
+		c.logger.Debug("Crate %s: test %d/%d - %s", crateName, seen, expected, event.Name)
+	}
+
+	// Parse test name to extract module hierarchy (without crate prefix)
+	// The JSON test names don't include the crate name, just module::test
 	parts := strings.Split(event.Name, "::")
 	if len(parts) == 0 {
 		return nil
 	}
-
-	// Determine crate name (first part)
-	crateName := parts[0]
 
 	// Check if we're in a workspace
 	if c.workspaceName == "" {
@@ -250,15 +476,30 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 		parentNames = append(parentNames, c.workspaceName)
 	}
 
+	// Get crate metadata if available
+	var crateDesc string
+	if metadata, ok := c.crateMetadata[crateName]; ok {
+		crateDesc = metadata.Description
+	}
+
+	// Convert underscores to hyphens for display
+	displayCrateName := strings.ReplaceAll(crateName, "_", "-")
+
+	// Build enhanced crate name with description
+	enhancedCrateName := displayCrateName
+	if crateDesc != "" {
+		enhancedCrateName = fmt.Sprintf("%s (%s)", displayCrateName, crateDesc)
+	}
+
 	// Ensure crate group exists
 	if !c.discoveredGroups[crateName] {
-		c.sendGroupDiscovered(crateName, parentNames)
+		c.sendGroupDiscovered(enhancedCrateName, parentNames)
 		c.discoveredGroups[crateName] = true
 	}
 
 	// Send group start for crate if not started
 	if !c.groupStarts[crateName] {
-		c.sendGroupStart(crateName, parentNames)
+		c.sendGroupStart(enhancedCrateName, parentNames)
 		c.groupStarts[crateName] = true
 		c.crateGroups[crateName] = &CrateGroupInfo{
 			Name:      crateName,
@@ -269,17 +510,28 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 	}
 
 	// Build full parent hierarchy for the test
-	testParents := append(parentNames, crateName)
+	// Start with base hierarchy: [workspace?] + crate (use display name)
+	testParents := append(parentNames, displayCrateName)
 
 	// Handle nested modules as groups
-	if len(parts) > 2 {
+	// For test "grid::storage::tests::indexing", parts = ["grid", "storage", "tests", "indexing"]
+	// We need to create groups for "grid", "storage", and "tests" (all but the last part)
+	if len(parts) > 1 {
 		// We have module hierarchy between crate and test
-		for i := 1; i < len(parts)-1; i++ {
+		for i := 0; i < len(parts)-1; i++ {
 			moduleName := parts[i]
-			moduleParents := append(parentNames, parts[:i]...)
+
+			// Build the full parent hierarchy for this module
+			// For i=0 ("grid"): moduleParents = [crate]
+			// For i=1 ("storage"): moduleParents = [crate, "grid"]
+			// For i=2 ("tests"): moduleParents = [crate, "grid", "storage"]
+			moduleParents := make([]string, len(testParents))
+			copy(moduleParents, testParents)
+
+			// Create unique key for this module within the crate
+			moduleKey := fmt.Sprintf("%s::%s", crateName, strings.Join(parts[:i+1], "::"))
 
 			// Discover and start module group if needed
-			moduleKey := strings.Join(parts[:i+1], "::")
 			if !c.discoveredGroups[moduleKey] {
 				c.sendGroupDiscovered(moduleName, moduleParents)
 				c.discoveredGroups[moduleKey] = true
@@ -287,8 +539,18 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 			if !c.groupStarts[moduleKey] {
 				c.sendGroupStart(moduleName, moduleParents)
 				c.groupStarts[moduleKey] = true
+				// Track module group for later finalization
+				if c.crateGroups[moduleKey] == nil {
+					c.crateGroups[moduleKey] = &CrateGroupInfo{
+						Name:      moduleName,
+						StartTime: time.Now(),
+						Tests:     []CargoTestInfo{},
+						Status:    "RUNNING",
+					}
+				}
 			}
 
+			// Add this module to the parent hierarchy for the next iteration
 			testParents = append(testParents, moduleName)
 		}
 	}
@@ -314,20 +576,38 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 			status = "SKIP"
 		}
 
-		// Send test case event
-		c.sendTestCase(testName, testParents, status, event.ExecTime, event.Stdout, event.Stderr)
+		// Send test case event (convert duration from seconds to milliseconds)
+		durationMs := event.ExecTime * 1000
+		c.sendTestCase(testName, testParents, status, durationMs, event.Stdout, event.Stderr)
+
+		// Create test info
+		testInfo := CargoTestInfo{
+			Name:     testName,
+			Status:   status,
+			Duration: durationMs,
+		}
 
 		// Track test in crate group
 		if group, ok := c.crateGroups[crateName]; ok {
-			group.Tests = append(group.Tests, CargoTestInfo{
-				Name:     testName,
-				Status:   status,
-				Duration: event.ExecTime,
-			})
+			group.Tests = append(group.Tests, testInfo)
 
 			// Update group status if test failed
 			if status == "FAIL" && group.Status != "FAIL" {
 				group.Status = "FAIL"
+			}
+		}
+
+		// Track test in its immediate parent module group
+		// For test "grid::storage::tests::indexing", track in "alacritty-terminal::grid::storage::tests"
+		if len(parts) > 1 {
+			moduleGroupKey := fmt.Sprintf("%s::%s", crateName, strings.Join(parts[:len(parts)-1], "::"))
+			if group, ok := c.crateGroups[moduleGroupKey]; ok {
+				group.Tests = append(group.Tests, testInfo)
+
+				// Update group status if test failed
+				if status == "FAIL" && group.Status != "FAIL" {
+					group.Status = "FAIL"
+				}
 			}
 		}
 
@@ -340,7 +620,18 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 
 // finalizePendingGroups sends result events for any groups that haven't been finalized
 func (c *CargoTestDefinition) finalizePendingGroups() {
-	for crateName, group := range c.crateGroups {
+	// Sort keys to ensure we finalize child groups before parent groups
+	var groupKeys []string
+	for key := range c.crateGroups {
+		groupKeys = append(groupKeys, key)
+	}
+	// Sort by depth (more :: means deeper in hierarchy, should be finalized first)
+	sort.Slice(groupKeys, func(i, j int) bool {
+		return strings.Count(groupKeys[i], "::") > strings.Count(groupKeys[j], "::")
+	})
+
+	for _, groupKey := range groupKeys {
+		group := c.crateGroups[groupKey]
 		if group.Status == "RUNNING" {
 			// Calculate totals
 			passed := 0
@@ -362,19 +653,57 @@ func (c *CargoTestDefinition) finalizePendingGroups() {
 
 			// Determine final status
 			finalStatus := "PASS"
-			if failed > 0 {
+			total := passed + failed + skipped
+			if total == 0 {
+				// No tests at all - mark as NO_TESTS
+				finalStatus = "NO_TESTS"
+			} else if failed > 0 {
 				finalStatus = "FAIL"
 			} else if passed == 0 && skipped > 0 {
 				finalStatus = "SKIP"
 			}
 
-			// Send group result
+			// Build parent hierarchy based on the group key
 			var parentNames []string
 			if c.workspaceName != "" {
 				parentNames = append(parentNames, c.workspaceName)
 			}
 
-			c.sendGroupResult(crateName, parentNames, finalStatus, totalDuration, passed, failed, skipped)
+			// Parse the group key to determine if it's a module or crate
+			if strings.Contains(groupKey, "::") {
+				// This is a module group (e.g., "alacritty-terminal::grid::storage")
+				parts := strings.Split(groupKey, "::")
+				crateName := parts[0]
+				modulePath := parts[1:]
+
+				// Parent hierarchy starts with crate (use display name)
+				displayCrateName := strings.ReplaceAll(crateName, "_", "-")
+				parentNames = append(parentNames, displayCrateName)
+
+				// Add parent modules (all but the last one)
+				for i := 0; i < len(modulePath)-1; i++ {
+					parentNames = append(parentNames, modulePath[i])
+				}
+
+				// The group name is the last part
+				groupName := modulePath[len(modulePath)-1]
+				c.sendGroupResult(groupName, parentNames, finalStatus, totalDuration, passed, failed, skipped)
+			} else {
+				// This is a crate group
+				var displayName string
+				if strings.HasPrefix(groupKey, "doc:") {
+					// Doc-test group: display as "Doc-tests <crate>"
+					actualCrateName := strings.TrimPrefix(groupKey, "doc:")
+					// Convert underscores to hyphens in the crate name
+					actualCrateName = strings.ReplaceAll(actualCrateName, "_", "-")
+					displayName = "Doc-tests " + actualCrateName
+				} else {
+					// Regular crate group - convert underscores to hyphens for display
+					displayName = strings.ReplaceAll(group.Name, "_", "-")
+				}
+				c.sendGroupResult(displayName, parentNames, finalStatus, totalDuration, passed, failed, skipped)
+			}
+
 			group.Status = finalStatus
 		}
 	}

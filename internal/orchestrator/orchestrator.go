@@ -16,10 +16,12 @@ import (
 
 	"github.com/zk/3pio/internal/adapters"
 	"github.com/zk/3pio/internal/ipc"
+	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/report"
 	"github.com/zk/3pio/internal/runner"
 	"github.com/zk/3pio/internal/runner/definitions"
 )
+
 
 // Orchestrator manages the test execution lifecycle
 type Orchestrator struct {
@@ -28,11 +30,12 @@ type Orchestrator struct {
 	ipcManager    *ipc.Manager
 	logger        Logger
 
-	runID    string
-	runDir   string
-	ipcPath  string
-	command  []string
-	exitCode int
+	runID          string
+	runDir         string
+	ipcPath        string
+	command        []string
+	exitCode       int
+	detectedRunner string // Track which test runner was detected
 
 	// Console output state
 	startTime        time.Time
@@ -40,6 +43,10 @@ type Orchestrator struct {
 	failedGroups     int
 	skippedGroups    int
 	totalGroups      int
+	passedTests      int  // Track actual test cases
+	failedTests      int  // Track actual test cases
+	skippedTests     int  // Track actual test cases
+	totalTests       int  // Track actual test cases
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
@@ -49,6 +56,39 @@ type Orchestrator struct {
 
 	// Error capture
 	stderrCapture strings.Builder
+
+	// Cargo test support
+	cargoProcessExited chan<- struct{}
+}
+
+// TailReader implements io.Reader that tails a file until signaled to stop
+type TailReader struct {
+	file          io.ReadCloser
+	processExited <-chan struct{}
+	logger        Logger
+}
+
+func (t *TailReader) Read(p []byte) (n int, err error) {
+	for {
+		n, err = t.file.Read(p)
+		if n > 0 {
+			return n, nil
+		}
+
+		// Check if process has exited
+		select {
+		case <-t.processExited:
+			// Process exited, return EOF
+			return 0, io.EOF
+		default:
+			// Process still running, wait for more data
+			if err == io.EOF {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			return n, err
+		}
+	}
 }
 
 // Logger interface for logging
@@ -70,8 +110,14 @@ func New(config Config) (*Orchestrator, error) {
 		return nil, fmt.Errorf("logger is required")
 	}
 
+	// Cast logger to FileLogger for runner manager
+	fileLogger, ok := config.Logger.(*logger.FileLogger)
+	if !ok {
+		return nil, fmt.Errorf("logger must be a *logger.FileLogger")
+	}
+
 	return &Orchestrator{
-		runnerManager:    runner.NewManager(),
+		runnerManager:    runner.NewManager(fileLogger),
 		logger:           config.Logger,
 		command:          config.Command,
 		displayedGroups:  make(map[string]bool),
@@ -150,20 +196,27 @@ func (o *Orchestrator) Run() error {
 	case "pytest_adapter.py":
 		detectedRunner = "pytest"
 	case "":
-		// Native runner - determine which one based on the definition type
-		switch runnerDef.(type) {
-		case *definitions.GoTestWrapper:
-			detectedRunner = "go test"
-		case *definitions.CargoTestWrapper:
-			detectedRunner = "cargo test"
-		case *definitions.NextestWrapper:
-			detectedRunner = "cargo nextest"
-		default:
+		// Native runner - determine which one based on the underlying definition
+		if nativeRunner, ok := runnerDef.(runner.NativeRunner); ok {
+			switch nativeDef := nativeRunner.GetNativeDefinition().(type) {
+			case *definitions.GoTestDefinition:
+				detectedRunner = "go test"
+			case *definitions.CargoTestDefinition:
+				detectedRunner = "cargo test"
+			case *definitions.NextestDefinition:
+				detectedRunner = "cargo nextest"
+			default:
+				detectedRunner = fmt.Sprintf("unknown native (%T)", nativeDef)
+			}
+		} else {
 			detectedRunner = "unknown native"
 		}
 	default:
 		detectedRunner = "unknown"
 	}
+
+	// Store the detected runner
+	o.detectedRunner = detectedRunner
 
 	// Build modified command for logging
 	var modifiedCommand string
@@ -239,6 +292,14 @@ func (o *Orchestrator) Run() error {
 	// Create command
 	cmd := exec.Command(testCommandSlice[0], testCommandSlice[1:]...)
 
+	// Set working directory to current directory (where 3pio was invoked)
+	if wd, err := os.Getwd(); err == nil {
+		cmd.Dir = wd
+		o.logger.Debug("Set working directory to: %s", wd)
+	} else {
+		o.logger.Error("Failed to get current working directory: %v", err)
+	}
+
 	// Set environment
 	cmd.Env = append(os.Environ(), fmt.Sprintf("THREEPIO_IPC_PATH=%s", o.ipcPath))
 
@@ -265,16 +326,65 @@ func (o *Orchestrator) Run() error {
 	}
 	// NOTE: We'll close outputFile after wg.Wait() to prevent race condition
 
-	// Create pipes for stdout and stderr
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
+	// Create pipes based on runner type
+	var stdoutPipe, stderrPipe io.ReadCloser
+
+	// Check if this is a cargo test runner that needs combined output
+	isCargoTest := false
+	if isNativeRunner {
+		o.logger.Debug("Checking native runner type for cargo test: %T", nativeDef)
+		// Check for both the wrapper and the underlying definition
+		if _, ok := nativeDef.(*definitions.CargoTestWrapper); ok {
+			o.logger.Debug("Detected CargoTestWrapper - enabling combined stderr+stdout")
+			isCargoTest = true
+		} else if _, ok := nativeDef.(*definitions.CargoTestDefinition); ok {
+			o.logger.Debug("Detected CargoTestDefinition - enabling combined stderr+stdout")
+			isCargoTest = true
+		} else {
+			o.logger.Debug("Not a cargo test runner - using separate pipes")
+		}
 	}
 
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
+	// For cargo test, use a temporary file to capture all output without pipe buffer limitations
+	var cargoTempFile *os.File
+	var cargoTailReader io.ReadCloser
+	if isCargoTest && isNativeRunner {
+		// Create a temporary file in the run directory for cargo output
+		tempPath := filepath.Join(o.runDir, "cargo-output.tmp")
+		cargoTempFile, err = os.Create(tempPath)
+		if err != nil {
+			return fmt.Errorf("failed to create temp file for cargo output: %w", err)
+		}
+		o.logger.Debug("Created temporary file for cargo output: %s", tempPath)
+
+		// Redirect both stdout and stderr to the temp file
+		cmd.Stdout = cargoTempFile
+		cmd.Stderr = cargoTempFile
+
+		// Create a reader that will tail the file in real-time
+		// We'll open this after cmd.Start() to ensure the file exists
+		o.logger.Debug("Will tail temporary file for real-time processing")
+
+		// We don't need pipes for cargo test
+		stdoutPipe = nil
+		stderrPipe = nil
+	} else {
+		// For other runners, create separate pipes as usual
+		stdoutPipe, err = cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+
+		stderrPipe, err = cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
 	}
+
+	// Debug: Log the exact command being executed
+	o.logger.Debug("Starting command: %s %v", cmd.Path, cmd.Args)
+	o.logger.Debug("Working directory: %s", cmd.Dir)
+	o.logger.Debug("Environment variables count: %d", len(cmd.Env))
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
@@ -285,38 +395,100 @@ func (o *Orchestrator) Run() error {
 	// Record start time for duration calculation
 	o.startTime = time.Now()
 
+	// For cargo test, open a reader to tail the temporary file
+	if isCargoTest && isNativeRunner && cargoTempFile != nil {
+		// Open the file for reading (tail -f style)
+		tempPath := cargoTempFile.Name()
+		tailFile, err := os.Open(tempPath)
+		if err != nil {
+			return fmt.Errorf("failed to open temp file for reading: %w", err)
+		}
+		cargoTailReader = tailFile
+		o.logger.Debug("Opened temp file for tailing: %s", tempPath)
+	}
+
 	// Process events and output concurrently
 	var wg sync.WaitGroup
 	eventsDone := make(chan struct{})
 
 	// Process IPC events in background
-	wg.Add(1)
+	// Note: NOT part of wg since we wait for it separately via eventsDone
 	go func() {
-		defer wg.Done()
 		defer close(eventsDone)
 		o.processEvents()
 	}()
 
-	// Capture stdout
+	// Handle output capture based on runner type
 	if isNativeRunner {
-		// For native runners, process the JSON output and generate IPC events
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// Process output through the native definition
-			if nd, ok := nativeDef.(interface {
-				ProcessOutput(io.Reader, string) error
-			}); ok {
-				// Create a tee reader to capture output to file and process it
-				teeReader := io.TeeReader(stdoutPipe, outputFile)
-				if err := nd.ProcessOutput(teeReader, o.ipcPath); err != nil {
-					o.logger.Error("Failed to process native output: %v", err)
+		// Check if this is a cargo test runner that needs combined stderr+stdout
+		if isCargoTest && cargoTailReader != nil {
+			// For cargo test, read from the temporary file
+			o.logger.Debug("Starting cargo test output processing from temporary file")
+			wg.Add(1)
+
+			// Create a channel to signal when the process exits
+			processExited := make(chan struct{})
+
+			go func() {
+				defer wg.Done()
+				defer cargoTailReader.Close()
+
+				// Create a custom reader that polls the file until process exits
+				tailReader := &TailReader{
+					file:          cargoTailReader,
+					processExited: processExited,
+					logger:        o.logger,
 				}
-			} else {
-				// Fallback to just capturing
-				o.captureOutput(stdoutPipe, outputFile)
-			}
-		}()
+
+				// Create a tee reader to both process and save to output.log
+				teeReader := io.TeeReader(tailReader, outputFile)
+
+				if nd, ok := nativeDef.(interface {
+					ProcessOutput(io.Reader, string) error
+				}); ok {
+					o.logger.Debug("Calling ProcessOutput on cargo test definition with tail reader")
+					if err := nd.ProcessOutput(teeReader, o.ipcPath); err != nil {
+						o.logger.Error("Failed to process cargo test output: %v", err)
+					}
+					o.logger.Debug("Completed ProcessOutput on cargo test definition")
+				} else {
+					o.logger.Error("Native definition does not implement ProcessOutput interface")
+				}
+
+				o.logger.Debug("Cargo test output processing completed")
+			}()
+
+			// Store the channel so we can signal it when the process exits
+			o.cargoProcessExited = processExited
+
+			// No pipes to handle for cargo test since output goes to file
+		} else {
+			// For other native runners (like go test), process stdout only
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// Process output through the native definition
+				if nd, ok := nativeDef.(interface {
+					ProcessOutput(io.Reader, string) error
+				}); ok {
+					// Create a tee reader to capture output to file and process it
+					teeReader := io.TeeReader(stdoutPipe, outputFile)
+					if err := nd.ProcessOutput(teeReader, o.ipcPath); err != nil {
+						o.logger.Error("Failed to process native output: %v", err)
+					}
+				} else {
+					// Fallback to just capturing
+					o.captureOutput(stdoutPipe, outputFile)
+				}
+			}()
+
+			// Capture stderr separately (to file and error capture buffer)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
+			}()
+		}
 	} else {
 		// For adapter-based runners, just capture to file
 		wg.Add(1)
@@ -324,14 +496,16 @@ func (o *Orchestrator) Run() error {
 			defer wg.Done()
 			o.captureOutput(stdoutPipe, outputFile)
 		}()
-	}
 
-	// Capture stderr (to file and error capture buffer)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
-	}()
+		// Capture stderr (to file and error capture buffer) - only if we have a separate stderr pipe
+		if stderrPipe != nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
+			}()
+		}
+	}
 
 	// Wait for command completion or signal
 	done := make(chan error, 1)
@@ -346,15 +520,30 @@ func (o *Orchestrator) Run() error {
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				o.exitCode = exitErr.ExitCode()
+				o.logger.Debug("Command completed with exit code: %d", exitErr.ExitCode())
 			} else {
 				o.exitCode = 1
+				o.logger.Debug("Command completed with error: %v", err)
 			}
+		} else {
+			o.logger.Debug("Command completed successfully")
 		}
+		// Command finished, signal cargo reader if it exists
+		if o.cargoProcessExited != nil {
+			close(o.cargoProcessExited)
+			o.logger.Debug("Signaled cargo reader that process has exited")
+		}
+		// Wait for readers to finish processing remaining data
+		o.logger.Debug("Command completed, waiting for readers to finish...")
 	case sig := <-sigChan:
 		o.logger.Info("Received signal: %v", sig)
 		_ = cmd.Process.Kill()
 		o.exitCode = 130 // Standard exit code for SIGINT
 	}
+
+	// Wait for output capture to complete
+	wg.Wait()
+	o.logger.Debug("Output capture completed")
 
 	// Stop watching for events (this closes the Events channel and allows processEvents to exit)
 	_ = o.ipcManager.Cleanup()
@@ -363,13 +552,22 @@ func (o *Orchestrator) Run() error {
 	<-eventsDone
 	o.logger.Debug("Event processing completed")
 
-	// Wait for output capture to complete
-	wg.Wait()
 	o.logger.Debug("Output capture completed")
 
 	// NOW it's safe to close the output file after all goroutines are done
 	if err := outputFile.Close(); err != nil {
 		o.logger.Error("Failed to close output file: %v", err)
+	}
+
+	// Clean up cargo temp file if it exists
+	if cargoTempFile != nil {
+		cargoTempFile.Close() // Ensure it's closed
+		tempPath := cargoTempFile.Name()
+		if err := os.Remove(tempPath); err != nil {
+			o.logger.Debug("Failed to remove temp file %s: %v", tempPath, err)
+		} else {
+			o.logger.Debug("Removed temporary file: %s", tempPath)
+		}
 	}
 
 	// All goroutines should be finished at this point
@@ -429,15 +627,30 @@ func (o *Orchestrator) Run() error {
 		fmt.Println("All tests were skipped")
 	}
 
-	// Format results summary in new format
-	if o.skippedGroups > 0 {
-		fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
-			o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
-	} else if o.failedGroups > 0 {
-		fmt.Printf("Results:     %d passed, %d failed, %d total\n",
-			o.passedGroups, o.failedGroups, o.totalGroups)
+	// Format results summary
+	// For cargo test, show test case counts; for others, show group counts
+	if strings.HasPrefix(o.detectedRunner, "cargo") && o.totalTests > 0 {
+		// Show test case counts for cargo
+		if o.skippedTests > 0 {
+			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
+				o.passedTests, o.failedTests, o.skippedTests, o.totalTests)
+		} else if o.failedTests > 0 {
+			fmt.Printf("Results:     %d passed, %d failed, %d total\n",
+				o.passedTests, o.failedTests, o.totalTests)
+		} else {
+			fmt.Printf("Results:     %d passed, %d total\n", o.passedTests, o.totalTests)
+		}
 	} else {
-		fmt.Printf("Results:     %d passed, %d total\n", o.passedGroups, o.totalGroups)
+		// Show group counts for other runners
+		if o.skippedGroups > 0 {
+			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
+				o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
+		} else if o.failedGroups > 0 {
+			fmt.Printf("Results:     %d passed, %d failed, %d total\n",
+				o.passedGroups, o.failedGroups, o.totalGroups)
+		} else {
+			fmt.Printf("Results:     %d passed, %d total\n", o.passedGroups, o.totalGroups)
+		}
 	}
 
 	// Calculate and display elapsed time
@@ -503,14 +716,20 @@ func (o *Orchestrator) makeRelativePath(name string) string {
 func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	switch e := event.(type) {
 	case ipc.CollectionStartEvent:
-		// Display collection start message
-		fmt.Println("Collecting tests...")
+		// Skip collection message for cargo test (it sends too many)
+		if !strings.HasPrefix(o.detectedRunner, "cargo") {
+			// Display collection start message
+			fmt.Println("Collecting tests...")
+		}
 
 	case ipc.CollectionFinishEvent:
-		// Display collection complete message with file count (avoid duplicates)
-		if e.Payload.Collected > 0 && e.Payload.Collected != o.lastCollected {
-			fmt.Printf("Found %d test files\n\n", e.Payload.Collected)
-			o.lastCollected = e.Payload.Collected
+		// Skip collection complete message for cargo test (not meaningful)
+		if !strings.HasPrefix(o.detectedRunner, "cargo") {
+			// Display collection complete message with file count (avoid duplicates)
+			if e.Payload.Collected > 0 && e.Payload.Collected != o.lastCollected {
+				fmt.Printf("Found %d test files\n\n", e.Payload.Collected)
+				o.lastCollected = e.Payload.Collected
+			}
 		}
 
 	case ipc.GroupStartEvent:
@@ -529,6 +748,14 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			e.Payload.Status = "SKIP"
 		}
 
+		// For cargo test, mark groups with 0 tests as NO_TEST
+		if strings.HasPrefix(o.detectedRunner, "cargo") {
+			totalTests := e.Payload.Totals.Passed + e.Payload.Totals.Failed + e.Payload.Totals.Skipped
+			if totalTests == 0 && len(e.Payload.ParentNames) == 0 { // Only for top-level groups
+				o.noTestGroups[e.Payload.GroupName] = true
+			}
+		}
+
 		// Update the report manager with the group result
 		if err := o.reportManager.HandleEvent(e); err != nil {
 			o.logger.Error("Failed to handle group result: %v", err)
@@ -536,7 +763,7 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 
 		// Display hierarchical output when a group completes
 		status := convertStringToTestStatus(e.Payload.Status)
-		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status)
+		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status, e.Payload.Duration)
 
 		// Update group counters for top-level groups
 		if len(e.Payload.ParentNames) == 0 {
@@ -554,6 +781,17 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		// Forward to report manager FIRST
 		if err := o.reportManager.HandleEvent(e); err != nil {
 			o.logger.Error("Failed to handle test case: %v", err)
+		}
+
+		// Track test case counts
+		o.totalTests++
+		switch e.Payload.Status {
+		case "PASS":
+			o.passedTests++
+		case "FAIL":
+			o.failedTests++
+		case "SKIP":
+			o.skippedTests++
 		}
 
 		// Track failed tests for hierarchical display
@@ -621,9 +859,9 @@ func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []strin
 }
 
 // displayGroupResult displays the result of a completed group
-func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string, status ipc.TestStatus) {
-	o.logger.Debug("displayGroupResult called: group=%s, parentNames=%v, status=%s",
-		groupName, parentNames, status)
+func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string, status ipc.TestStatus, duration float64) {
+	o.logger.Debug("displayGroupResult called: group=%s, parentNames=%v, status=%s, duration=%f",
+		groupName, parentNames, status, duration)
 
 	// Normalize paths to match how they're stored in the report manager
 	normalizedGroupName := o.makeRelativePath(groupName)
@@ -657,12 +895,12 @@ func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string
 		}
 
 		o.logger.Debug("Calling displayGroupHierarchy for: %s", groupName)
-		o.displayGroupHierarchy(group, 0)
+		o.displayGroupHierarchy(group, 0, duration)
 	}
 }
 
 // displayGroupHierarchy displays a group and its children with hierarchical indentation
-func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int) {
+func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int, eventDuration float64) {
 	// Only display top-level groups (files) in main output
 	// Subgroups will only be shown if they have failures
 	if len(group.ParentNames) > 0 {
@@ -677,16 +915,23 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	if !group.HasTestCases() {
 		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
 
-		// Check if this is a package with no test files (Go specific)
+		// Check if this is a package with no test files
 		if o.noTestGroups[group.Name] {
 			statusStr = "NO_TESTS"
 		}
 
 		o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
 
+		// Get duration for groups with no tests (cargo reports duration even for 0 tests)
+		durationStr := ""
+		if eventDuration >= 0 {
+			durationSec := eventDuration / 1000.0 // Convert ms to seconds
+			durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
+		}
+
 		// Only show if not pending (pending means it never really ran)
 		if group.Status != report.TestStatusPending {
-			fmt.Printf("%-8s %s\n", statusStr, group.Name)
+			fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
 		}
 		return
 	}
@@ -698,13 +943,22 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// Get duration for this group
 	durationStr := ""
-	groupID := group.ID
-	if startTime, ok := o.groupStartTimes[groupID]; ok {
-		duration := time.Since(startTime).Seconds()
-		if duration > 0.01 { // Only show if > 10ms
-			durationStr = fmt.Sprintf(" (%.2fs)", duration)
+
+	// Check if duration was provided from the event (-1 means no duration available)
+	if eventDuration >= 0 {
+		durationSec := eventDuration / 1000.0 // Convert ms to seconds
+		// Always show duration if provided by the test runner (including 0)
+		durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
+	} else if eventDuration < 0 {
+		// Negative duration means not available, try to calculate from start time
+		groupID := group.ID
+		if startTime, ok := o.groupStartTimes[groupID]; ok {
+			duration := time.Since(startTime).Seconds()
+			if duration > 0.01 { // Only show if > 10ms
+				durationStr = fmt.Sprintf(" (%.2fs)", duration)
+			}
+			delete(o.groupStartTimes, groupID) // Clean up
 		}
-		delete(o.groupStartTimes, groupID) // Clean up
 	}
 
 	// Display the file result using raw groupName
@@ -767,6 +1021,8 @@ func getGroupStatusString(status ipc.TestStatus) string {
 		return "SKIP"
 	case ipc.TestStatusRunning:
 		return "RUNNING"
+	case ipc.TestStatusNoTests:
+		return "NO_TESTS"
 	default:
 		return "PENDING"
 	}
@@ -781,9 +1037,9 @@ func convertStringToTestStatus(status string) ipc.TestStatus {
 		return ipc.TestStatusFail
 	case "SKIP":
 		return ipc.TestStatusSkip
-	case "NOTESTS":
-		// Special status for Go packages with no test files
-		return ipc.TestStatusSkip // Store as SKIP internally
+	case "NOTESTS", "NO_TESTS":
+		// Special status for packages with no test files
+		return ipc.TestStatusNoTests
 	case "PENDING":
 		return ipc.TestStatusPending
 	case "RUNNING":
@@ -806,6 +1062,8 @@ func convertReportStatusToIPC(status report.TestStatus) ipc.TestStatus {
 		return ipc.TestStatusPending
 	case report.TestStatusRunning:
 		return ipc.TestStatusRunning
+	case report.TestStatusNoTests:
+		return ipc.TestStatusNoTests
 	default:
 		return ipc.TestStatusPending
 	}
@@ -838,7 +1096,7 @@ func (o *Orchestrator) displayFinalResults() {
 	for _, group := range rootGroups {
 		// Only display groups that have test cases
 		if group.HasTestCases() {
-			o.displayGroupHierarchy(group, 0)
+			o.displayGroupHierarchy(group, 0, -1) // No duration available in this context (-1 indicates no duration)
 		}
 	}
 }
