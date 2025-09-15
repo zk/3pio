@@ -207,18 +207,25 @@ func (o *Orchestrator) Run() error {
 	case "":
 		// Native runner - determine which one based on the underlying definition
 		if nativeRunner, ok := runnerDef.(runner.NativeRunner); ok {
-			switch nativeDef := nativeRunner.GetNativeDefinition().(type) {
+			nativeDef := nativeRunner.GetNativeDefinition()
+			o.logger.Debug("Native definition type: %T", nativeDef)
+			switch nativeDef.(type) {
 			case *definitions.GoTestDefinition:
 				detectedRunner = "go test"
+				o.logger.Debug("Detected as go test")
 			case *definitions.CargoTestDefinition:
 				detectedRunner = "cargo test"
+				o.logger.Debug("Detected as cargo test")
 			case *definitions.NextestDefinition:
 				detectedRunner = "cargo nextest"
+				o.logger.Debug("Detected as cargo nextest")
 			default:
 				detectedRunner = fmt.Sprintf("unknown native (%T)", nativeDef)
+				o.logger.Debug("Unknown native type: %T", nativeDef)
 			}
 		} else {
 			detectedRunner = "unknown native"
+			o.logger.Debug("Not a native runner")
 		}
 	default:
 		detectedRunner = "unknown"
@@ -327,67 +334,44 @@ func (o *Orchestrator) Run() error {
 	// Connect stdin to allow interactive prompts
 	cmd.Stdin = os.Stdin
 
-	// Capture output (append to existing file with header)
+	// Create output.log for capturing all command output
 	outputPath := filepath.Join(o.runDir, "output.log")
-	outputFile, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND, 0644)
+	outputFile, err := os.Create(outputPath)
 	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
+		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	// NOTE: We'll close outputFile after wg.Wait() to prevent race condition
 
-	// Create pipes based on runner type
-	var stdoutPipe, stderrPipe io.ReadCloser
+	// Universal approach: ALL runners write directly to output.log
+	// This eliminates race conditions, pipe buffer limitations, and redundant files
+	o.logger.Debug("Using output.log directly for all runners")
 
-	// Check if this is a cargo test runner that needs combined output
-	isCargoTest := false
+	// Determine if stderr should be kept separate (only for Go test)
+	var keepStderrSeparate bool
 	if isNativeRunner {
-		o.logger.Debug("Checking native runner type for cargo test: %T", nativeDef)
-		// Check for both the wrapper and the underlying definition
-		if _, ok := nativeDef.(*definitions.CargoTestWrapper); ok {
-			o.logger.Debug("Detected CargoTestWrapper - enabling combined stderr+stdout")
-			isCargoTest = true
-		} else if _, ok := nativeDef.(*definitions.CargoTestDefinition); ok {
-			o.logger.Debug("Detected CargoTestDefinition - enabling combined stderr+stdout")
-			isCargoTest = true
-		} else {
-			o.logger.Debug("Not a cargo test runner - using separate pipes")
+		if _, ok := nativeDef.(*definitions.GoTestDefinition); ok {
+			keepStderrSeparate = true
+			o.logger.Debug("Go test detected - keeping stderr separate")
 		}
 	}
+	if !keepStderrSeparate {
+		o.logger.Debug("Combining stdout and stderr into output.log")
+	}
 
-	// For cargo test, use a temporary file to capture all output without pipe buffer limitations
-	var cargoTempFile *os.File
-	var cargoTailReader io.ReadCloser
-	if isCargoTest && isNativeRunner {
-		// Create a temporary file in the run directory for cargo output
-		tempPath := filepath.Join(o.runDir, "cargo-output.tmp")
-		cargoTempFile, err = os.Create(tempPath)
-		if err != nil {
-			return fmt.Errorf("failed to create temp file for cargo output: %w", err)
-		}
-		o.logger.Debug("Created temporary file for cargo output: %s", tempPath)
+	// Configure command output redirection directly to output.log
+	cmd.Stdout = outputFile
 
-		// Redirect both stdout and stderr to the temp file
-		cmd.Stdout = cargoTempFile
-		cmd.Stderr = cargoTempFile
-
-		// Create a reader that will tail the file in real-time
-		// We'll open this after cmd.Start() to ensure the file exists
-		o.logger.Debug("Will tail temporary file for real-time processing")
-
-		// We don't need pipes for cargo test
-		stdoutPipe = nil
-		stderrPipe = nil
-	} else {
-		// For other runners, create separate pipes as usual
-		stdoutPipe, err = cmd.StdoutPipe()
-		if err != nil {
-			return fmt.Errorf("failed to create stdout pipe: %w", err)
-		}
-
+	var stderrPipe io.ReadCloser
+	if keepStderrSeparate {
+		// Keep stderr separate (for Go test only)
 		stderrPipe, err = cmd.StderrPipe()
 		if err != nil {
 			return fmt.Errorf("failed to create stderr pipe: %w", err)
 		}
+		o.logger.Debug("Keeping stderr separate for Go test")
+	} else {
+		// Redirect both stdout and stderr to output.log
+		cmd.Stderr = outputFile
 	}
 
 	// Debug: Log the exact command being executed
@@ -404,17 +388,13 @@ func (o *Orchestrator) Run() error {
 	// Record start time for duration calculation
 	o.startTime = time.Now()
 
-	// For cargo test, open a reader to tail the temporary file
-	if isCargoTest && isNativeRunner && cargoTempFile != nil {
-		// Open the file for reading (tail -f style)
-		tempPath := cargoTempFile.Name()
-		tailFile, err := os.Open(tempPath)
-		if err != nil {
-			return fmt.Errorf("failed to open temp file for reading: %w", err)
-		}
-		cargoTailReader = tailFile
-		o.logger.Debug("Opened temp file for tailing: %s", tempPath)
+	// Open output.log for reading (tail -f style)
+	// This works for ALL runners since they all write directly to output.log
+	tailReader, err := os.Open(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open output.log for reading: %w", err)
 	}
+	o.logger.Debug("Opened output.log for tailing: %s", outputPath)
 
 	// Process events and output concurrently
 	var wg sync.WaitGroup
@@ -427,93 +407,45 @@ func (o *Orchestrator) Run() error {
 		o.processEvents()
 	}()
 
-	// Handle output capture based on runner type
-	if isNativeRunner {
-		// Check if this is a cargo test runner that needs combined stderr+stdout
-		if isCargoTest && cargoTailReader != nil {
-			// For cargo test, read from the temporary file
-			o.logger.Debug("Starting cargo test output processing from temporary file")
-			wg.Add(1)
+	// Universal output handling for ALL runners
+	// Create a channel to signal when the process exits
+	processExited := make(chan struct{})
+	o.cargoProcessExited = processExited // Used by TailReader
 
-			// Create a channel to signal when the process exits
-			processExited := make(chan struct{})
-
-			go func() {
-				defer wg.Done()
-				defer cargoTailReader.Close()
-
-				// Create a custom reader that polls the file until process exits
-				tailReader := &TailReader{
-					file:          cargoTailReader,
-					processExited: processExited,
-					logger:        o.logger,
-				}
-
-				// Create a tee reader to both process and save to output.log
-				teeReader := io.TeeReader(tailReader, outputFile)
-
-				if nd, ok := nativeDef.(interface {
-					ProcessOutput(io.Reader, string) error
-				}); ok {
-					o.logger.Debug("Calling ProcessOutput on cargo test definition with tail reader")
-					if err := nd.ProcessOutput(teeReader, o.ipcPath); err != nil {
-						o.logger.Error("Failed to process cargo test output: %v", err)
-					}
-					o.logger.Debug("Completed ProcessOutput on cargo test definition")
-				} else {
-					o.logger.Error("Native definition does not implement ProcessOutput interface")
-				}
-
-				o.logger.Debug("Cargo test output processing completed")
-			}()
-
-			// Store the channel so we can signal it when the process exits
-			o.cargoProcessExited = processExited
-
-			// No pipes to handle for cargo test since output goes to file
-		} else {
-			// For other native runners (like go test), process stdout only
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				// Process output through the native definition
-				if nd, ok := nativeDef.(interface {
-					ProcessOutput(io.Reader, string) error
-				}); ok {
-					// Create a tee reader to capture output to file and process it
-					teeReader := io.TeeReader(stdoutPipe, outputFile)
-					if err := nd.ProcessOutput(teeReader, o.ipcPath); err != nil {
-						o.logger.Error("Failed to process native output: %v", err)
-					}
-				} else {
-					// Fallback to just capturing
-					o.captureOutput(stdoutPipe, outputFile)
-				}
-			}()
-
-			// Capture stderr separately (to file and error capture buffer)
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
-			}()
-		}
-	} else {
-		// For adapter-based runners, just capture to file
+	// Process output from output.log for native runners
+	if isNativeRunner && tailReader != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			o.captureOutput(stdoutPipe, outputFile)
-		}()
+			defer tailReader.Close()
 
-		// Capture stderr (to file and error capture buffer) - only if we have a separate stderr pipe
-		if stderrPipe != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				o.captureOutput(stderrPipe, outputFile, &o.stderrCapture)
-			}()
-		}
+			// Create a custom reader that polls the file until process exits
+			fileReader := &TailReader{
+				file:          tailReader,
+				processExited: processExited,
+				logger:        o.logger,
+			}
+
+			// Process output through native definition (no TeeReader needed)
+			if nd, ok := nativeDef.(interface {
+				ProcessOutput(io.Reader, string) error
+			}); ok {
+				o.logger.Debug("Processing output for native runner")
+				if err := nd.ProcessOutput(fileReader, o.ipcPath); err != nil {
+					o.logger.Error("Failed to process native output: %v", err)
+				}
+			}
+		}()
+	}
+
+	// Handle stderr separately if needed (Go test only)
+	if stderrPipe != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Capture stderr to the error buffer
+			io.Copy(&o.stderrCapture, stderrPipe)
+		}()
 	}
 
 	// Wait for command completion or signal
@@ -566,17 +498,6 @@ func (o *Orchestrator) Run() error {
 	// NOW it's safe to close the output file after all goroutines are done
 	if err := outputFile.Close(); err != nil {
 		o.logger.Error("Failed to close output file: %v", err)
-	}
-
-	// Clean up cargo temp file if it exists
-	if cargoTempFile != nil {
-		cargoTempFile.Close() // Ensure it's closed
-		tempPath := cargoTempFile.Name()
-		if err := os.Remove(tempPath); err != nil {
-			o.logger.Debug("Failed to remove temp file %s: %v", tempPath, err)
-		} else {
-			o.logger.Debug("Removed temporary file: %s", tempPath)
-		}
 	}
 
 	// All goroutines should be finished at this point
