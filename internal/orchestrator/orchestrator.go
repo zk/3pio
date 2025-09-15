@@ -111,13 +111,22 @@ func New(config Config) (*Orchestrator, error) {
 	}
 
 	// Cast logger to FileLogger for runner manager
-	fileLogger, ok := config.Logger.(*logger.FileLogger)
-	if !ok {
-		return nil, fmt.Errorf("logger must be a *logger.FileLogger")
+	// In tests, we use TestLogger which doesn't need file operations
+	var runnerMgr *runner.Manager
+	if fileLogger, ok := config.Logger.(*logger.FileLogger); ok {
+		runnerMgr = runner.NewManager(fileLogger)
+	} else if testLogger, ok := config.Logger.(*logger.TestLogger); ok {
+		// For tests, create a temporary FileLogger for the runner manager
+		// The test logger will still capture all logs via the orchestrator's logger field
+		tempLogger, _ := logger.NewFileLogger()
+		runnerMgr = runner.NewManager(tempLogger)
+		_ = testLogger // avoid unused variable warning
+	} else {
+		return nil, fmt.Errorf("logger must be a *logger.FileLogger or *logger.TestLogger")
 	}
 
 	return &Orchestrator{
-		runnerManager:    runner.NewManager(fileLogger),
+		runnerManager:    runnerMgr,
 		logger:           config.Logger,
 		command:          config.Command,
 		displayedGroups:  make(map[string]bool),

@@ -55,6 +55,7 @@ type CrateGroupInfo struct {
 	StartTime time.Time
 	Tests     []CargoTestInfo
 	Status    string
+	Finalized bool // Whether the group result has been sent
 }
 
 // CargoTestInfo tracks individual test information
@@ -361,6 +362,16 @@ func (c *CargoTestDefinition) processSuiteEvent(event *CargoTestEvent) error {
 			c.crateTestCounts[c.currentCrate] = event.TestCount
 			c.crateTestsSeen[c.currentCrate] = 0
 
+			// Create the crate group if it doesn't exist
+			if c.crateGroups[c.currentCrate] == nil {
+				c.crateGroups[c.currentCrate] = &CrateGroupInfo{
+					Name:      c.currentCrate,
+					StartTime: time.Now(),
+					Tests:     []CargoTestInfo{},
+					Status:    "RUNNING",
+				}
+			}
+
 			c.logger.Debug("Suite started for crate %s with %d tests", c.currentCrate, event.TestCount)
 		} else {
 			c.logger.Debug("Suite started but no current crate set (test count: %d)", event.TestCount)
@@ -385,6 +396,8 @@ func (c *CargoTestDefinition) processSuiteEvent(event *CargoTestEvent) error {
 				if strings.HasPrefix(crateName, "doc:") {
 					// Doc-test: display as "Doc-tests <crate>"
 					actualCrateName := strings.TrimPrefix(crateName, "doc:")
+					// Convert underscores to hyphens for consistency
+					actualCrateName = strings.ReplaceAll(actualCrateName, "_", "-")
 					displayCrateName = "Doc-tests " + actualCrateName
 				} else {
 					// Regular test: convert underscores to hyphens for display
@@ -408,6 +421,12 @@ func (c *CargoTestDefinition) processSuiteEvent(event *CargoTestEvent) error {
 				// Groups with 0 tests should have NO_TESTS status
 				c.sendGroupResult(displayCrateName, nil, "NO_TESTS", durationMs, 0, 0, 0)
 
+				// Mark this group as finalized
+				if group, ok := c.crateGroups[crateName]; ok {
+					group.Finalized = true
+					group.Status = "NO_TESTS"
+				}
+
 				c.logger.Debug("Sent group events for empty suite: %s", displayCrateName)
 			}
 
@@ -420,14 +439,29 @@ func (c *CargoTestDefinition) processSuiteEvent(event *CargoTestEvent) error {
 						expected, crateName, seen, actualTotal)
 				}
 			}
+		}
 
-			// Clear current crate since this suite is done
+		// Determine the actual test count to send
+		// When tests fail, cargo sends TestCount: 0, but we want the actual count
+		testCountToSend := event.TestCount
+		if testCountToSend == 0 && c.currentCrate != "" {
+			// Use the test count we tracked from the suite start event
+			if count, ok := c.crateTestCounts[c.currentCrate]; ok {
+				testCountToSend = count
+			} else {
+				// Fallback to the sum of passed/failed/ignored
+				testCountToSend = event.Passed + event.Failed + event.Ignored
+			}
+		}
+
+		// Clear current crate since this suite is done
+		if c.currentCrate != "" {
 			c.currentCrate = ""
 		}
 
-		// Send collection finish event
-		c.logger.Debug("Sending collectionFinish with test count: %d", event.TestCount)
-		c.sendCollectionFinish(event.TestCount)
+		// Send collection finish event with the correct test count
+		c.logger.Debug("Sending collectionFinish with test count: %d", testCountToSend)
+		c.sendCollectionFinish(testCountToSend)
 	}
 	return nil
 }
@@ -444,15 +478,6 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 		// No current crate - this shouldn't happen in normal flow
 		c.logger.Debug("No current crate context for test: %s", event.Name)
 		return nil
-	}
-
-	// Track that we've seen a test for this crate
-	c.crateTestsSeen[crateName]++
-
-	// Log progress for debugging
-	if expected, ok := c.crateTestCounts[crateName]; ok {
-		seen := c.crateTestsSeen[crateName]
-		c.logger.Debug("Crate %s: test %d/%d - %s", crateName, seen, expected, event.Name)
 	}
 
 	// Parse test name to extract module hierarchy (without crate prefix)
@@ -483,12 +508,25 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 	}
 
 	// Convert underscores to hyphens for display
-	displayCrateName := strings.ReplaceAll(crateName, "_", "-")
+	var displayCrateName string
+	var enhancedCrateName string
 
-	// Build enhanced crate name with description
-	enhancedCrateName := displayCrateName
-	if crateDesc != "" {
-		enhancedCrateName = fmt.Sprintf("%s (%s)", displayCrateName, crateDesc)
+	// Check if this is a doc-test crate
+	if strings.HasPrefix(crateName, "doc:") {
+		// Doc-test: display as "Doc-tests <crate>"
+		actualCrateName := strings.TrimPrefix(crateName, "doc:")
+		// Convert underscores to hyphens for consistency
+		actualCrateName = strings.ReplaceAll(actualCrateName, "_", "-")
+		displayCrateName = "Doc-tests " + actualCrateName
+		enhancedCrateName = displayCrateName
+	} else {
+		// Regular crate: convert underscores to hyphens
+		displayCrateName = strings.ReplaceAll(crateName, "_", "-")
+		// Build enhanced crate name with description
+		enhancedCrateName = displayCrateName
+		if crateDesc != "" {
+			enhancedCrateName = fmt.Sprintf("%s (%s)", displayCrateName, crateDesc)
+		}
 	}
 
 	// Ensure crate group exists
@@ -511,6 +549,7 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 
 	// Build full parent hierarchy for the test
 	// Start with base hierarchy: [workspace?] + crate (use display name)
+	// For doc-tests, use the full "Doc-tests <crate>" format
 	testParents := append(parentNames, displayCrateName)
 
 	// Handle nested modules as groups
@@ -568,6 +607,15 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 		}
 
 	case "ok", "failed", "ignored":
+		// Track that we've seen a test for this crate (only count completed tests)
+		c.crateTestsSeen[crateName]++
+
+		// Log progress for debugging
+		if expected, ok := c.crateTestCounts[crateName]; ok {
+			seen := c.crateTestsSeen[crateName]
+			c.logger.Debug("Crate %s: test %d/%d - %s", crateName, seen, expected, event.Name)
+		}
+
 		// Map status
 		status := "PASS"
 		if event.Event == "failed" {
@@ -620,6 +668,8 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 
 // finalizePendingGroups sends result events for any groups that haven't been finalized
 func (c *CargoTestDefinition) finalizePendingGroups() {
+	c.logger.Debug("finalizePendingGroups called with %d groups", len(c.crateGroups))
+
 	// Sort keys to ensure we finalize child groups before parent groups
 	var groupKeys []string
 	for key := range c.crateGroups {
@@ -632,7 +682,11 @@ func (c *CargoTestDefinition) finalizePendingGroups() {
 
 	for _, groupKey := range groupKeys {
 		group := c.crateGroups[groupKey]
-		if group.Status == "RUNNING" {
+		c.logger.Debug("Group %s has status: %s, finalized: %v", groupKey, group.Status, group.Finalized)
+		// Finalize groups that haven't been finalized yet
+		if !group.Finalized {
+			c.logger.Debug("Finalizing group: %s", groupKey)
+
 			// Calculate totals
 			passed := 0
 			failed := 0
@@ -677,7 +731,15 @@ func (c *CargoTestDefinition) finalizePendingGroups() {
 				modulePath := parts[1:]
 
 				// Parent hierarchy starts with crate (use display name)
-				displayCrateName := strings.ReplaceAll(crateName, "_", "-")
+				var displayCrateName string
+				if strings.HasPrefix(crateName, "doc:") {
+					// Doc-test: display as "Doc-tests <crate>"
+					actualCrateName := strings.TrimPrefix(crateName, "doc:")
+					actualCrateName = strings.ReplaceAll(actualCrateName, "_", "-")
+					displayCrateName = "Doc-tests " + actualCrateName
+				} else {
+					displayCrateName = strings.ReplaceAll(crateName, "_", "-")
+				}
 				parentNames = append(parentNames, displayCrateName)
 
 				// Add parent modules (all but the last one)
@@ -704,7 +766,9 @@ func (c *CargoTestDefinition) finalizePendingGroups() {
 				c.sendGroupResult(displayName, parentNames, finalStatus, totalDuration, passed, failed, skipped)
 			}
 
+			// Mark this group as finalized
 			group.Status = finalStatus
+			group.Finalized = true
 		}
 	}
 }

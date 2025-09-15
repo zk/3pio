@@ -41,7 +41,7 @@ func TestCargoTestBasicProject(t *testing.T) {
 			checkOutput: []string{
 				"test_app_creation",        // from app crate
 				"test_engine_creation",     // from core crate
-				"test_format_output",       // from utils crate
+				"test_capitalize",          // from utils crate
 			},
 		},
 		{

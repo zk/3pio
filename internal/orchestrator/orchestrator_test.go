@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,31 +8,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/zk/3pio/internal/logger"
 )
-
-// mockLogger for testing
-type mockLogger struct {
-	debugMessages []string
-	errorMessages []string
-	infoMessages  []string
-}
-
-func (l *mockLogger) Debug(format string, args ...interface{}) {
-	l.debugMessages = append(l.debugMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
-}
-
-func (l *mockLogger) Error(format string, args ...interface{}) {
-	l.errorMessages = append(l.errorMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
-}
-
-func (l *mockLogger) Info(format string, args ...interface{}) {
-	l.infoMessages = append(l.infoMessages, strings.TrimSpace(fmt.Sprintf(format, args...)))
-}
 
 func TestOrchestrator_New(t *testing.T) {
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -97,7 +79,7 @@ func TestOrchestrator_RunnerDetection(t *testing.T) {
 
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -118,7 +100,7 @@ func TestOrchestrator_RunnerDetection(t *testing.T) {
 func TestOrchestrator_GetExitCode(t *testing.T) {
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -138,7 +120,7 @@ func TestOrchestrator_GetExitCode(t *testing.T) {
 func TestOrchestrator_TestCountsWithSkippedTests(t *testing.T) {
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -194,7 +176,7 @@ func TestOrchestrator_RunWithInvalidRunner(t *testing.T) {
 
 	config := Config{
 		Command: []string{"unknown-test-runner"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -309,7 +291,7 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -339,10 +321,10 @@ func TestOrchestrator_DirectoryCreation(t *testing.T) {
 }
 
 func TestOrchestrator_ConsoleLogging(t *testing.T) {
-	logger := &mockLogger{}
+	testLogger := logger.NewTestLogger()
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  logger,
+		Logger:  testLogger,
 	}
 
 	orch, err := New(config)
@@ -364,21 +346,24 @@ func TestOrchestrator_ConsoleLogging(t *testing.T) {
 	orch.logger.Error("Test error message")
 
 	// Verify messages were captured
-	if len(logger.debugMessages) != 1 || logger.debugMessages[0] != "Test debug message" {
-		t.Errorf("Expected debug message to be captured, got: %v", logger.debugMessages)
+	debugMsgs := testLogger.GetDebugMessages()
+	if len(debugMsgs) != 1 || debugMsgs[0] != "Test debug message" {
+		t.Errorf("Expected debug message to be captured, got: %v", debugMsgs)
 	}
-	if len(logger.infoMessages) != 1 || logger.infoMessages[0] != "Test info message" {
-		t.Errorf("Expected info message to be captured, got: %v", logger.infoMessages)
+	infoMsgs := testLogger.GetInfoMessages()
+	if len(infoMsgs) != 1 || infoMsgs[0] != "Test info message" {
+		t.Errorf("Expected info message to be captured, got: %v", infoMsgs)
 	}
-	if len(logger.errorMessages) != 1 || logger.errorMessages[0] != "Test error message" {
-		t.Errorf("Expected error message to be captured, got: %v", logger.errorMessages)
+	errorMsgs := testLogger.GetErrorMessages()
+	if len(errorMsgs) != 1 || errorMsgs[0] != "Test error message" {
+		t.Errorf("Expected error message to be captured, got: %v", errorMsgs)
 	}
 }
 
 func TestOrchestrator_UpdateDisplayedFiles(t *testing.T) {
 	config := Config{
 		Command: []string{"npm", "test"},
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)

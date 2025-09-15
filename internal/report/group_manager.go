@@ -10,8 +10,14 @@ import (
 	"time"
 
 	"github.com/zk/3pio/internal/ipc"
-	"github.com/zk/3pio/internal/logger"
 )
+
+// Logger interface for debug logging
+type Logger interface {
+	Debug(format string, args ...interface{})
+	Error(format string, args ...interface{})
+	Info(format string, args ...interface{})
+}
 
 // GroupManager manages the hierarchical test group state
 type GroupManager struct {
@@ -20,7 +26,7 @@ type GroupManager struct {
 	rootGroups []*TestGroup          // Top-level groups (typically files)
 	runDir     string
 	ipcPath    string
-	logger     *logger.FileLogger
+	logger     Logger
 
 	// Debouncing for report generation
 	pendingUpdates map[string]time.Time // Group ID -> last update time
@@ -29,7 +35,7 @@ type GroupManager struct {
 }
 
 // NewGroupManager creates a new GroupManager instance
-func NewGroupManager(runDir string, ipcPath string, logger *logger.FileLogger) *GroupManager {
+func NewGroupManager(runDir string, ipcPath string, logger Logger) *GroupManager {
 	return &GroupManager{
 		groups:         make(map[string]*TestGroup),
 		rootGroups:     make([]*TestGroup, 0),
@@ -214,6 +220,8 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 		group.Status = TestStatusFail
 	case "SKIP":
 		group.Status = TestStatusSkip
+	case "NO_TESTS":
+		group.Status = TestStatusNoTests
 	default:
 		group.Status = TestStatusPending
 	}

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zk/3pio/internal/logger"
 )
 
 func TestOrchestrator_FileLocations(t *testing.T) {
@@ -22,7 +24,7 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 
 	config := Config{
 		Command: []string{"npm", "test"}, // Use npm test which will be recognized
-		Logger:  &mockLogger{},
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
