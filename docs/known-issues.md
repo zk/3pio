@@ -2,6 +2,18 @@
 
 This document describes known issues, limitations, and workarounds for 3pio.
 
+## Error Display Behavior
+
+### Configuration and Startup Errors
+**Important**: As of the latest version, 3pio now displays configuration and startup errors directly in the console output for immediate user feedback. This includes:
+- Missing test files errors
+- Syntax errors in test files
+- Test runner configuration issues
+- Missing dependencies
+- Invalid command arguments
+
+The orchestrator automatically detects these types of errors and displays the relevant error messages from the test runner's output, ensuring users don't have to dig through log files to understand what went wrong.
+
 ## Test Discovery
 
 3pio uses **dynamic test discovery** as the standard approach:

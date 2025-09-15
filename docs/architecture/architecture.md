@@ -294,17 +294,29 @@ tests/                  # Integration tests and fixtures
 
 ## Error Handling
 
+### Error Display Strategy
+- **Configuration errors are shown directly in console output** for immediate user feedback
+- The orchestrator detects configuration/startup errors by checking:
+  - Zero test groups discovered
+  - Non-standard exit codes (not 0 or 1)
+  - No test execution activity
+- When configuration errors are detected, the actual error message from output.log is displayed to the user
+- This ensures users see errors like missing test files, syntax errors, or configuration problems immediately
+
 ### Startup Failures
-- Test runner not found → Clear error message
-- Permission issues → Fallback paths
-- Missing dependencies → Helpful suggestions
+- Test runner not found → Clear error message displayed in console
+- Permission issues → Fallback paths with error notification
+- Missing dependencies → Helpful suggestions shown to user
+- Configuration errors → Full error output displayed from test runner
 
 ### Runtime Failures
 - Process crashes → Partial reports saved
 - Signal interruption → Graceful shutdown
 - IPC failures → Continue with degraded functionality
+- Test failures → Reported in structured format
 
 ### Recovery Mechanisms
 - Incremental writes ensure partial data preserved
 - File handles properly closed on exit
 - Exit codes accurately mirrored
+- Error messages preserved in output.log for debugging
