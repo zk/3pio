@@ -23,7 +23,7 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	}
 
 	config := Config{
-		Command: []string{"npm", "test"}, // Use npm test which will be recognized
+		Command: []string{"echo", "test"}, // Use echo which is always available instead of npm
 		Logger:  logger.NewTestLogger(),
 	}
 
@@ -36,7 +36,7 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	}()
 
 	// Run the orchestrator which will initialize paths
-	// It will fail but that's ok - we just need initialization
+	// It will fail to detect a test runner but that's ok - we just need path initialization
 	err = orch.Run()
 	if err != nil {
 		t.Logf("Run() returned error (expected): %v", err)
