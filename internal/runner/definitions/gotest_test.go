@@ -579,6 +579,7 @@ func TestGoTestDefinition_ProcessOutput(t *testing.T) {
 	pkg := g.packageGroups["github.com/test/pkg"]
 	if pkg == nil {
 		t.Fatal("Package not found")
+		return
 	}
 
 	pkgStatus := g.packageStatuses["github.com/test/pkg"]
