@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: '1.23'
-  NODE_VERSION: '18'
+  GO_VERSION: '1.25.1'
+  NODE_VERSION: '22'
 
 jobs:
   test:
@@ -34,7 +34,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.9'
 
       - name: Install pytest
         run: pip install pytest
@@ -152,7 +152,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.9'
 
       - name: Install pytest
         run: pip install pytest
