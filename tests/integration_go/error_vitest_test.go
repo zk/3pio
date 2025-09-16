@@ -30,7 +30,7 @@ func TestVitestFailedTestsReporting(t *testing.T) {
 	}
 
 	// Should show failed test file in the new inline format
-	if !strings.Contains(output, "FAIL") {
+	if !strings.Contains(output, "failures") {
 		t.Error("Should show failed test file")
 	}
 
