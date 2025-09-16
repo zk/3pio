@@ -36,11 +36,15 @@ type Manager struct {
 	stdoutBuffers map[string][]string
 	stderrBuffers map[string][]string
 
+	// Debouncing for main report writes
+	writeTimer   *time.Timer
+	writeMutex   sync.Mutex
+	pendingWrite bool
+
 	mu           sync.RWMutex
 	debounceTime time.Duration
 	maxWaitTime  time.Duration
 }
-
 
 // NewManager creates a new report manager
 func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRunner string, modifiedCommand string) (*Manager, error) {
@@ -78,7 +82,8 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		outputFile:      outputFile,
 		stdoutBuffers:   make(map[string][]string),
 		stderrBuffers:   make(map[string][]string),
-		debounceTime:    100 * time.Millisecond,
+		pendingWrite:    false,
+		debounceTime:    200 * time.Millisecond,
 		maxWaitTime:     500 * time.Millisecond,
 	}, nil
 }
@@ -124,25 +129,45 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	case ipc.CollectionErrorEvent:
 		return m.handleCollectionError(e)
 
-	// Group events - forward to GroupManager
+	// Group events - forward to GroupManager and trigger report updates
 	case ipc.GroupDiscoveredEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessGroupDiscovered(e)
+			err := m.groupManager.ProcessGroupDiscovered(e)
+			if err != nil {
+				return err
+			}
+			// Schedule test-run.md update when new groups are discovered
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupStartEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessGroupStart(e)
+			err := m.groupManager.ProcessGroupStart(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md to show group as RUNNING
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupResultEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessGroupResult(e)
+			err := m.groupManager.ProcessGroupResult(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md with final group status
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupTestCaseEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessTestCase(e)
+			err := m.groupManager.ProcessTestCase(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md with incremental test counts
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupStdoutChunkEvent:
@@ -211,9 +236,37 @@ func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
 
 // scheduleWrite schedules a debounced state write
 func (m *Manager) scheduleWrite() error {
-	// For now, write immediately
-	// TODO: Implement debouncing for state writes
-	return m.writeState()
+	m.writeMutex.Lock()
+	defer m.writeMutex.Unlock()
+
+	m.pendingWrite = true
+
+	// Cancel existing timer
+	if m.writeTimer != nil {
+		m.writeTimer.Stop()
+	}
+
+	// Schedule write after debounceTime of inactivity
+	m.writeTimer = time.AfterFunc(m.debounceTime, func() {
+		m.flushWrite()
+	})
+
+	return nil
+}
+
+// flushWrite executes pending write to disk
+func (m *Manager) flushWrite() {
+	m.writeMutex.Lock()
+	if !m.pendingWrite {
+		m.writeMutex.Unlock()
+		return
+	}
+	m.pendingWrite = false
+	m.writeMutex.Unlock()
+
+	if err := m.writeState(); err != nil {
+		m.logger.Error("Failed to write state: %v", err)
+	}
 }
 
 // writeState writes the current state to test-run.md
@@ -313,6 +366,7 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 		passedTestCases := 0
 		failedTestCases := 0
 		skippedTestCases := 0
+		runningTestCases := 0
 		var totalDuration float64
 
 		for _, group := range rootGroups {
@@ -322,11 +376,15 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 			passedTestCases += countPassedTestCases(group)
 			failedTestCases += countFailedTestCases(group)
 			skippedTestCases += countSkippedTestCases(group)
+			runningTestCases += countRunningTestCases(group)
 			totalDuration += group.Duration.Seconds()
 		}
 
 		sb.WriteString(fmt.Sprintf("- Total test cases: %d\n", totalTestCases))
 		sb.WriteString(fmt.Sprintf("- Test cases completed: %d\n", completedTestCases))
+		if runningTestCases > 0 {
+			sb.WriteString(fmt.Sprintf("- Test cases running: %d\n", runningTestCases))
+		}
 		sb.WriteString(fmt.Sprintf("- Test cases passed: %d\n", passedTestCases))
 		sb.WriteString(fmt.Sprintf("- Test cases failed: %d\n", failedTestCases))
 		sb.WriteString(fmt.Sprintf("- Test cases skipped: %d\n", skippedTestCases))
@@ -346,9 +404,36 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 			}
 			filename := filepath.Base(group.Name)
 
-			// Tests column - show breakdown of test results like individual group reports
+			// Tests column - show breakdown of test results including running tests
 			var testsStr string
-			if group.Stats.TotalTests > 0 {
+			runningCount := countRunningTestCases(group)
+			totalCount := countTotalTestCases(group)
+
+			if statusStr == "RUNNING" || runningCount > 0 {
+				// Show running progress
+				parts := []string{}
+				if group.Stats.PassedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
+				}
+				if group.Stats.FailedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", group.Stats.FailedTests))
+				}
+				if runningCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d running", runningCount))
+				}
+				if group.Stats.SkippedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
+				}
+				if totalCount > 0 && len(parts) == 0 {
+					// No tests have started yet
+					testsStr = fmt.Sprintf("%d pending", totalCount)
+				} else if len(parts) > 0 {
+					testsStr = strings.Join(parts, ", ")
+				} else {
+					testsStr = "-"
+				}
+			} else if group.Stats.TotalTests > 0 {
+				// Completed group - show final results
 				parts := []string{}
 				if group.Stats.PassedTests > 0 {
 					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
@@ -364,7 +449,22 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 				testsStr = "0 tests"
 			}
 
-			durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
+			// Duration column - show elapsed time for running groups, final duration for completed
+			var durationStr string
+			if statusStr == "RUNNING" && !group.StartTime.IsZero() {
+				// Show elapsed time for running groups
+				elapsed := time.Since(group.StartTime).Seconds()
+				durationStr = fmt.Sprintf("%.2fs", elapsed)
+			} else if group.Duration > 0 {
+				// Show final duration for completed groups
+				durationStr = fmt.Sprintf("%.2fs", group.Duration.Seconds())
+			} else if statusStr == "PENDING" {
+				// Not started yet
+				durationStr = "-"
+			} else {
+				// Fallback
+				durationStr = "0.00s"
+			}
 
 			// Generate report file path
 			reportFile := GetReportFilePath(group, m.runDir)
@@ -435,6 +535,19 @@ func countSkippedTestCases(group *TestGroup) int {
 	}
 	for _, subgroup := range group.Subgroups {
 		count += countSkippedTestCases(subgroup)
+	}
+	return count
+}
+
+func countRunningTestCases(group *TestGroup) int {
+	count := 0
+	for _, test := range group.TestCases {
+		if test.Status == TestStatusRunning || test.Status == TestStatusPending {
+			count++
+		}
+	}
+	for _, subgroup := range group.Subgroups {
+		count += countRunningTestCases(subgroup)
 	}
 	return count
 }
@@ -526,6 +639,12 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 
 	// Update final status if we have state and it's not already finalized
 	if m.state != nil && m.state.Status != "COMPLETE" && m.state.Status != "ERROR" {
+		// Cancel any pending timer to prevent race condition
+		if m.writeTimer != nil {
+			m.writeTimer.Stop()
+			m.writeTimer = nil
+		}
+
 		// Only set ERROR status for actual command errors, not test failures
 		if len(errorDetails) > 0 && errorDetails[0] != "" {
 			m.state.Status = "ERROR"
@@ -534,7 +653,7 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 			m.state.Status = "COMPLETE"
 		}
 
-		// Write final state
+		// Write final state immediately (bypass debouncing)
 		return m.writeState()
 	}
 
