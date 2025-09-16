@@ -119,3 +119,71 @@
 - **Report generation**: Instant and comprehensive
 - **Memory usage**: Stable throughout execution
 - **Output format**: Clean, organized, real-time progress
+
+## Full Test Suite Performance Analysis (2025-09-15)
+
+### Test Run 4: Complete pandas Test Suite
+- **Command**: `../../build/3pio /opt/homebrew/bin/python3.11 -m pytest /opt/homebrew/lib/python3.11/site-packages/pandas/tests/ -q`
+- **Status**: IN PROGRESS
+- **Run ID**: 20250915T192921-wacky-gau
+- **Test Discovery**: 3pio reports "207869 test files" (actually test cases, not files)
+- **IPC Events Generated**: 189,505 events (48MB IPC file)
+
+### Critical Performance Finding: Event Processing Bottleneck CONFIRMED
+- **Test Run Completed**: Exit code 1 (test failures detected)
+- **Total Execution Time**: ~44 minutes (19:29:21 to 20:13:43)
+  - **pytest execution**: 21 minutes (completed at 19:50:30)
+  - **3pio event processing**: 23 minutes (processing backlog after pytest finished)
+- **IPC events written**: 189,505 events (48MB file) completely written by pytest at 19:50:30
+- **Performance Impact**: 3pio took LONGER to process events (23 min) than pytest took to run tests (21 min)
+
+### Key Observations
+1. **Mislabeling Issue**: 3pio incorrectly labels test cases as "test files"
+   - Reports "207869 test files" but these are individual test cases
+   - Actual test files: ~960
+2. **Real-time Processing with Backlog**:
+   - 3pio DOES process events as they arrive using fsnotify file watching
+   - Uses buffered channel (10,000 capacity) to handle event bursts
+   - Processing speed can't keep up with pytest's event generation rate
+   - After pytest completes, 3pio continues processing the backlog
+3. **IPC File Scale**: 48MB JSON Lines file with 189,505 events for full test suite
+
+### Identified Performance Bottlenecks (Ranked by Impact)
+
+1. **File I/O on Every Event** (HIGHEST IMPACT)
+   - Location: `manager.go` lines 214-216
+   - Issue: `scheduleWrite()` immediately calls `writeState()` with NO debouncing
+   - Impact: 189,505 disk writes for report files
+   - Why worst: Disk I/O is the slowest operation
+
+2. **Console Output for Every Group Start**
+   - Location: `orchestrator.go` line 708
+   - Issue: Prints "RUNNING [file]" for each test file synchronously
+   - Impact: ~960 blocking console writes
+   - Why bad: Console I/O blocks the event processing loop
+
+3. **Report Generation After Each Event**
+   - Location: Throughout `group_manager.go` and `manager.go`
+   - Issue: Markdown report regeneration after every state change
+   - Impact: Complex string operations 189K times
+   - Why bad: CPU-intensive markdown generation repeated unnecessarily
+
+4. **Lack of Event Batching**
+   - Location: `orchestrator.go` line 637
+   - Issue: No aggregation of similar events before processing
+   - Impact: Missed opportunity for bulk operations
+   - Why bad: Can't optimize for similar updates
+
+5. **Mutex Lock/Unlock Pattern**
+   - Location: `group_manager.go` lines 264-291
+   - Issue: Lock/unlock/relock pattern in `ProcessTestCase`
+   - Impact: Unnecessary overhead on 189K events
+   - Why moderate: Adds latency but not primary bottleneck
+
+### Root Cause Analysis
+The code was designed for smaller test suites and doesn't scale to pandas' massive event volume. The combination of:
+- **189,505 file writes** (instead of ~10-20 with batching)
+- **960+ console prints** (blocking the main event loop)
+- **189,505 report regenerations** (instead of once at the end)
+
+Creates a severe performance bottleneck where event processing becomes the limiting factor rather than test execution.

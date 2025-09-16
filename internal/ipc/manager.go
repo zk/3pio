@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -54,7 +53,7 @@ func NewManager(ipcPath string, logger Logger) (*Manager, error) {
 
 	return &Manager{
 		IPCPath:  ipcPath,
-		Events:   make(chan Event, 100),
+		Events:   make(chan Event, 10000), // Large buffer for handling burst of events
 		errors:   make(chan error, 10),
 		stopChan: make(chan struct{}),
 		stopped:  make(chan struct{}),
@@ -252,13 +251,9 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		return
 	}
 
-	// Send event to channel
-	select {
-	case m.Events <- event:
-		m.logger.Debug("Sent event: %s", eventType)
-	case <-time.After(time.Second):
-		m.logger.Error("Timeout sending event: %s", eventType)
-	}
+	// Send event to channel (blocking send for natural backpressure)
+	m.Events <- event
+	m.logger.Debug("Processing IPC event: %s", eventType)
 }
 
 // Cleanup stops watching and closes resources
