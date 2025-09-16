@@ -33,7 +33,8 @@ Examples:
   3pio npm test -- tests/unit      # Pass arguments to npm test
   3pio npx jest                    # Run Jest directly
   3pio npx vitest run              # Run Vitest
-  3pio pytest                      # Run pytest`,
+  3pio pytest                      # Run pytest
+  3pio cargo test                  # Run Rust tests`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
@@ -126,6 +127,7 @@ func runTestsCore(args []string) (int, error) {
 			fmt.Fprintf(os.Stderr, "  • Vitest (requires v3.0+)\n")
 			fmt.Fprintf(os.Stderr, "  • pytest\n")
 			fmt.Fprintf(os.Stderr, "  • go test\n")
+			fmt.Fprintf(os.Stderr, "  • cargo test\n")
 			fmt.Fprintf(os.Stderr, "\nPackage Managers:\n")
 			fmt.Fprintf(os.Stderr, "  • npm\n")
 			fmt.Fprintf(os.Stderr, "  • yarn\n")
@@ -139,6 +141,7 @@ func runTestsCore(args []string) (int, error) {
 			fmt.Fprintf(os.Stderr, "  3pio npx vitest run\n")
 			fmt.Fprintf(os.Stderr, "  3pio pytest\n")
 			fmt.Fprintf(os.Stderr, "  3pio go test ./...\n")
+			fmt.Fprintf(os.Stderr, "  3pio cargo test\n")
 			return 1, err
 		}
 
