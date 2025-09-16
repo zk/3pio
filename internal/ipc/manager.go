@@ -25,6 +25,7 @@ type Manager struct {
 	logger    Logger
 	file      *os.File
 	reader    *bufio.Reader
+	readerMu  sync.Mutex // Protects concurrent access to reader
 }
 
 // Logger interface for debug logging
@@ -76,22 +77,25 @@ func (m *Manager) WatchEvents() error {
 		return fmt.Errorf("failed to watch IPC file: %w", err)
 	}
 
-	// Start processing existing content
-	go m.readExistingEvents()
-
-	// Start watching for changes
+	// Start the single watch loop that handles both existing and new events
 	go m.watchLoop()
+
+	// Trigger initial read of any existing content
+	go m.readEvents()
 
 	return nil
 }
 
-// readExistingEvents reads any existing events in the file
-func (m *Manager) readExistingEvents() {
+// readEvents reads events from the current position in the file
+func (m *Manager) readEvents() {
+	m.readerMu.Lock()
+	defer m.readerMu.Unlock()
+
 	for {
 		line, err := m.reader.ReadBytes('\n')
 		if err != nil {
 			if err != io.EOF {
-				m.logger.Error("Error reading existing events: %v", err)
+				m.logger.Error("Error reading events: %v", err)
 			}
 			break
 		}
@@ -102,9 +106,10 @@ func (m *Manager) readExistingEvents() {
 	}
 }
 
-// watchLoop watches for file changes and reads new events
+// watchLoop watches for file changes and triggers reads
 func (m *Manager) watchLoop() {
 	defer close(m.stopped)
+
 	for {
 		select {
 		case event, ok := <-m.watcher.Events:
@@ -114,7 +119,7 @@ func (m *Manager) watchLoop() {
 
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				m.logger.Debug("IPC file modified: %s", event.Name)
-				m.readNewEvents()
+				m.readEvents()
 			}
 
 		case err, ok := <-m.watcher.Errors:
@@ -126,23 +131,6 @@ func (m *Manager) watchLoop() {
 
 		case <-m.stopChan:
 			return
-		}
-	}
-}
-
-// readNewEvents reads new events from the current position
-func (m *Manager) readNewEvents() {
-	for {
-		line, err := m.reader.ReadBytes('\n')
-		if err != nil {
-			if err != io.EOF {
-				m.logger.Error("Error reading new events: %v", err)
-			}
-			break
-		}
-
-		if len(line) > 0 {
-			m.parseAndSendEvent(line)
 		}
 	}
 }
