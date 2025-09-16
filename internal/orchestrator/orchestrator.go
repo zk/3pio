@@ -582,6 +582,39 @@ func (o *Orchestrator) Run() error {
 		}
 		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
 		fmt.Printf("Test failures! %s\n", randomExclamation)
+
+		// Display failed test names (up to 3, with +N more if there are more)
+		allFailedTests := []string{}
+		for _, tests := range o.groupFailedTests {
+			allFailedTests = append(allFailedTests, tests...)
+		}
+
+		if len(allFailedTests) > 0 {
+			// Show up to 3 failed tests
+			maxShow := 3
+			for i := 0; i < len(allFailedTests) && i < maxShow; i++ {
+				fmt.Printf("  × %s\n", allFailedTests[i])
+			}
+
+			// Show "+N more" if there are more than 3 failures
+			if len(allFailedTests) > maxShow {
+				fmt.Printf("  +%d more\n", len(allFailedTests)-maxShow)
+			}
+
+			// Show path to report for more details
+			reportPath := filepath.Join(o.runDir, "reports")
+			// Find the first report file
+			if entries, err := os.ReadDir(reportPath); err == nil && len(entries) > 0 {
+				for _, entry := range entries {
+					if entry.IsDir() {
+						fmt.Printf("  See %s/%s/index.md for details\n",
+							filepath.Join(".3pio", "runs", filepath.Base(o.runDir), "reports"),
+							entry.Name())
+						break
+					}
+				}
+			}
+		}
 	} else if o.passedGroups > 0 && o.skippedGroups == 0 {
 		// All tests that ran passed (no skips)
 		fmt.Println("Splendid! All tests passed successfully")
@@ -722,11 +755,6 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			}
 		}
 
-		// Update the report manager with the group result
-		if err := o.reportManager.HandleEvent(e); err != nil {
-			o.logger.Error("Failed to handle group result: %v", err)
-		}
-
 		// Display hierarchical output when a group completes
 		status := convertStringToTestStatus(e.Payload.Status)
 		o.displayGroupResult(e.Payload.GroupName, e.Payload.ParentNames, status, e.Payload.Duration)
@@ -744,11 +772,6 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		}
 
 	case ipc.GroupTestCaseEvent:
-		// Forward to report manager FIRST
-		if err := o.reportManager.HandleEvent(e); err != nil {
-			o.logger.Error("Failed to handle test case: %v", err)
-		}
-
 		// Track test case counts
 		o.totalTests++
 		switch e.Payload.Status {
