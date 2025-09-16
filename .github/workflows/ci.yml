@@ -31,6 +31,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       # Node.js is needed for test fixtures but no root package.json exists
       
       - name: Install test fixture dependencies (Unix)
@@ -137,6 +148,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Run Go linting
         uses: golangci/golangci-lint-action@v6
