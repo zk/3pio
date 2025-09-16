@@ -230,6 +230,10 @@ var Logger = class _Logger {
 
 // src/adapters/vitest.ts
 var packageJson = require_package();
+
+// Log level will be replaced at runtime
+const LOG_LEVEL = /*__LOG_LEVEL__*/"WARN"/*__LOG_LEVEL__*/;
+
 var ThreePioVitestReporter = class {
   originalStdoutWrite;
   originalStderrWrite;

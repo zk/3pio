@@ -441,8 +441,8 @@ func TestOutputFileRaceCondition(t *testing.T) {
 			if err != nil {
 				// Check if it's the "file already closed" error
 				if strings.Contains(err.Error(), "file already closed") ||
-				   strings.Contains(err.Error(), "bad file descriptor") ||
-				   strings.Contains(err.Error(), "invalid argument") {
+					strings.Contains(err.Error(), "bad file descriptor") ||
+					strings.Contains(err.Error(), "invalid argument") {
 					errChan <- err
 				}
 				break

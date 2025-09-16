@@ -39,9 +39,9 @@ func TestCargoTestBasicProject(t *testing.T) {
 			expectPass: true,
 			minTests:   15,
 			checkOutput: []string{
-				"test_app_creation",        // from app crate
-				"test_engine_creation",     // from core crate
-				"test_capitalize",          // from utils crate
+				"test_app_creation",    // from app crate
+				"test_engine_creation", // from core crate
+				"test_capitalize",      // from utils crate
 			},
 		},
 		{

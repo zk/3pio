@@ -14,16 +14,16 @@ import (
 
 // NextestDefinition implements support for cargo-nextest runner
 type NextestDefinition struct {
-	logger     *logger.FileLogger
-	mu         sync.RWMutex
-	ipcWriter  *IPCWriter
+	logger    *logger.FileLogger
+	mu        sync.RWMutex
+	ipcWriter *IPCWriter
 
 	// Workspace and package tracking
-	workspaceName    string                             // Name of workspace if detected
+	workspaceName    string                              // Name of workspace if detected
 	packageGroups    map[string]*NextestPackageGroupInfo // Map of package name to group info
-	discoveredGroups map[string]bool                    // Track discovered groups to avoid duplicates
-	groupStarts      map[string]bool              // Track started groups
-	testStates       map[string]*NextestTestState // Track test state
+	discoveredGroups map[string]bool                     // Track discovered groups to avoid duplicates
+	groupStarts      map[string]bool                     // Track started groups
+	testStates       map[string]*NextestTestState        // Track test state
 }
 
 // NextestPackageGroupInfo tracks information for a package group
@@ -51,8 +51,8 @@ type NextestTestState struct {
 
 // NextestEvent represents a single event from cargo nextest --message-format libtest-json output
 type NextestEvent struct {
-	Type     string  `json:"type"`     // "test" or "suite"
-	Event    string  `json:"event"`    // "started", "ok", "failed", "ignored", "finished"
+	Type     string  `json:"type"`  // "test" or "suite"
+	Event    string  `json:"event"` // "started", "ok", "failed", "ignored", "finished"
 	Name     string  `json:"name,omitempty"`
 	Passed   int     `json:"passed,omitempty"`
 	Failed   int     `json:"failed,omitempty"`

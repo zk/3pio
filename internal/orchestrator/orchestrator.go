@@ -22,7 +22,6 @@ import (
 	"github.com/zk/3pio/internal/runner/definitions"
 )
 
-
 // Orchestrator manages the test execution lifecycle
 type Orchestrator struct {
 	runnerManager *runner.Manager
@@ -43,10 +42,10 @@ type Orchestrator struct {
 	failedGroups     int
 	skippedGroups    int
 	totalGroups      int
-	passedTests      int  // Track actual test cases
-	failedTests      int  // Track actual test cases
-	skippedTests     int  // Track actual test cases
-	totalTests       int  // Track actual test cases
+	passedTests      int                  // Track actual test cases
+	failedTests      int                  // Track actual test cases
+	skippedTests     int                  // Track actual test cases
+	totalTests       int                  // Track actual test cases
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
@@ -569,7 +568,7 @@ func (o *Orchestrator) Run() error {
 
 	// Print error details if command failed and we have error details
 	if (commandErr != nil && errorDetails != "" && shouldShowError) ||
-	   (commandErr != nil && o.totalGroups == 0 && errorDetails != "") {
+		(commandErr != nil && o.totalGroups == 0 && errorDetails != "") {
 		fmt.Printf("Error: %s\n", errorDetails)
 		fmt.Println()
 	}
@@ -796,9 +795,15 @@ func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
+	// Read log level from environment variable for adapter injection
+	logLevel := os.Getenv("THREEPIO_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "WARN" // Default to WARN if not set
+	}
+
 	// Always use embedded adapters in production
-	// Pass IPC path and run directory for injection
-	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runDir)
+	// Pass IPC path, run directory, and log level for injection
+	embeddedPath, err := adapters.GetAdapterPath(adapterName, o.ipcPath, o.runDir, logLevel)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract embedded adapter %s: %w", adapterName, err)
 	}

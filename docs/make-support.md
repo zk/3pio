@@ -2,15 +2,16 @@
 
 ## Overview
 
-Add support for running tests through Makefile targets (e.g., `3pio make test`) by parsing the Makefile, finding the target, and extracting the test command to run with 3pio's enhancements.
+Add support for discovering test commands through Makefile targets (e.g., `3pio make test`) by parsing the Makefile, finding the target, and extracting the test command to run with 3pio's enhancements. Make is treated as a command discovery mechanism (like package.json), not as an execution mechanism.
 
 ## Design Philosophy
 
-Make support in 3pio follows a **progressive enhancement** approach:
-1. Start with the simplest, most common cases
-2. Provide clear feedback when cases aren't supported
-3. Always have a fallback to standard make behavior
-4. Never break existing make workflows
+Make support in 3pio follows a **command extraction** approach:
+1. Parse Makefiles to discover test commands
+2. Extract and run the actual test command directly
+3. Provide clear feedback when extraction isn't possible
+4. Never actually execute `make` - only use it for discovery
+5. Always warn users that upstream tasks are skipped
 
 ## Core Approach
 
@@ -27,45 +28,36 @@ Make support in 3pio follows a **progressive enhancement** approach:
 ```
 User Command: 3pio make test
                 ↓
-        [Runner Manager]
-                ↓
-        [MakeDefinition]
-                ↓
         [Makefile Parser]
                 ↓
-    [Decision: Simple or Complex?]
+        [Find Target]
+                ↓
+    [Can Extract Command?]
          ↙              ↘
-    [Simple]          [Complex]
+      [Yes]            [No]
         ↓                ↓
-[Extract Command]   [Passthrough]
-        ↓                ↓
-[Transform with      [Run make
-  Adapters]           normally]
-        ↓                ↓
-    [Execute]        [Execute]
-        ↓                ↓
-    [3pio Reports]   [Standard Output]
+[Extract Command]   [Error: Cannot
+        ↓            extract test
+[Identify Runner]     command]
+        ↓
+[Use Appropriate
+  Definition]
+        ↓
+[Execute with
+  Adapters]
+        ↓
+    [3pio Reports]
 ```
 
 ## Implementation Strategy
 
 ### 1. Makefile Parser
 
-```go
-// Parse Makefile and extract targets
-type MakefileParser struct {
-    content    []byte
-    targets    map[string]*Target
-    variables  map[string]string  // Simple variable storage
-}
-
-type Target struct {
-    Name         string
-    Dependencies []string
-    Commands     []string  // Raw command lines
-    LineNumbers  []int     // For debugging
-}
-```
+The parser reads Makefiles and extracts:
+- Target names and their recipes
+- Dependencies between targets
+- Simple variable substitutions
+- Command prefixes (@ for silent, - for error ignoring)
 
 ### 2. Command Extraction
 
@@ -93,24 +85,15 @@ The parser will identify test commands by looking for known test runners:
 
 ### 3. Extraction Algorithm
 
-```go
-func extractTestCommand(target *Target) (string, error) {
-    for _, cmd := range target.Commands {
-        // Strip @ and - prefixes
-        cleaned := stripMakePrefixes(cmd)
+The extraction process:
+1. Strip Make-specific prefixes (@ and -)
+2. Identify which command is the test runner
+3. Return the clean test command
+4. Error if no test command found or extraction not possible
 
-        // Check if this is a test command
-        if isTestCommand(cleaned) {
-            return cleaned, nil
-        }
-    }
-    return "", ErrNoTestCommand
-}
-```
+### 4. Extraction Decision Tree
 
-### 4. Complexity Decision Tree
-
-#### Simple (Supported)
+#### Extractable (Supported)
 ```makefile
 test:
     npm test
@@ -120,16 +103,16 @@ test-python:
 ```
 → Extract and run with 3pio
 
-#### Medium (Supported with warnings)
+#### Extractable with Additional Warnings
 ```makefile
 test:
     @echo "Running tests..."
     @npm test
     @echo "Done"
 ```
-→ Extract `npm test`, warn about ignored commands
+→ Extract `npm test`, warn about ignored echo commands in addition to the standard warning
 
-#### Complex (Passthrough)
+#### Not Extractable (Not Supported)
 ```makefile
 test: build
     npm test
@@ -138,137 +121,71 @@ test-all:
     $(MAKE) test-unit
     $(MAKE) test-integration
 ```
-→ Dependencies or recursive make = passthrough
+→ Error: "Cannot extract test command from Makefile target with dependencies. Run the test command directly: `3pio npm test`"
 
 ## Component Design
 
-### 1. MakeDefinition
+### 1. Make Command Extraction
 
-```go
-package definitions
+Make is handled as a pre-processing step, not a runner definition:
 
-type MakeDefinition struct {
-    BaseDefinition
-    parser      *makefile.Parser
-    target      string
-    makefile    string
-    complexity  ComplexityLevel
-}
+```pseudo
+If command starts with "make":
+    Parse Makefile
+    Find target (e.g., "test")
+    Extract actual test command
+    Return extracted command for normal processing
+Else:
+    Continue with normal runner detection
+```
 
-type ComplexityLevel int
+Usage example:
+```bash
+# User runs:
+3pio make test
 
-const (
-    Simple ComplexityLevel = iota
-    Medium
-    Complex
-    Unsupported
-)
-
-func (m *MakeDefinition) Detect(args []string) bool {
-    // Check if command is "make" with test-related target
-    return args[0] == "make" && isTestTarget(args)
-}
-
-func (m *MakeDefinition) BuildCommand(args []string) ([]string, error) {
-    // Parse Makefile
-    // Analyze complexity
-    // Extract or passthrough based on complexity
-}
+# 3pio internally:
+# 1. Parses Makefile, finds "test:" target
+# 2. Extracts "npm test" from the recipe
+# 3. Processes as if user ran: 3pio npm test
 ```
 
 ### 2. Makefile Parser
 
-```go
-package makefile
+The parser component handles:
+- Reading and tokenizing Makefile syntax
+- Building a map of targets and their recipes
+- Tracking dependencies between targets
+- Simple variable resolution (e.g., `$(TEST_CMD)`)
+- Identifying command prefixes (@ for silent, - for ignore errors)
 
-type Parser struct {
-    content    []byte
-    targets    map[string]*Target
-    variables  map[string]string
-}
+### 3. Extraction Analyzer
 
-type Target struct {
-    Name         string
-    Dependencies []string
-    Commands     []Command
-    IsPhony      bool
-}
+Determines if a test command can be extracted by checking for blockers:
+- Dependencies on other targets (e.g., `test: build`)
+- Recursive make calls (e.g., `$(MAKE) test-unit`)
+- Complex shell constructs (pipes, loops, conditionals)
+- No identifiable test command
 
-type Command struct {
-    Raw        string
-    Executable string
-    Args       []string
-    IsSilent   bool  // @ prefix
-    IsIgnored  bool  // - prefix
-}
-
-func (p *Parser) Parse() error {
-    // Parse Makefile syntax
-    // Build target dependency graph
-    // Resolve simple variables
-}
-
-func (p *Parser) ExtractTestCommand(target string) (*TestCommand, error) {
-    // Find target
-    // Analyze commands
-    // Return extracted test command or error
-}
-```
-
-### 3. Complexity Analyzer
-
-```go
-package makefile
-
-type ComplexityAnalyzer struct {
-    target *Target
-}
-
-func (ca *ComplexityAnalyzer) Analyze() ComplexityLevel {
-    // Check for complexity indicators:
-    // - Multiple commands
-    // - Recursive make calls
-    // - Complex shell constructs
-    // - Dependencies on other targets
-    // Return appropriate complexity level
-}
-
-// Complexity indicators
-func hasRecursiveMake(cmd Command) bool
-func hasMultipleTestCommands(target *Target) bool
-func hasComplexShellConstructs(cmd Command) bool
-func hasDependencies(target *Target) bool
-```
+Returns either success or a clear error message explaining why extraction failed.
 
 ### 4. Command Extractor
 
-```go
-package makefile
+Extracts the actual test command from a Makefile target:
+- For single-command targets: direct extraction
+- For multi-command targets: finds the test command among echo/setup commands
+- Strips Make-specific prefixes (@, -)
+- Returns clean command ready for 3pio processing
 
-type CommandExtractor struct {
-    parser *Parser
-}
+Example extraction:
+```makefile
+# Input Makefile target:
+test:
+    @echo "Running tests..."
+    npm test
+    @echo "Done"
 
-func (ce *CommandExtractor) Extract(target string) ([]string, error) {
-    t := ce.parser.targets[target]
-
-    // Simple case: single test command
-    if len(t.Commands) == 1 {
-        return ce.extractSingleCommand(t.Commands[0])
-    }
-
-    // Medium case: test command with setup
-    if testCmd := ce.findTestCommand(t.Commands); testCmd != nil {
-        return ce.extractSingleCommand(*testCmd)
-    }
-
-    return nil, ErrComplexTarget
-}
-
-func (ce *CommandExtractor) findTestCommand(cmds []Command) *Command {
-    // Identify the actual test command among setup commands
-    // Look for npm test, pytest, go test, etc.
-}
+# Extracted command: npm test
 ```
 
 ## Challenges
@@ -295,66 +212,55 @@ func (ce *CommandExtractor) findTestCommand(cmds []Command) *Command {
 
 ### 1. Runner Manager Integration
 
-```go
-// internal/runner/manager.go
-
-func NewManager() *Manager {
-    return &Manager{
-        definitions: []Definition{
-            // Existing definitions...
-            &definitions.MakeDefinition{}, // Add make support
-        },
-    }
-}
+Make command extraction happens before runner detection:
+```pseudo
+1. Check if command starts with "make"
+2. If yes, extract actual command from Makefile
+3. Pass extracted command to normal runner detection
+4. Continue with standard 3pio flow
 ```
 
 ### 2. Command Detection
 
-```go
-// internal/runner/definitions/make.go
-
-var testTargetPatterns = []string{
-    "test", "tests", "check", "test-unit", "test-integration",
-    "test-all", "unittest", "unit-test", "integration-test",
-}
-
-func isTestTarget(args []string) bool {
-    for _, arg := range args[1:] {
-        if !strings.HasPrefix(arg, "-") {
-            return matchesTestPattern(arg)
-        }
-    }
-    return false
-}
-```
+Common test target patterns to recognize:
+- `test`, `tests`, `check`
+- `test-unit`, `test-integration`, `test-all`
+- `unittest`, `unit-test`, `integration-test`
+- Language-specific: `test-go`, `test-python`, `test-js`
 
 ## Execution Flow
 
 ### Simple Case Flow
 
 1. User runs: `3pio make test`
-2. MakeDefinition detects make command
+2. Show warning:
+   ```
+   Warning: `make` support is experimental in 3pio.
+   We'll attempt to extract and run your test command directly,
+   but this skips any upstream tasks defined in your Makefile.
+   ```
 3. Parser reads Makefile
-4. Analyzer determines complexity: Simple
+4. Analyzer determines extraction is possible
 5. Extractor gets: `npm test`
 6. Transform to: `npm test -- --reporters /path/to/adapter`
 7. Execute with 3pio orchestrator
 8. Generate full 3pio reports
 
-### Complex Case Flow
+### Non-Extractable Case Flow
 
 1. User runs: `3pio make test`
-2. MakeDefinition detects make command
+2. Show warning (same as above)
 3. Parser reads Makefile
-4. Analyzer determines complexity: Complex
-5. Show warning:
+4. Analyzer finds blockers (dependencies, recursive make, etc.)
+5. Show error:
    ```
-   Complex Makefile target detected.
-   Running 'make test' directly without 3pio enhancements.
-   Reason: Target has dependencies and multiple commands.
+   Error: Cannot extract test command from Makefile.
+   Reason: Target 'test' has dependencies that must run first.
+
+   To use 3pio, run the test command directly:
+     3pio npm test
    ```
-6. Execute: `make test` (passthrough)
-7. Capture output normally
+5. Exit with error code
 
 ## Implementation Steps
 
@@ -364,14 +270,14 @@ func isTestTarget(args []string) bool {
 - Handle @ and - prefixes
 - Parse dependencies
 
-### Step 2: Add Make Runner Definition
-- Create `internal/runner/definitions/make.go`
-- Implement `Detect()` for make commands
-- Implement `BuildCommand()` to extract test command
+### Step 2: Add Make Command Extractor
+- Create `internal/makefile/extractor.go`
+- Implement pre-processing step for make commands
+- Return extracted command for normal runner detection
 
-### Step 3: Integrate with Runner Manager
-- Register MakeDefinition in the manager
-- Ensure proper detection order
+### Step 3: Integrate with Command Processing
+- Add make extraction as pre-processing step
+- Ensure extraction happens before runner detection
 
 ### Step 4: Test Command Recognition
 - Build pattern matcher for test commands
@@ -380,20 +286,18 @@ func isTestTarget(args []string) bool {
 
 ### Step 5: Error Handling
 - Clear messages for unsupported patterns
-- Fallback to regular make execution
+- Suggest direct command usage when extraction fails
 - Debug logging for troubleshooting
 
 ## File Structure
 
 ```
 internal/
-├── runner/
-│   └── definitions/
-│       └── make.go          # MakeDefinition implementation
 ├── makefile/
 │   ├── parser.go           # Makefile parsing logic
-│   ├── parser_test.go      # Parser tests
-│   └── patterns.go         # Common Makefile patterns
+│   ├── extractor.go        # Command extraction logic
+│   ├── analyzer.go         # Extraction feasibility analyzer
+│   └── patterns.go         # Test command patterns
 ```
 
 ## Test Fixtures
@@ -465,25 +369,34 @@ test-integration: start-services
 
 ## Error Handling
 
-### Parse Errors
-```go
-if err := parser.Parse(); err != nil {
-    if errors.Is(err, makefile.ErrNoMakefile) {
-        return nil, fmt.Errorf("No Makefile found in current directory")
-    }
-    if errors.Is(err, makefile.ErrSyntax) {
-        // Fall back to passthrough
-        log.Debug("Makefile syntax too complex, using passthrough")
-        return args, nil
-    }
-}
+### Common Error Messages
+
+**No Makefile:**
+```
+Error: No Makefile found in current directory
 ```
 
-### Target Not Found
-```go
-if _, exists := parser.targets[target]; !exists {
-    return nil, fmt.Errorf("Target '%s' not found in Makefile", target)
-}
+**Target not found:**
+```
+Error: Target 'test' not found in Makefile
+Available targets: build, clean, install
+```
+
+**Cannot extract:**
+```
+Error: Cannot extract test command from target 'test'
+Reason: Target has dependencies that must run first
+
+To use 3pio, run the test command directly:
+  3pio npm test
+```
+
+**Complex syntax:**
+```
+Error: Makefile too complex to parse
+Reason: Conditional statements not supported
+
+Run your test command directly instead.
 ```
 
 ## Configuration
@@ -511,34 +424,28 @@ make:
 ## Testing Strategy
 
 ### Unit Tests
-```go
-// internal/makefile/parser_test.go
-func TestParseSimpleMakefile(t *testing.T)
-func TestParseComplexMakefile(t *testing.T)
-func TestExtractTestCommand(t *testing.T)
-func TestComplexityAnalysis(t *testing.T)
-
-// internal/runner/definitions/make_test.go
-func TestMakeDetection(t *testing.T)
-func TestBuildCommand(t *testing.T)
-```
+- Parse simple Makefiles
+- Parse complex Makefiles
+- Extract test commands
+- Analyze extraction feasibility
+- Handle edge cases
 
 ### Integration Tests
-```go
-// tests/integration_go/make_test.go
-func TestMakeSimpleNPM(t *testing.T)
-func TestMakeWithDependencies(t *testing.T)
-func TestMakeComplexFallback(t *testing.T)
-func TestMakeNoMakefile(t *testing.T)
-```
+- Simple NPM test extraction
+- Python test extraction
+- Go test extraction
+- Error on dependencies
+- Error on recursive make
+- Error on missing Makefile
+- Error on missing target
 
 ## Success Criteria
 
-1. **Basic Support**: Handle 80% of common Makefile patterns
-2. **Graceful Degradation**: Clear messaging for unsupported patterns
+1. **Basic Support**: Extract test commands from simple Makefile patterns
+2. **Clear Errors**: Explicit messages when extraction isn't possible
 3. **No Breaking Changes**: Existing 3pio functionality unchanged
 4. **Performance**: Minimal overhead for Makefile parsing
-5. **Compatibility**: Support GNU make syntax primarily
+5. **User Guidance**: Always suggest how to proceed when extraction fails
 
 ## Edge Cases to Consider
 
@@ -551,13 +458,13 @@ func TestMakeNoMakefile(t *testing.T)
 7. **Pattern Rules**: `%.test: %.c` style rules
 8. **PHONY Targets**: Properly handle .PHONY declarations
 
-## Fallback Strategy
+## Error Strategy
 
-When Makefile is too complex:
-1. Detect complexity indicators (recursive make, multiple commands, etc.)
-2. Show warning: "Complex Makefile detected. Running make directly..."
-3. Option to force extraction: `3pio make test --force-extract`
-4. Document limitations clearly
+When extraction isn't possible:
+1. Detect extraction blockers (dependencies, recursive make, etc.)
+2. Show clear error with reason
+3. Suggest running the test command directly
+4. Document supported patterns clearly
 
 ## Performance Considerations
 
@@ -576,13 +483,13 @@ When Makefile is too complex:
 ## Rollout Plan
 
 ### Phase 1: MVP (Week 1-2)
-- Basic make detection
+- Basic make command detection
 - Simple Makefile parser
 - Support single-command test targets
-- Passthrough for complex cases
+- Clear errors for unsupported cases
 
 ### Phase 2: Enhancement (Week 3-4)
-- Medium complexity support
+- Handle multi-command targets (find test command among echos)
 - Better error messages
 - More test patterns
 - Integration tests
@@ -634,20 +541,20 @@ When Makefile is too complex:
 - Con: Complex, platform-specific
 - Con: May break make's assumptions
 
-### Alternative 2: Make Wrapper Binary
+### Alternative 2: Execute Make Directly
+- Pro: Preserves all Make functionality
+- Con: Cannot inject adapters
+- Con: No structured reports
+
+### Alternative 3: Make Wrapper Binary
 - Pro: Full control
 - Con: Requires installation step
 - Con: May conflict with system make
 
-### Alternative 3: LD_PRELOAD/DYLD_INSERT_LIBRARIES
-- Pro: Transparent interception
-- Con: Platform-specific
-- Con: Security concerns
-
-## Decision: Progressive Parser
-We chose the progressive parser approach because:
-1. Simplest to implement and understand
-2. Handles common cases well
-3. Clear upgrade path for complexity
+## Decision: Command Extraction
+We chose the command extraction approach because:
+1. Treats Make like package.json - as a command source
+2. Maintains full 3pio functionality for supported cases
+3. Clear boundaries on what's supported
 4. No system modifications required
-5. Safe fallback behavior
+5. Consistent with 3pio's architecture

@@ -184,3 +184,4 @@ For detailed information about these issues and their solutions, see `docs/known
 - Always use the logger class when logging. See `internal/logger/file_logger.go`.
 - After making changes lint and `gofmt`.
 - Before opening a pr, lint and `gofmt`.
+- Don't put code in documentaiton, only pseudo code or call examples

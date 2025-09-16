@@ -26,15 +26,15 @@ var docTestsRegex = regexp.MustCompile(`^\s*Doc-tests\s+(.+)$`)
 
 // CargoTestDefinition implements support for Rust's cargo test runner
 type CargoTestDefinition struct {
-	logger     *logger.FileLogger
-	mu         sync.RWMutex
-	ipcWriter  *IPCWriter
+	logger    *logger.FileLogger
+	mu        sync.RWMutex
+	ipcWriter *IPCWriter
 
 	// Workspace and crate tracking
-	workspaceName    string                    // Name of workspace if detected
-	currentCrate     string                    // Currently executing crate
-	crateTestCounts  map[string]int            // Expected test count per crate from suite events
-	crateTestsSeen   map[string]int            // Number of tests seen so far per crate
+	workspaceName    string                     // Name of workspace if detected
+	currentCrate     string                     // Currently executing crate
+	crateTestCounts  map[string]int             // Expected test count per crate from suite events
+	crateTestsSeen   map[string]int             // Number of tests seen so far per crate
 	crateGroups      map[string]*CrateGroupInfo // Map of crate name to group info
 	crateMetadata    map[string]*CrateMetadata  // Map of crate name to metadata from Cargo.toml
 	discoveredGroups map[string]bool            // Track discovered groups to avoid duplicates
@@ -75,8 +75,8 @@ type CargoTestState struct {
 
 // CargoTestEvent represents a single event from cargo test --format json output
 type CargoTestEvent struct {
-	Type      string  `json:"type"`      // "suite" or "test"
-	Event     string  `json:"event"`     // "started", "ok", "failed", "ignored"
+	Type      string  `json:"type"`  // "suite" or "test"
+	Event     string  `json:"event"` // "started", "ok", "failed", "ignored"
 	Name      string  `json:"name,omitempty"`
 	TestCount int     `json:"test_count,omitempty"`
 	Passed    int     `json:"passed,omitempty"`
@@ -277,7 +277,6 @@ func (c *CargoTestDefinition) loadCargoMetadata() {
 	// a simplified approach that could be extended later.
 	c.logger.Debug("Loading cargo metadata (placeholder for now)")
 }
-
 
 // processLineData processes a single line of cargo test output
 func (c *CargoTestDefinition) processLineData(line string, jsonEventCount *int) {

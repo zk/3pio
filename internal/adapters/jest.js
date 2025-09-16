@@ -9,6 +9,9 @@ const path = require('path');
 // IPC Path will be replaced at runtime
 const IPC_PATH = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
 
+// Log level will be replaced at runtime
+const LOG_LEVEL = /*__LOG_LEVEL__*/"WARN"/*__LOG_LEVEL__*/;
+
 // Track discovered groups to avoid duplicates
 const discoveredGroups = new Map();
 const groupStarts = new Map();

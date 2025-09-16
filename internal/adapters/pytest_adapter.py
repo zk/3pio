@@ -18,6 +18,9 @@ from datetime import datetime
 from _pytest.config import Config
 from _pytest.reports import TestReport, CollectReport
 from _pytest.nodes import Item
+
+# Log level will be replaced at runtime
+LOG_LEVEL = #__LOG_LEVEL__#"WARN"#__LOG_LEVEL__#
 from _pytest.terminal import TerminalReporter
 
 
@@ -100,7 +103,8 @@ class ThreepioReporter:
     
     def _log_debug(self, message: str) -> None:
         """Log a debug message."""
-        self._log("DEBUG", message)
+        # Skip debug logging for production performance
+        pass
 
     def get_group_id(self, hierarchy):
         """Generate a unique ID for a group path."""

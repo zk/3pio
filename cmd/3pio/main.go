@@ -165,7 +165,7 @@ func checkUnsupportedModes(args []string) error {
 	watchPatterns := []string{
 		"--watch",
 		"--watchAll",
-		" -w ", // Short form with spaces to avoid matching --workspace
+		" -w ",  // Short form with spaces to avoid matching --workspace
 		" -w\t", // Short form with tab
 		"pytest-watch",
 		"ptw", // pytest-watch alias
