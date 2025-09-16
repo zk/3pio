@@ -26,14 +26,23 @@ func RunThreepio(t *testing.T, dir string, args ...string) TestResult {
 	t.Helper()
 
 	// Build path to 3pio binary
-	// When tests run, working directory is the package directory (tests/integration_go)
+	// When tests run, working directory varies (package dir locally, project root in CI)
 	cwd, _ := os.Getwd()
+
+	// Try relative path from package directory (local development)
 	threepioPath := filepath.Join(cwd, "..", "..", "build", "3pio")
 	if _, err := os.Stat(threepioPath); os.IsNotExist(err) {
-		// Try absolute path
-		threepioPath = "/Users/zk/code/3pio/build/3pio"
+		// Try from project root (CI environment)
+		threepioPath = filepath.Join(cwd, "build", "3pio")
 		if _, err := os.Stat(threepioPath); os.IsNotExist(err) {
-			t.Fatalf("3pio binary not found at %s. Run 'make build' first", threepioPath)
+			// Try finding 3pio in PATH
+			if pathBinary, err := exec.LookPath("3pio"); err == nil {
+				threepioPath = pathBinary
+			} else {
+				t.Fatalf("3pio binary not found. Tried: %s, %s, and PATH. Run 'make build' first",
+					filepath.Join(cwd, "..", "..", "build", "3pio"),
+					filepath.Join(cwd, "build", "3pio"))
+			}
 		}
 	}
 
