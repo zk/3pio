@@ -1,6 +1,7 @@
 package definitions
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -152,10 +153,18 @@ func TestCargoTestDefinition_ProcessJSONEvents(t *testing.T) {
 {"type":"suite","event":"ok","passed":1,"failed":1,"ignored":0}
 `
 	reader := strings.NewReader(jsonEvents)
-	tempFile := "/tmp/test-cargo-ipc.jsonl"
+
+	// Create a temporary file for cross-platform compatibility
+	tempFile, err := os.CreateTemp("", "test-cargo-ipc-*.jsonl")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+	defer os.Remove(tempPath)
 
 	// Process the events
-	err := def.ProcessOutput(reader, tempFile)
+	err = def.ProcessOutput(reader, tempPath)
 	if err != nil {
 		t.Errorf("ProcessOutput failed: %v", err)
 	}

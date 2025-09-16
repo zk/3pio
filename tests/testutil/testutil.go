@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,19 +30,25 @@ func RunThreepio(t *testing.T, dir string, args ...string) TestResult {
 	// When tests run, working directory varies (package dir locally, project root in CI)
 	cwd, _ := os.Getwd()
 
+	// Determine binary name based on OS
+	binaryName := "3pio"
+	if runtime.GOOS == "windows" {
+		binaryName = "3pio.exe"
+	}
+
 	// Try relative path from package directory (local development)
-	threepioPath := filepath.Join(cwd, "..", "..", "build", "3pio")
+	threepioPath := filepath.Join(cwd, "..", "..", "build", binaryName)
 	if _, err := os.Stat(threepioPath); os.IsNotExist(err) {
 		// Try from project root (CI environment)
-		threepioPath = filepath.Join(cwd, "build", "3pio")
+		threepioPath = filepath.Join(cwd, "build", binaryName)
 		if _, err := os.Stat(threepioPath); os.IsNotExist(err) {
 			// Try finding 3pio in PATH
-			if pathBinary, err := exec.LookPath("3pio"); err == nil {
+			if pathBinary, err := exec.LookPath(binaryName); err == nil {
 				threepioPath = pathBinary
 			} else {
 				t.Fatalf("3pio binary not found. Tried: %s, %s, and PATH. Run 'make build' first",
-					filepath.Join(cwd, "..", "..", "build", "3pio"),
-					filepath.Join(cwd, "build", "3pio"))
+					filepath.Join(cwd, "..", "..", "build", binaryName),
+					filepath.Join(cwd, "build", binaryName))
 			}
 		}
 	}
