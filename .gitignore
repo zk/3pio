@@ -68,5 +68,5 @@ releases/
 !internal/adapters/*.js
 !internal/adapters/*.py
 
-# Open source projects for testing
-open-source/
+# Open source projects for testing (only ignore at root)
+/open-source/
