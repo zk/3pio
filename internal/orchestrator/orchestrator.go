@@ -346,7 +346,13 @@ func (o *Orchestrator) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	// NOTE: We'll close outputFile after wg.Wait() to prevent race condition
+	// Ensure outputFile is closed on all exit paths, but track if we closed it explicitly
+	outputFileClosed := false
+	defer func() {
+		if !outputFileClosed {
+			_ = outputFile.Close()
+		}
+	}()
 
 	// Universal approach: ALL runners write directly to output.log
 	// This eliminates race conditions, pipe buffer limitations, and redundant files
@@ -507,6 +513,7 @@ func (o *Orchestrator) Run() error {
 	o.logger.Debug("Output capture completed")
 
 	// NOW it's safe to close the output file after all goroutines are done
+	outputFileClosed = true
 	if err := outputFile.Close(); err != nil {
 		o.logger.Error("Failed to close output file: %v", err)
 	}

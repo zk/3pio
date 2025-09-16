@@ -11,11 +11,13 @@ import (
 )
 
 func TestFailureDisplayFormat(t *testing.T) {
-	// Build 3pio binary
-	buildCmd := exec.Command("make", "build")
-	buildCmd.Dir = filepath.Join("..", "..")
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("Failed to build 3pio: %v", err)
+	// Skip building on Windows (no make), assume binary exists
+	if runtime.GOOS != "windows" {
+		buildCmd := exec.Command("make", "build")
+		buildCmd.Dir = filepath.Join("..", "..")
+		if err := buildCmd.Run(); err != nil {
+			t.Fatalf("Failed to build 3pio: %v", err)
+		}
 	}
 
 	// Get the project root directory (2 levels up from tests/integration_go)

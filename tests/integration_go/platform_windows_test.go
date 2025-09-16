@@ -68,7 +68,8 @@ func TestWindowsPowerShellExecution(t *testing.T) {
 	cleanTestDir(t, testDir)
 
 	// Use PowerShell to run 3pio
-	psCommand := filepath.Join("..", "..", "build", "3pio.exe") + " npx vitest run"
+	binaryPath := getBinaryPath()
+	psCommand := binaryPath + " npx vitest run"
 	cmd := exec.Command("powershell", "-Command", psCommand)
 	cmd.Dir = testDir
 
