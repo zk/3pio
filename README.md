@@ -4,6 +4,9 @@
 
 # 3pio - A context-optimized test runner for coding agents
 
+[![CI](https://github.com/zk/3pio/actions/workflows/ci.yml/badge.svg)](https://github.com/zk/3pio/actions/workflows/ci.yml)
+[![Release](https://github.com/zk/3pio/actions/workflows/release.yml/badge.svg)](https://github.com/zk/3pio/actions/workflows/release.yml)
+
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
 ```
