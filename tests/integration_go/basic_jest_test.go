@@ -2,10 +2,11 @@ package integration_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zk/3pio/tests/testutil"
 )
 
 func TestFullFlowIntegration(t *testing.T) {
@@ -21,35 +22,46 @@ func TestFullFlowIntegration(t *testing.T) {
 }
 
 func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
-	projectDir := filepath.Join(fixturesDir, fixtureDir)
-
-	// Clean output directory
-	if err := cleanProjectOutput(projectDir); err != nil {
-		t.Fatalf("Failed to clean project output: %v", err)
+	// Check if npm/jest is available
+	if len(command) > 0 && command[0] == "npx" {
+		if _, err := testutil.LookPath("npm"); err != nil {
+			t.Skip("npm not found in PATH")
+		}
+		if len(command) > 1 && command[1] == "jest" {
+			if err := testutil.CommandAvailable("npx", "jest", "--version"); err != nil {
+				t.Skipf("jest command failed: %v", err)
+			}
+		} else if len(command) > 1 && command[1] == "vitest" {
+			if err := testutil.CommandAvailable("npx", "vitest", "--version"); err != nil {
+				t.Skipf("vitest command failed: %v", err)
+			}
+		}
 	}
 
-	// Get absolute path to binary
-	binaryPath, err := filepath.Abs(threePioBinary)
-	if err != nil {
-		t.Fatalf("Failed to get absolute path to binary: %v", err)
+	fixtureDir = filepath.Join("..", "fixtures", fixtureDir)
+	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
+		t.Skipf("fixture %s not found", fixtureDir)
 	}
 
-	// Prepare full command
-	fullCmd := append([]string{binaryPath}, command...)
-	cmd := exec.Command(fullCmd[0], fullCmd[1:]...)
-	cmd.Dir = projectDir
+	result := testutil.RunThreepio(t, fixtureDir, command...)
 
-	// Run the command (may have non-zero exit due to test failures)
-	output, _ := cmd.CombinedOutput()
+	// Add diagnostic output for debugging CI issues
+	if result.RunID == "" {
+		t.Logf("Debug: RunID is empty. Stdout: %s, Stderr: %s", result.Stdout, result.Stderr)
+	}
 
 	// Basic output verification
-	outputStr := string(output)
-	if len(outputStr) == 0 {
+	if len(result.Stdout) == 0 && len(result.Stderr) == 0 {
 		t.Error("Expected some output from test run")
 	}
 
-	// Find the latest run directory
-	runDir := getLatestRunDir(t, projectDir)
+	// Check report exists
+	reportPath := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID, "test-run.md")
+	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+		t.Errorf("Report file not found: %s", reportPath)
+	}
+
+	runDir := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID)
 
 	// Verify all expected files exist - new hierarchical structure
 	expectedFiles := []string{
@@ -59,21 +71,21 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 
 	for _, expectedFile := range expectedFiles {
 		filePath := filepath.Join(runDir, expectedFile)
-		if !fileExists(filePath) {
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			t.Errorf("Expected file %s does not exist", expectedFile)
 		}
 	}
 
 	// Verify reports directory exists with hierarchical structure
 	reportsDir := filepath.Join(runDir, "reports")
-	if !fileExists(reportsDir) {
+	if _, err := os.Stat(reportsDir); os.IsNotExist(err) {
 		t.Error("Expected reports directory does not exist")
 	}
 
 	// Check that some report files exist in the hierarchical structure
 	// Note: The exact paths depend on group names and will be sanitized
 	var foundReports []string
-	err = filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -91,7 +103,10 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 	}
 
 	// Verify test-run.md has proper content
-	testRunContent := readFile(t, filepath.Join(runDir, "test-run.md"))
+	testRunContent, err := os.ReadFile(filepath.Join(runDir, "test-run.md"))
+	if err != nil {
+		t.Fatalf("Failed to read test-run.md: %v", err)
+	}
 
 	expectedSections := []string{
 		"# 3pio Test Run",
@@ -100,13 +115,16 @@ func testFullFlowWithRunner(t *testing.T, fixtureDir string, command []string) {
 	}
 
 	for _, section := range expectedSections {
-		if !strings.Contains(testRunContent, section) {
+		if !strings.Contains(string(testRunContent), section) {
 			t.Errorf("test-run.md should contain '%s'", section)
 		}
 	}
 
 	// Verify output.log has content (no header anymore - direct output capture)
-	outputLogContent := readFile(t, filepath.Join(runDir, "output.log"))
+	outputLogContent, err := os.ReadFile(filepath.Join(runDir, "output.log"))
+	if err != nil {
+		t.Fatalf("Failed to read output.log: %v", err)
+	}
 
 	// Just verify the file exists and has content
 	if len(outputLogContent) == 0 {
@@ -125,36 +143,19 @@ func TestEmptyTestSuiteHandling(t *testing.T) {
 }
 
 func testEmptyTestSuite(t *testing.T, fixtureDir string, command []string) {
-	projectDir := filepath.Join(fixturesDir, fixtureDir)
-
-	// Check if fixture exists
-	if !fileExists(projectDir) {
-		t.Skipf("Fixture %s not found, skipping test", fixtureDir)
+	fixtureDir = filepath.Join("..", "fixtures", fixtureDir)
+	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
+		t.Skipf("fixture %s not found", fixtureDir)
 	}
 
-	// Clean output directory
-	if err := cleanProjectOutput(projectDir); err != nil {
-		t.Fatalf("Failed to clean project output: %v", err)
-	}
-
-	// Get absolute path to binary
-	binaryPath, err := filepath.Abs(threePioBinary)
-	if err != nil {
-		t.Fatalf("Failed to get absolute path to binary: %v", err)
-	}
-
-	// Prepare full command
-	fullCmd := append([]string{binaryPath}, command...)
-	cmd := exec.Command(fullCmd[0], fullCmd[1:]...)
-	cmd.Dir = projectDir
-
-	// Run the command (read output to prevent pipe deadlock)
-	_, _ = cmd.CombinedOutput()
+	result := testutil.RunThreepio(t, fixtureDir, command...)
 
 	// Check if basic structure was created even for empty test suite
-	threePioDir := filepath.Join(projectDir, ".3pio")
-	if !fileExists(threePioDir) {
+	threePioDir := filepath.Join(fixtureDir, ".3pio")
+	if _, err := os.Stat(threePioDir); os.IsNotExist(err) {
 		t.Error("Empty test suite should still create .3pio directory")
+	} else {
+		t.Logf("Successfully created .3pio directory for empty test suite. RunID: %s", result.RunID)
 	}
 }
 
@@ -170,44 +171,25 @@ func TestLongNamesHandling(t *testing.T) {
 }
 
 func testLongNames(t *testing.T, fixtureDir string, command []string) {
-	projectDir := filepath.Join(fixturesDir, fixtureDir)
-
-	// Check if fixture exists
-	if !fileExists(projectDir) {
-		t.Skipf("Fixture %s not found, skipping test", fixtureDir)
+	fixtureDir = filepath.Join("..", "fixtures", fixtureDir)
+	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
+		t.Skipf("fixture %s not found", fixtureDir)
 	}
 
-	// Clean output directory
-	if err := cleanProjectOutput(projectDir); err != nil {
-		t.Fatalf("Failed to clean project output: %v", err)
-	}
-
-	// Get absolute path to binary
-	binaryPath, err := filepath.Abs(threePioBinary)
-	if err != nil {
-		t.Fatalf("Failed to get absolute path to binary: %v", err)
-	}
-
-	// Prepare full command
-	fullCmd := append([]string{binaryPath}, command...)
-	cmd := exec.Command(fullCmd[0], fullCmd[1:]...)
-	cmd.Dir = projectDir
-
-	// Run the command (read output to prevent pipe deadlock)
-	_, _ = cmd.CombinedOutput()
-
-	// Find the latest run directory
-	runDir := getLatestRunDir(t, projectDir)
+	result := testutil.RunThreepio(t, fixtureDir, command...)
 
 	// Check that files were created
-	testRunPath := filepath.Join(runDir, "test-run.md")
-	if !fileExists(testRunPath) {
+	testRunPath := filepath.Join(fixtureDir, ".3pio", "runs", result.RunID, "test-run.md")
+	if _, err := os.Stat(testRunPath); os.IsNotExist(err) {
 		t.Error("Long names test should create test-run.md")
 	}
 
 	// Check that content was generated (basic smoke test)
-	content := readFile(t, testRunPath)
-	if !strings.Contains(content, "# 3pio Test Run") {
+	content, err := os.ReadFile(testRunPath)
+	if err != nil {
+		t.Fatalf("Failed to read test-run.md: %v", err)
+	}
+	if !strings.Contains(string(content), "# 3pio Test Run") {
 		t.Error("Long names test should create proper report structure")
 	}
 }
@@ -216,55 +198,31 @@ func TestErrorRecovery(t *testing.T) {
 	// Test that the system handles various error conditions gracefully
 
 	t.Run("Invalid Command", func(t *testing.T) {
-		projectDir := filepath.Join(fixturesDir, "basic-vitest")
-
-		// Clean output directory
-		if err := cleanProjectOutput(projectDir); err != nil {
-			t.Fatalf("Failed to clean project output: %v", err)
+		fixtureDir := filepath.Join("..", "fixtures", "basic-vitest")
+		if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
+			t.Skip("basic-vitest fixture not found")
 		}
 
-		// Get absolute path to binary
-		binaryPath, err := filepath.Abs(threePioBinary)
-		if err != nil {
-			t.Fatalf("Failed to get absolute path to binary: %v", err)
-		}
-
-		// Try to run with invalid command
-		cmd := exec.Command(binaryPath, "invalid-command")
-		cmd.Dir = projectDir
-
-		_, err = cmd.CombinedOutput()
-		if err == nil {
+		// Try to run with invalid command - this should fail
+		result := testutil.RunThreepio(t, fixtureDir, "invalid-command")
+		if result.ExitCode == 0 {
 			t.Error("Expected error for invalid command")
 		}
 	})
 
 	t.Run("Nonexistent Test Files", func(t *testing.T) {
-		projectDir := filepath.Join(fixturesDir, "basic-vitest")
-
-		// Clean output directory
-		if err := cleanProjectOutput(projectDir); err != nil {
-			t.Fatalf("Failed to clean project output: %v", err)
-		}
-
-		// Get absolute path to binary
-		binaryPath, err := filepath.Abs(threePioBinary)
-		if err != nil {
-			t.Fatalf("Failed to get absolute path to binary: %v", err)
+		fixtureDir := filepath.Join("..", "fixtures", "basic-vitest")
+		if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
+			t.Skip("basic-vitest fixture not found")
 		}
 
 		// Try to run with nonexistent test file
-		cmd := exec.Command(binaryPath, "npx", "vitest", "run", "nonexistent.test.js")
-		cmd.Dir = projectDir
-
-		// This should not crash, even though the test file doesn't exist
-		// Read output to prevent pipe deadlock
-		_, _ = cmd.CombinedOutput()
+		result := testutil.RunThreepio(t, fixtureDir, "npx", "vitest", "run", "nonexistent.test.js")
 
 		// The system should still create basic structure
-		threePioDir := filepath.Join(projectDir, ".3pio")
-		if fileExists(threePioDir) {
-			t.Log("System handled nonexistent test file gracefully")
+		threePioDir := filepath.Join(fixtureDir, ".3pio")
+		if _, err := os.Stat(threePioDir); err == nil {
+			t.Logf("System handled nonexistent test file gracefully. RunID: %s", result.RunID)
 		}
 	})
 }

@@ -15,6 +15,11 @@ func TestCargoTestBasicProject(t *testing.T) {
 		t.Skip("cargo not found in PATH")
 	}
 
+	// Test if cargo actually works
+	if err := testutil.CommandAvailable("cargo", "--version"); err != nil {
+		t.Skipf("cargo command failed: %v", err)
+	}
+
 	testCases := []struct {
 		name        string
 		fixture     string
@@ -66,9 +71,15 @@ func TestCargoTestBasicProject(t *testing.T) {
 
 			result := testutil.RunThreepio(t, fixtureDir, "cargo", "test")
 
+			// Add diagnostic output for debugging CI issues
+			if result.RunID == "" {
+				t.Logf("Debug: RunID is empty. Stdout: %s, Stderr: %s", result.Stdout, result.Stderr)
+			}
+
 			// Check exit code
 			if tc.expectPass && result.ExitCode != 0 {
-				t.Errorf("Expected success but got exit code %d", result.ExitCode)
+				t.Errorf("Expected success but got exit code %d. Stdout: %s, Stderr: %s",
+					result.ExitCode, result.Stdout, result.Stderr)
 			} else if !tc.expectPass && result.ExitCode == 0 {
 				t.Error("Expected failure but got success")
 			}

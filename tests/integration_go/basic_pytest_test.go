@@ -6,34 +6,45 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zk/3pio/tests/testutil"
 )
 
 // TestPytestFullRun verifies that pytest runs all tests with no arguments
 func TestPytestFullRun(t *testing.T) {
-	testDir := filepath.Join(fixturesDir, "basic-pytest")
-	cleanTestDir(t, testDir)
-
-	// Run pytest with no arguments
-	cmd := exec.Command(getBinaryPath(), "pytest")
-	cmd.Dir = testDir
-
-	output, err := cmd.CombinedOutput()
-
-	// Check exit code (may be non-zero if tests fail, which is ok)
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() == 127 {
-			t.Fatalf("Failed to run pytest: %v\nOutput: %s", err, output)
+	// Check if pytest is available
+	if _, err := testutil.LookPath("pytest"); err != nil {
+		if _, err := testutil.LookPath("python3"); err != nil {
+			t.Skip("python3 not found in PATH")
+		}
+		if err := testutil.CommandAvailable("python3", "-m", "pytest", "--version"); err != nil {
+			t.Skip("pytest not available")
 		}
 	}
 
-	// Verify run directory was created
-	runDir := getLatestRunDir(t, testDir)
-	assertReportExists(t, runDir)
-	assertOutputLogExists(t, runDir)
+	testDir := filepath.Join("..", "fixtures", "basic-pytest")
+	if _, err := os.Stat(testDir); os.IsNotExist(err) {
+		t.Skip("basic-pytest fixture not found")
+	}
+
+	result := testutil.RunThreepio(t, testDir, "pytest")
+
+	// Add diagnostic output for debugging CI issues
+	if result.RunID == "" {
+		t.Logf("Debug: RunID is empty. Stdout: %s, Stderr: %s", result.Stdout, result.Stderr)
+	}
+
+	// Check report exists
+	reportPath := filepath.Join(testDir, ".3pio", "runs", result.RunID, "test-run.md")
+	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+		t.Errorf("Report file not found: %s", reportPath)
+	}
 
 	// Check report contains test results
-	reportPath := filepath.Join(runDir, "test-run.md")
-	content, _ := os.ReadFile(reportPath)
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read report: %v", err)
+	}
 	reportStr := string(content)
 
 	// Should contain Python test indicators
@@ -44,44 +55,45 @@ func TestPytestFullRun(t *testing.T) {
 
 // TestPytestSpecificFile verifies pytest can run tests from a specific file
 func TestPytestSpecificFile(t *testing.T) {
-	testDir := filepath.Join(fixturesDir, "basic-pytest")
-	cleanTestDir(t, testDir)
+	// Check if pytest is available
+	if _, err := testutil.LookPath("pytest"); err != nil {
+		if _, err := testutil.LookPath("python3"); err != nil {
+			t.Skip("python3 not found in PATH")
+		}
+		if err := testutil.CommandAvailable("python3", "-m", "pytest", "--version"); err != nil {
+			t.Skip("pytest not available")
+		}
+	}
+
+	testDir := filepath.Join("..", "fixtures", "basic-pytest")
+	if _, err := os.Stat(testDir); os.IsNotExist(err) {
+		t.Skip("basic-pytest fixture not found")
+	}
 
 	// Check if test_math.py exists
 	testFile := filepath.Join(testDir, "test_math.py")
 	if _, err := os.Stat(testFile); os.IsNotExist(err) {
-		// Create a simple test file if it doesn't exist
-		simpleTest := `def test_addition():
-    assert 1 + 1 == 2
-
-def test_subtraction():
-    assert 3 - 1 == 2
-`
-		if err := os.WriteFile(testFile, []byte(simpleTest), 0644); err != nil {
-			t.Fatalf("Failed to write test file: %v", err)
-		}
+		t.Skip("test_math.py not found in fixture")
 	}
 
-	// Run pytest on specific file
-	cmd := exec.Command(getBinaryPath(), "pytest", "test_math.py")
-	cmd.Dir = testDir
+	result := testutil.RunThreepio(t, testDir, "pytest", "test_math.py")
 
-	output, err := cmd.CombinedOutput()
-
-	// Check that command ran (exit code depends on test results)
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() == 127 {
-			t.Fatalf("Failed to run pytest on specific file: %v\nOutput: %s", err, output)
-		}
+	// Add diagnostic output for debugging CI issues
+	if result.RunID == "" {
+		t.Logf("Debug: RunID is empty. Stdout: %s, Stderr: %s", result.Stdout, result.Stderr)
 	}
 
-	// Verify reports were created
-	runDir := getLatestRunDir(t, testDir)
-	assertReportExists(t, runDir)
+	// Check report exists
+	reportPath := filepath.Join(testDir, ".3pio", "runs", result.RunID, "test-run.md")
+	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+		t.Errorf("Report file not found: %s", reportPath)
+	}
 
 	// Check that only the specified file was tested
-	reportPath := filepath.Join(runDir, "test-run.md")
-	content, _ := os.ReadFile(reportPath)
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read report: %v", err)
+	}
 	if !strings.Contains(string(content), "test_math.py") {
 		t.Error("Report should contain test_math.py")
 	}
@@ -89,7 +101,10 @@ def test_subtraction():
 
 // TestPytestPatternMatching verifies pytest -k pattern matching
 func TestPytestPatternMatching(t *testing.T) {
-	testDir := filepath.Join(fixturesDir, "basic-pytest")
+	testDir := filepath.Join("..", "fixtures", "basic-pytest")
+	if _, err := os.Stat(testDir); os.IsNotExist(err) {
+		t.Skip("basic-pytest fixture not found")
+	}
 	cleanTestDir(t, testDir)
 
 	// Create test files with specific patterns
@@ -236,7 +251,10 @@ func TestPytestExitCodeError(t *testing.T) {
 
 // TestPytestVerboseMode verifies pytest -v verbose output
 func TestPytestVerboseMode(t *testing.T) {
-	testDir := filepath.Join(fixturesDir, "basic-pytest")
+	testDir := filepath.Join("..", "fixtures", "basic-pytest")
+	if _, err := os.Stat(testDir); os.IsNotExist(err) {
+		t.Skip("basic-pytest fixture not found")
+	}
 	cleanTestDir(t, testDir)
 
 	// Create a test file
@@ -274,7 +292,10 @@ func TestPytestVerboseMode(t *testing.T) {
 
 // TestPytestQuietMode verifies pytest -q quiet output
 func TestPytestQuietMode(t *testing.T) {
-	testDir := filepath.Join(fixturesDir, "basic-pytest")
+	testDir := filepath.Join("..", "fixtures", "basic-pytest")
+	if _, err := os.Stat(testDir); os.IsNotExist(err) {
+		t.Skip("basic-pytest fixture not found")
+	}
 	cleanTestDir(t, testDir)
 
 	// Create a test file
