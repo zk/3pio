@@ -67,6 +67,23 @@ Provides file-based communication between CLI and test adapters:
 - Validates event schema and types
 - Provides Events channel for orchestrator consumption
 
+#### File Watching Strategy
+The system uses different file watching approaches based on the writer/reader relationship:
+
+**For `ipc.jsonl` (IPC Manager uses fsnotify):**
+- 3pio is the READER, adapters/native runners are WRITERS
+- fsnotify efficiently detects when external processes append events
+- No polling needed since we're watching for external changes
+- Clean goroutine termination via `Cleanup()` method
+
+**For `output.log` (TailReader uses polling):**
+- 3pio is BOTH the WRITER (capturing stdout/stderr) AND the READER (via TailReader)
+- Cannot use fsnotify as it would trigger on our own writes
+- Polls with 10ms intervals to simulate `tail -f` behavior
+- Only used for native runners (Go, Cargo) to parse their JSON output
+- Native runners output JSON to stdout → 3pio captures to output.log → 3pio reads it back
+- Relies on `processExited` channel for termination (source of SIGINT bug)
+
 ### 6. Embedded Adapters (`internal/adapters/`)
 JavaScript and Python reporters embedded in the Go binary:
 - `jest.js`: Jest reporter implementation
@@ -291,6 +308,26 @@ tests/                  # Integration tests and fixtures
 - Debounced report writes (100ms default)
 - Buffered file operations
 - Minimal file system calls
+
+## Design Decision: File-Based Output Capture
+
+### Why output.log Instead of Direct Streaming?
+
+3pio writes all captured stdout/stderr to `output.log` because of a critical issue with direct process stream reading:
+
+**The Core Problem**: When reading directly from process pipes with very large test suites, we were losing output. The process would produce data faster than we could consume it, causing buffer overruns and data loss.
+
+**The Solution**: Write everything to disk first, then read it back. This ensures:
+1. **No data loss** - The OS handles buffering to disk, preventing overruns
+2. **Backpressure handling** - Disk writes can keep up with even the fastest output
+3. **Reliable parsing** - For native runners (Go, Cargo), we can read the file at our own pace to parse JSON events
+
+**Additional Benefits**:
+- Debugging artifact - output.log persists for troubleshooting
+- Crash recovery - Output survives even if 3pio crashes
+- Simpler architecture - No complex buffering or stream synchronization
+
+The file-based approach trades a small amount of disk I/O for guaranteed data integrity, which is essential for reliable test reporting.
 
 ## Error Handling
 
