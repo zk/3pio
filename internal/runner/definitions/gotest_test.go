@@ -1107,38 +1107,24 @@ func TestIPCWriter(t *testing.T) {
 	}
 }
 
-// Test that buildTestToFileMap has been removed (legacy code cleanup)
+// Test that go list functionality has been removed for performance
 func TestGoTestDefinition_BuildTestToFileMapRemoved(t *testing.T) {
-	// This test verifies that the legacy buildTestToFileMap functionality has been removed
-	// Go tests operate at package level, not file level, so the mapping provided no value
-	// and caused performance issues on large repositories
+	// This test verifies that go list has been removed to improve startup performance
+	// The removal saves 200-500ms on startup. Go tests operate at package level,
+	// not file level, so the detailed mapping provided no real value.
 
 	g := NewGoTestDefinition(createTestLogger(t))
 
-	// Mock package info
-	g.packageMap = map[string]*PackageInfo{
-		"github.com/test/pkg": {
-			ImportPath:  "github.com/test/pkg",
-			Dir:         "/tmp/test/pkg",
-			TestGoFiles: []string{"foo_test.go", "bar_test.go"},
-		},
-	}
-
-	// Verify that getFilePathForTest now directly uses package-based mapping
-	filePath := g.getFilePathForTest("github.com/test/pkg", "TestSomething")
-
-	// Should return the first test file from the package or empty if not found
+	// Without go list, getFilePathForPackage should always return empty string
+	filePath := g.getFilePathForPackage("github.com/test/pkg")
 	if filePath != "" {
-		// Check that it's using the package-based mapping
-		if !strings.Contains(filePath, "foo_test.go") && !strings.Contains(filePath, "bar_test.go") {
-			t.Errorf("getFilePathForTest returned unexpected path: %s", filePath)
-		}
+		t.Errorf("Expected empty path without go list, got: %s", filePath)
 	}
 
-	// Test with unknown package
-	unknownPath := g.getFilePathForTest("unknown/package", "TestUnknown")
+	// Test with any package name - should always return empty
+	unknownPath := g.getFilePathForPackage("unknown/package")
 	if unknownPath != "" {
-		t.Errorf("Expected empty path for unknown package, got: %s", unknownPath)
+		t.Errorf("Expected empty path for any package without go list, got: %s", unknownPath)
 	}
 }
 
