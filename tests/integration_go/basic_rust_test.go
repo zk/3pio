@@ -10,6 +10,8 @@ import (
 	"github.com/zk/3pio/tests/testutil"
 )
 
+var testNamePattern = regexp.MustCompile(`test_\w+`)
+
 func TestCargoTestBasicProject(t *testing.T) {
 	// Skip if cargo is not available
 	if _, err := testutil.LookPath("cargo"); err != nil {
@@ -139,8 +141,7 @@ func TestCargoTestBasicProject(t *testing.T) {
 					// Check if we can find pattern variations
 					if strings.Contains(expected, "test_") {
 						// Look for any test name pattern
-						testPattern := `test_\w+`
-						if matched, _ := regexp.MatchString(testPattern, allReports); matched {
+						if testNamePattern.MatchString(allReports) {
 							t.Logf("Found test name patterns in reports")
 						}
 					}
@@ -235,8 +236,7 @@ func TestCargoTestWithFlags(t *testing.T) {
 					// Check if we can find pattern variations
 					if strings.Contains(expected, "test_") {
 						// Look for any test name pattern
-						testPattern := `test_\w+`
-						if matched, _ := regexp.MatchString(testPattern, allReports); matched {
+						if testNamePattern.MatchString(allReports) {
 							t.Logf("Found test name patterns in reports")
 						}
 					}
@@ -343,8 +343,7 @@ func TestCargoNextest(t *testing.T) {
 					// Check if we can find pattern variations
 					if strings.Contains(expected, "test_") {
 						// Look for any test name pattern
-						testPattern := `test_\w+`
-						if matched, _ := regexp.MatchString(testPattern, allReports); matched {
+						if testNamePattern.MatchString(allReports) {
 							t.Logf("Found test name patterns in reports")
 						}
 					}
