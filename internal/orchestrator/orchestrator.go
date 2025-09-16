@@ -487,6 +487,11 @@ func (o *Orchestrator) Run() error {
 		o.logger.Info("Received signal: %v", sig)
 		_ = cmd.Process.Kill()
 		o.exitCode = 130 // Standard exit code for SIGINT
+		// Signal cargo reader if it exists (same as normal completion)
+		if o.cargoProcessExited != nil {
+			close(o.cargoProcessExited)
+			o.logger.Debug("Signaled cargo reader that process was interrupted")
+		}
 	}
 
 	// Wait for output capture to complete
