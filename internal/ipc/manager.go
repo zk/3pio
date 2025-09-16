@@ -17,7 +17,6 @@ type Manager struct {
 	IPCPath   string
 	watcher   *fsnotify.Watcher
 	Events    chan Event
-	errors    chan error
 	stopChan  chan struct{}
 	stopped   chan struct{} // Signals when watchLoop has stopped
 	mu        sync.RWMutex
@@ -55,7 +54,6 @@ func NewManager(ipcPath string, logger Logger) (*Manager, error) {
 	return &Manager{
 		IPCPath:  ipcPath,
 		Events:   make(chan Event, 10000), // Large buffer for handling burst of events
-		errors:   make(chan error, 10),
 		stopChan: make(chan struct{}),
 		stopped:  make(chan struct{}),
 		logger:   logger,
@@ -126,8 +124,8 @@ func (m *Manager) watchLoop() {
 			if !ok {
 				return
 			}
+			// Log the error but don't block on channel send
 			m.logger.Error("Watcher error: %v", err)
-			m.errors <- err
 
 		case <-m.stopChan:
 			return
@@ -274,9 +272,6 @@ func (m *Manager) Cleanup() error {
 	m.closeOnce.Do(func() {
 		if m.Events != nil {
 			close(m.Events)
-		}
-		if m.errors != nil {
-			close(m.errors)
 		}
 	})
 
