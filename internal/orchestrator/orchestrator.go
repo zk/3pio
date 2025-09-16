@@ -809,6 +809,12 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 // captureOutput captures and duplicates output streams
 func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
 	scanner := bufio.NewScanner(input)
+	// Configure larger buffer for long output lines
+	// Default is 64KB which can be exceeded by test runners with large output
+	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB max line size
+	buf := make([]byte, 0, 1024*1024)          // 1MB initial buffer
+	scanner.Buffer(buf, maxScanTokenSize)
+
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
 		for _, output := range outputs {

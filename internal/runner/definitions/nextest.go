@@ -158,6 +158,12 @@ func (n *NextestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) erro
 	}()
 
 	scanner := bufio.NewScanner(stdout)
+	// Configure larger buffer for long JSON lines (especially with embedded output)
+	// Default is 64KB which can be exceeded by test output
+	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB max line size
+	buf := make([]byte, 0, 1024*1024)          // 1MB initial buffer
+	scanner.Buffer(buf, maxScanTokenSize)
+
 	testCount := 0
 
 	for scanner.Scan() {
