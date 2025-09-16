@@ -806,7 +806,6 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	}
 }
 
-
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
 	// Read log level from environment variable for adapter injection
