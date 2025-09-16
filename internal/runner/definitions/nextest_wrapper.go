@@ -16,7 +16,7 @@ func NewNextestWrapper(impl *NextestDefinition) *NextestWrapper {
 
 // Matches checks if this runner can handle the given command
 func (n *NextestWrapper) Matches(command []string) bool {
-	return n.NextestDefinition.Detect(command)
+	return n.Detect(command)
 }
 
 // GetTestFiles returns list of test files (empty for dynamic discovery)
@@ -28,7 +28,7 @@ func (n *NextestWrapper) GetTestFiles(args []string) ([]string, error) {
 func (n *NextestWrapper) BuildCommand(args []string, adapterPath string) []string {
 	// nextest uses native processing, no adapter needed
 	// Pass empty strings for ipcPath and runID as they're handled elsewhere
-	return n.NextestDefinition.ModifyCommand(args, "", "")
+	return n.ModifyCommand(args, "", "")
 }
 
 // GetAdapterFileName returns empty as nextest doesn't use an adapter

@@ -734,11 +734,14 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	if len(group.TestCases) > 0 {
 		content += "## Test case results\n\n"
 		for _, tc := range group.TestCases {
-			icon := "✓"
-			if tc.Status == TestStatusFail {
+			var icon string
+			switch tc.Status {
+			case TestStatusFail:
 				icon = "✕"
-			} else if tc.Status == TestStatusSkip {
+			case TestStatusSkip:
 				icon = "○"
+			default:
+				icon = "✓"
 			}
 
 			content += fmt.Sprintf("- %s %s", icon, tc.Name)
@@ -920,15 +923,18 @@ func (gm *GroupManager) generateSummaryReport() string {
 	// Root groups
 	content += "## Test Groups\n\n"
 	for _, group := range gm.rootGroups {
-		icon := "✓"
-		if group.Status == TestStatusFail {
+		var icon string
+		switch group.Status {
+		case TestStatusFail:
 			icon = "✕"
-		} else if group.Status == TestStatusSkip {
+		case TestStatusSkip:
 			icon = "○"
-		} else if group.Status == TestStatusRunning {
+		case TestStatusRunning:
 			icon = "⚡"
-		} else if group.Status == TestStatusPending {
+		case TestStatusPending:
 			icon = "⏳"
+		default:
+			icon = "✓"
 		}
 
 		relPath := GetRelativeReportPath(group, gm.runDir)

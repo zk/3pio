@@ -54,6 +54,46 @@ func (b *BaseDefinition) InterpretExitCode(code int) string {
 	return "failure"
 }
 
+// containsTestRunner checks if a command contains a specific test runner
+// It's more strict than strings.Contains to avoid false positives
+func containsTestRunner(command []string, runner string) bool {
+	for _, arg := range command {
+		// Extract base name from path
+		baseName := arg
+		if idx := strings.LastIndex(arg, "/"); idx != -1 {
+			baseName = arg[idx+1:]
+		}
+		if idx := strings.LastIndex(baseName, "\\"); idx != -1 {
+			baseName = baseName[idx+1:]
+		}
+
+		// Check for exact match or as part of a known pattern
+		if baseName == runner {
+			return true
+		}
+
+		// Handle common patterns like "python -m pytest"
+		if runner == "pytest" && arg == "-m" {
+			// Check if the next argument is pytest
+			idx := indexOf(command, arg)
+			if idx >= 0 && idx < len(command)-1 && command[idx+1] == "pytest" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// indexOf finds the index of a string in a slice
+func indexOf(slice []string, item string) int {
+	for i, s := range slice {
+		if s == item {
+			return i
+		}
+	}
+	return -1
+}
+
 // JestDefinition implements Definition for Jest
 type JestDefinition struct {
 	BaseDefinition
@@ -71,8 +111,7 @@ func NewJestDefinition() *JestDefinition {
 
 // Matches checks if the command is for Jest
 func (j *JestDefinition) Matches(command []string) bool {
-	cmdStr := strings.Join(command, " ")
-	return strings.Contains(cmdStr, "jest") || j.isJestInPackageJSON()
+	return containsTestRunner(command, "jest") || j.isJestInPackageJSON()
 }
 
 // GetTestFiles gets test files for Jest
@@ -253,8 +292,7 @@ func NewVitestDefinition() *VitestDefinition {
 
 // Matches checks if the command is for Vitest
 func (v *VitestDefinition) Matches(command []string) bool {
-	cmdStr := strings.Join(command, " ")
-	return strings.Contains(cmdStr, "vitest") || v.isVitestInPackageJSON()
+	return containsTestRunner(command, "vitest") || v.isVitestInPackageJSON()
 }
 
 // GetTestFiles gets test files for Vitest
@@ -466,8 +504,7 @@ func NewPytestDefinition() *PytestDefinition {
 
 // Matches checks if the command is for pytest
 func (p *PytestDefinition) Matches(command []string) bool {
-	cmdStr := strings.Join(command, " ")
-	return strings.Contains(cmdStr, "pytest") || strings.Contains(cmdStr, "py.test")
+	return containsTestRunner(command, "pytest") || containsTestRunner(command, "py.test")
 }
 
 // GetTestFiles gets test files for pytest

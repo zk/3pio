@@ -14,9 +14,6 @@ import (
 	"github.com/zk/3pio/internal/logger"
 )
 
-// runningTestBinaryRegex matches "Running /path/to/target/debug/deps/crate_name-hash"
-var runningTestBinaryRegex = regexp.MustCompile(`Running .*/target/.*/deps/(.*?)-[a-f0-9]+`)
-
 // Keep these for backwards compatibility if needed
 var runningUnittestsRegex = regexp.MustCompile(`Running unittests .* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
 var runningIntegrationTestsRegex = regexp.MustCompile(`Running tests/.* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
@@ -616,11 +613,14 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 		}
 
 		// Map status
-		status := "PASS"
-		if event.Event == "failed" {
+		var status string
+		switch event.Event {
+		case "failed":
 			status = "FAIL"
-		} else if event.Event == "ignored" {
+		case "ignored":
 			status = "SKIP"
+		default:
+			status = "PASS"
 		}
 
 		// Send test case event (convert duration from seconds to milliseconds)

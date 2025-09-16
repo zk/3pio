@@ -16,7 +16,9 @@ func TestPytestMissingInstallation(t *testing.T) {
 	test := `def test_something():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_missing.py"), []byte(test), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_missing.py"), []byte(test), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Try to run pytest in a directory where it might not be available
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -48,7 +50,9 @@ func TestPytestSyntaxError(t *testing.T) {
 	syntaxError := `def test_syntax_error(:  # Invalid syntax
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_syntax_error.py"), []byte(syntaxError), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_syntax_error.py"), []byte(syntaxError), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -85,7 +89,9 @@ func TestPytestImportError(t *testing.T) {
 def test_import():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_import_error.py"), []byte(importError), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_import_error.py"), []byte(importError), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -119,7 +125,9 @@ def broken_fixture():
 def test_with_broken_fixture(broken_fixture):
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_fixture_error.py"), []byte(fixtureError), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_fixture_error.py"), []byte(fixtureError), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -153,7 +161,9 @@ func TestPytestEmptyTestSuite(t *testing.T) {
 def not_a_test():
     return 42
 `
-	os.WriteFile(filepath.Join(testDir, "no_tests.py"), []byte(noTests), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "no_tests.py"), []byte(noTests), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -194,7 +204,9 @@ func TestPytestAssertionError(t *testing.T) {
 def test_list_assertion():
     assert [1, 2, 3] == [1, 2, 4]
 `
-	os.WriteFile(filepath.Join(testDir, "test_assertions.py"), []byte(assertionTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_assertions.py"), []byte(assertionTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest", "-v")
@@ -235,7 +247,9 @@ def test_hanging():
     time.sleep(60)  # Sleep for 60 seconds
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_hanging.py"), []byte(hangingTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_hanging.py"), []byte(hangingTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest with timeout flag if available
 	cmd := exec.Command(getBinaryPath(), "pytest", "--timeout=2")
@@ -291,7 +305,9 @@ func TestPytestInvalidFlag(t *testing.T) {
 	test := `def test_simple():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_simple.py"), []byte(test), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_simple.py"), []byte(test), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest with invalid flag
 	cmd := exec.Command(getBinaryPath(), "pytest", "--invalid-flag-that-doesnt-exist")
@@ -323,7 +339,9 @@ def test_division_by_zero():
     result = 10 / 0
     assert result == 0
 `
-	os.WriteFile(filepath.Join(testDir, "test_exceptions.py"), []byte(exceptionTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_exceptions.py"), []byte(exceptionTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest", "-v")

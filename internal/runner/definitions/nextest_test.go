@@ -9,7 +9,7 @@ import (
 
 func TestNextestDefinition_Name(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 	if def.Name() != "nextest" {
 		t.Errorf("Expected name 'nextest', got '%s'", def.Name())
@@ -18,7 +18,7 @@ func TestNextestDefinition_Name(t *testing.T) {
 
 func TestNextestDefinition_Detect(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	tests := []struct {
@@ -100,7 +100,7 @@ func TestNextestDefinition_Detect(t *testing.T) {
 
 func TestNextestDefinition_ModifyCommand(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	tests := []struct {
@@ -171,7 +171,7 @@ func TestNextestDefinition_ModifyCommand(t *testing.T) {
 
 func TestNextestDefinition_ProcessJSONEvents(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	// Test with sample nextest JSON events
@@ -197,7 +197,7 @@ func TestNextestDefinition_ProcessJSONEvents(t *testing.T) {
 
 func TestNextestDefinition_RequiresAdapter(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	if def.RequiresAdapter() {
@@ -207,7 +207,7 @@ func TestNextestDefinition_RequiresAdapter(t *testing.T) {
 
 func TestNextestDefinition_GetTestFiles(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	files, err := def.GetTestFiles([]string{"cargo", "nextest", "run"})
@@ -222,7 +222,7 @@ func TestNextestDefinition_GetTestFiles(t *testing.T) {
 
 func TestNextestDefinition_SetEnvironment(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	env := def.SetEnvironment()
@@ -237,7 +237,7 @@ func TestNextestDefinition_SetEnvironment(t *testing.T) {
 
 func TestNextestDefinition_ParseTestName(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewNextestDefinition(logger)
 
 	tests := []struct {

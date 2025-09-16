@@ -161,7 +161,7 @@ func (n *NextestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) erro
 	// Configure larger buffer for long JSON lines (especially with embedded output)
 	// Default is 64KB which can be exceeded by test output
 	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB max line size
-	buf := make([]byte, 0, 1024*1024)          // 1MB initial buffer
+	buf := make([]byte, 0, 1024*1024)         // 1MB initial buffer
 	scanner.Buffer(buf, maxScanTokenSize)
 
 	testCount := 0
@@ -242,14 +242,8 @@ func (n *NextestDefinition) processTestEvent(event *NextestEvent, testCount *int
 	packageName := parts[0]
 
 	// Check if we're in a workspace
-	if n.workspaceName == "" {
-		// Try to detect workspace from cargo metadata (simplified for now)
-		// In a real implementation, we'd run `cargo metadata` to get workspace info
-		// For now, check if package name looks like it's from a workspace
-		if strings.Contains(packageName, "_") {
-			// Might be a workspace package, but we'll treat it as standalone for now
-		}
-	}
+	// Workspace detection would go here if needed
+	// Currently treating all packages as standalone
 
 	// Build parent hierarchy
 	var parentNames []string
@@ -315,11 +309,14 @@ func (n *NextestDefinition) processTestEvent(event *NextestEvent, testCount *int
 
 	case "ok", "failed", "ignored":
 		// Map status
-		status := "PASS"
-		if event.Event == "failed" {
+		var status string
+		switch event.Event {
+		case "failed":
 			status = "FAIL"
-		} else if event.Event == "ignored" {
+		case "ignored":
 			status = "SKIP"
+		default:
+			status = "PASS"
 		}
 
 		// Send test case event

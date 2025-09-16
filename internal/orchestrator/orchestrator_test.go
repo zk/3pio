@@ -418,11 +418,11 @@ func TestOutputFileRaceCondition(t *testing.T) {
 
 	// Start writer (simulates test command output)
 	go func() {
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 		// Write some data with delays to simulate real test output
 		for i := 0; i < 5; i++ {
 			time.Sleep(10 * time.Millisecond)
-			writer.Write([]byte("test output line\n"))
+			_, _ = writer.Write([]byte("test output line\n"))
 		}
 	}()
 
@@ -457,7 +457,7 @@ func TestOutputFileRaceCondition(t *testing.T) {
 	// In the real code, this happens via defer when Execute returns
 	go func() {
 		time.Sleep(25 * time.Millisecond) // Close file while reader is still active
-		outputFile.Close()
+		_ = outputFile.Close()
 	}()
 
 	// Wait for reader to finish

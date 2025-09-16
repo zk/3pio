@@ -153,9 +153,3 @@ func isProjectESM() bool {
 
 	return pkg.Type == "module"
 }
-
-// CleanupAdapters removes all extracted adapter files
-func CleanupAdapters() error {
-	adapterDir := filepath.Join(".3pio", "adapters")
-	return os.RemoveAll(adapterDir)
-}

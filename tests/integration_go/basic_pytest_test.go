@@ -57,7 +57,9 @@ func TestPytestSpecificFile(t *testing.T) {
 def test_subtraction():
     assert 3 - 1 == 2
 `
-		os.WriteFile(testFile, []byte(simpleTest), 0644)
+		if err := os.WriteFile(testFile, []byte(simpleTest), 0644); err != nil {
+			t.Fatalf("Failed to write test file: %v", err)
+		}
 	}
 
 	// Run pytest on specific file
@@ -100,7 +102,9 @@ def test_multiply():
 def test_string_concat():
     assert "a" + "b" == "ab"
 `
-	os.WriteFile(filepath.Join(testDir, "test_patterns.py"), []byte(mathTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_patterns.py"), []byte(mathTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest with pattern matching
 	cmd := exec.Command(getBinaryPath(), "pytest", "-k", "test_add")
@@ -144,7 +148,9 @@ func TestPytestExitCodePass(t *testing.T) {
 	passingTest := `def test_pass():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_pass.py"), []byte(passingTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_pass.py"), []byte(passingTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -170,7 +176,9 @@ func TestPytestExitCodeFail(t *testing.T) {
 	failingTest := `def test_fail():
     assert False, "This test should fail"
 `
-	os.WriteFile(filepath.Join(testDir, "test_fail.py"), []byte(failingTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_fail.py"), []byte(failingTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -203,7 +211,9 @@ func TestPytestExitCodeError(t *testing.T) {
     # Missing closing parenthesis
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_syntax.py"), []byte(syntaxErrorTest), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_syntax.py"), []byte(syntaxErrorTest), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest
 	cmd := exec.Command(getBinaryPath(), "pytest")
@@ -233,7 +243,9 @@ func TestPytestVerboseMode(t *testing.T) {
 	test := `def test_verbose():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_verbose.py"), []byte(test), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_verbose.py"), []byte(test), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest with verbose flag
 	cmd := exec.Command(getBinaryPath(), "pytest", "-v")
@@ -269,7 +281,9 @@ func TestPytestQuietMode(t *testing.T) {
 	test := `def test_quiet():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_quiet.py"), []byte(test), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_quiet.py"), []byte(test), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest with quiet flag
 	cmd := exec.Command(getBinaryPath(), "pytest", "-q")
@@ -301,8 +315,12 @@ func TestPytestMultipleFiles(t *testing.T) {
 	test2 := `def test_file2():
     assert True
 `
-	os.WriteFile(filepath.Join(testDir, "test_one.py"), []byte(test1), 0644)
-	os.WriteFile(filepath.Join(testDir, "test_two.py"), []byte(test2), 0644)
+	if err := os.WriteFile(filepath.Join(testDir, "test_one.py"), []byte(test1), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(testDir, "test_two.py"), []byte(test2), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest on multiple files
 	cmd := exec.Command(getBinaryPath(), "pytest", "test_one.py", "test_two.py")
@@ -331,13 +349,17 @@ func TestPytestDirectory(t *testing.T) {
 
 	// Create a tests subdirectory
 	testsDir := filepath.Join(testDir, "tests")
-	os.MkdirAll(testsDir, 0755)
+	if err := os.MkdirAll(testsDir, 0755); err != nil {
+		t.Fatalf("Failed to create directory: %v", err)
+	}
 
 	// Create test files in subdirectory
 	test := `def test_in_subdir():
     assert True
 `
-	os.WriteFile(filepath.Join(testsDir, "test_subdir.py"), []byte(test), 0644)
+	if err := os.WriteFile(filepath.Join(testsDir, "test_subdir.py"), []byte(test), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	// Run pytest on directory
 	cmd := exec.Command(getBinaryPath(), "pytest", "tests")

@@ -15,7 +15,7 @@ import (
 
 // GoTestDefinition implements support for Go's native test runner
 type GoTestDefinition struct {
-	logger     *logger.FileLogger
+	logger *logger.FileLogger
 	// packageMap removed - no longer using go list
 	testStates map[string]*TestState
 	mu         sync.RWMutex
@@ -93,7 +93,7 @@ type IPCWriter struct {
 // NewGoTestDefinition creates a new Go test runner definition
 func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 	return &GoTestDefinition{
-		logger:            logger,
+		logger: logger,
 		// packageMap removed - using dynamic discovery
 		testStates:        make(map[string]*TestState),
 		packageTestFiles:  make(map[string][]string),
@@ -182,14 +182,6 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 		return testFiles, nil
 	}
 
-	// Build package patterns from args
-	patterns := g.extractPackagePatterns(args)
-
-	// If no patterns, use current directory
-	if len(patterns) == 0 {
-		patterns = []string{"./..."}
-	}
-
 	// Go list removed for performance - causes 200-500ms startup latency
 	// Tests are discovered dynamically from JSON output instead
 	// This means we can't provide upfront file discovery, but test execution works fine
@@ -222,7 +214,7 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 	// Configure larger buffer for long JSON lines (especially with embedded output)
 	// Default is 64KB which can be exceeded by test output
 	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB max line size
-	buf := make([]byte, 0, 1024*1024)          // 1MB initial buffer
+	buf := make([]byte, 0, 1024*1024)         // 1MB initial buffer
 	scanner.Buffer(buf, maxScanTokenSize)
 
 	for scanner.Scan() {

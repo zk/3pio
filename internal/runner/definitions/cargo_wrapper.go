@@ -17,7 +17,7 @@ func NewCargoTestWrapper(impl *CargoTestDefinition) *CargoTestWrapper {
 
 // Matches checks if this runner can handle the given command
 func (c *CargoTestWrapper) Matches(command []string) bool {
-	return c.CargoTestDefinition.Detect(command)
+	return c.Detect(command)
 }
 
 // GetTestFiles returns list of test files (empty for dynamic discovery)
@@ -29,7 +29,7 @@ func (c *CargoTestWrapper) GetTestFiles(args []string) ([]string, error) {
 func (c *CargoTestWrapper) BuildCommand(args []string, adapterPath string) []string {
 	// cargo test uses native processing, no adapter needed
 	// Pass empty strings for ipcPath and runID as they're handled elsewhere
-	return c.CargoTestDefinition.ModifyCommand(args, "", "")
+	return c.ModifyCommand(args, "", "")
 }
 
 // GetAdapterFileName returns empty as cargo test doesn't use an adapter
@@ -59,14 +59,14 @@ func (c *CargoTestWrapper) GetNativeDefinition() interface{} {
 func (c *CargoTestWrapper) ProcessOutputWithEnv(stdout io.Reader, ipcPath string) error {
 	// Set RUSTC_BOOTSTRAP=1 for the duration of processing
 	oldVal := os.Getenv("RUSTC_BOOTSTRAP")
-	os.Setenv("RUSTC_BOOTSTRAP", "1")
+	_ = os.Setenv("RUSTC_BOOTSTRAP", "1")
 	defer func() {
 		if oldVal == "" {
-			os.Unsetenv("RUSTC_BOOTSTRAP")
+			_ = os.Unsetenv("RUSTC_BOOTSTRAP")
 		} else {
-			os.Setenv("RUSTC_BOOTSTRAP", oldVal)
+			_ = os.Setenv("RUSTC_BOOTSTRAP", oldVal)
 		}
 	}()
 
-	return c.CargoTestDefinition.ProcessOutput(stdout, ipcPath)
+	return c.ProcessOutput(stdout, ipcPath)
 }

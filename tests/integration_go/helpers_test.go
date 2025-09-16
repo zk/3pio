@@ -2,10 +2,8 @@ package integration_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -40,28 +38,6 @@ func getBinaryPath() string {
 	return filepath.Join("..", "..", "build", binaryName)
 }
 
-// runTest executes 3pio with given arguments and returns output and exit code
-func runTest(t *testing.T, dir string, args ...string) (stdout string, stderr string, exitCode int) {
-	t.Helper()
-
-	cmd := exec.Command(getBinaryPath(), args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-
-	outBytes, err := cmd.Output()
-	stdout = string(outBytes)
-
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		stderr = string(exitErr.Stderr)
-		exitCode = exitErr.ExitCode()
-	} else if err != nil {
-		t.Fatalf("Failed to run command: %v", err)
-	}
-
-	return stdout, stderr, exitCode
-}
-
 // cleanTestDir removes the .3pio directory for a clean test environment
 func cleanTestDir(t *testing.T, dir string) {
 	t.Helper()
@@ -78,31 +54,6 @@ func assertFileExists(t *testing.T, path string) {
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Errorf("Expected file to exist: %s", path)
-	}
-}
-
-// assertFileContains verifies that a file contains expected content
-func assertFileContains(t *testing.T, path string, expected string) {
-	t.Helper()
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("Failed to read file %s: %v", path, err)
-		return
-	}
-
-	if !strings.Contains(string(content), expected) {
-		t.Errorf("File %s does not contain expected content.\nExpected to contain: %s\nActual content: %s",
-			path, expected, string(content))
-	}
-}
-
-// assertExitCode verifies the command exit code matches expected
-func assertExitCode(t *testing.T, actual int, expected int) {
-	t.Helper()
-
-	if actual != expected {
-		t.Errorf("Exit code mismatch. Expected: %d, Got: %d", expected, actual)
 	}
 }
 

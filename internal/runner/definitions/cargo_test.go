@@ -9,7 +9,7 @@ import (
 
 func TestCargoTestDefinition_Name(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 	if def.Name() != "cargo" {
 		t.Errorf("Expected name 'cargo', got '%s'", def.Name())
@@ -18,7 +18,7 @@ func TestCargoTestDefinition_Name(t *testing.T) {
 
 func TestCargoTestDefinition_Detect(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 
 	tests := []struct {
@@ -95,7 +95,7 @@ func TestCargoTestDefinition_Detect(t *testing.T) {
 
 func TestCargoTestDefinition_ModifyCommand(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 
 	tests := []struct {
@@ -140,7 +140,7 @@ func TestCargoTestDefinition_ModifyCommand(t *testing.T) {
 
 func TestCargoTestDefinition_ProcessJSONEvents(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 
 	// Test with sample JSON events
@@ -167,7 +167,7 @@ func TestCargoTestDefinition_ProcessJSONEvents(t *testing.T) {
 
 func TestCargoTestDefinition_RequiresAdapter(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 
 	if def.RequiresAdapter() {
@@ -177,7 +177,7 @@ func TestCargoTestDefinition_RequiresAdapter(t *testing.T) {
 
 func TestCargoTestDefinition_GetTestFiles(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 
 	files, err := def.GetTestFiles([]string{"cargo", "test"})
@@ -192,7 +192,7 @@ func TestCargoTestDefinition_GetTestFiles(t *testing.T) {
 
 func TestCargoTestDefinition_SetEnvironment(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
 
 	env := def.SetEnvironment()

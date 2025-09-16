@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"math/rand"
@@ -424,7 +423,7 @@ func (o *Orchestrator) Run() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer tailReader.Close()
+			defer func() { _ = tailReader.Close() }()
 
 			// Create a custom reader that polls the file until process exits
 			fileReader := &TailReader{
@@ -451,7 +450,7 @@ func (o *Orchestrator) Run() error {
 		go func() {
 			defer wg.Done()
 			// Capture stderr to the error buffer
-			io.Copy(&o.stderrCapture, stderrPipe)
+			_, _ = io.Copy(&o.stderrCapture, stderrPipe)
 		}()
 	}
 
@@ -767,11 +766,12 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		// Update group counters for top-level groups
 		if len(e.Payload.ParentNames) == 0 {
 			o.totalGroups++
-			if e.Payload.Status == "PASS" {
+			switch e.Payload.Status {
+			case "PASS":
 				o.passedGroups++
-			} else if e.Payload.Status == "FAIL" {
+			case "FAIL":
 				o.failedGroups++
-			} else if e.Payload.Status == "SKIP" {
+			case "SKIP":
 				o.skippedGroups++
 			}
 		}
@@ -806,26 +806,6 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	}
 }
 
-// captureOutput captures and duplicates output streams
-func (o *Orchestrator) captureOutput(input io.Reader, outputs ...io.Writer) {
-	scanner := bufio.NewScanner(input)
-	// Configure larger buffer for long output lines
-	// Default is 64KB which can be exceeded by test runners with large output
-	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB max line size
-	buf := make([]byte, 0, 1024*1024)          // 1MB initial buffer
-	scanner.Buffer(buf, maxScanTokenSize)
-
-	for scanner.Scan() {
-		line := scanner.Text() + "\n"
-		for _, output := range outputs {
-			_, _ = output.Write([]byte(line))
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		o.logger.Error("Error reading output: %v", err)
-	}
-}
 
 // extractAdapter extracts the adapter file to a temporary directory
 func (o *Orchestrator) extractAdapter(adapterName string) (string, error) {
@@ -1084,11 +1064,12 @@ func (o *Orchestrator) computeStatsFromReportManager() {
 		// Only count groups that have test cases
 		if group.HasTestCases() {
 			o.totalGroups++
-			if group.Status == report.TestStatusPass {
+			switch group.Status {
+			case report.TestStatusPass:
 				o.passedGroups++
-			} else if group.Status == report.TestStatusFail {
+			case report.TestStatusFail:
 				o.failedGroups++
-			} else if group.Status == report.TestStatusSkip {
+			case report.TestStatusSkip:
 				o.skippedGroups++
 			}
 		}

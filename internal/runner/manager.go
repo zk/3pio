@@ -85,9 +85,19 @@ func (m *Manager) GetDefinition(name string) (Definition, bool) {
 
 // isPackageManager checks if a command is a package manager
 func isPackageManager(cmd string) bool {
+	// Extract the base command name from the full path
+	baseName := cmd
+	if idx := strings.LastIndex(cmd, "/"); idx != -1 {
+		baseName = cmd[idx+1:]
+	}
+	if idx := strings.LastIndex(baseName, "\\"); idx != -1 {
+		baseName = baseName[idx+1:]
+	}
+
+	// Check for exact matches of package manager names
 	managers := []string{"npm", "yarn", "pnpm", "bun"}
 	for _, m := range managers {
-		if strings.Contains(cmd, m) {
+		if baseName == m {
 			return true
 		}
 	}

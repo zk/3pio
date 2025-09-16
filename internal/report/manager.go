@@ -297,7 +297,7 @@ func (m *Manager) writeOutputLogHeader(args string) error {
 
 // generateMarkdownReport generates the markdown report
 func (m *Manager) generateMarkdownReport() string {
-	var sb strings.Builder
+	sb := &strings.Builder{}
 
 	// Extract run ID from runDir
 	runID := filepath.Base(m.runDir)
@@ -318,18 +318,18 @@ func (m *Manager) generateMarkdownReport() string {
 
 	// YAML frontmatter
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("run_id: %s\n", runID))
-	sb.WriteString(fmt.Sprintf("run_path: %s\n", m.runDir))
-	sb.WriteString(fmt.Sprintf("detected_runner: %s\n", m.detectedRunner))
-	sb.WriteString(fmt.Sprintf("modified_command: `%s`\n", m.modifiedCommand))
-	sb.WriteString(fmt.Sprintf("created: %s\n", m.state.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z")))
-	sb.WriteString(fmt.Sprintf("updated: %s\n", m.state.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z")))
-	sb.WriteString(fmt.Sprintf("status: %s\n", statusText))
+	fmt.Fprintf(sb, "run_id: %s\n", runID)
+	fmt.Fprintf(sb, "run_path: %s\n", m.runDir)
+	fmt.Fprintf(sb, "detected_runner: %s\n", m.detectedRunner)
+	fmt.Fprintf(sb, "modified_command: `%s`\n", m.modifiedCommand)
+	fmt.Fprintf(sb, "created: %s\n", m.state.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z"))
+	fmt.Fprintf(sb, "updated: %s\n", m.state.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"))
+	fmt.Fprintf(sb, "status: %s\n", statusText)
 	sb.WriteString("---\n\n")
 
 	// Header
 	sb.WriteString("# 3pio Test Run\n\n")
-	sb.WriteString(fmt.Sprintf("- Test command: `%s`\n", m.state.Arguments))
+	fmt.Fprintf(sb, "- Test command: `%s`\n", m.state.Arguments)
 	sb.WriteString("- Run stdout/stderr: `./output.log`\n\n")
 
 	// Error details if status is ERRORED
@@ -343,7 +343,7 @@ func (m *Manager) generateMarkdownReport() string {
 	// Always use group-based reporting
 	if m.groupManager != nil {
 		// Generate hierarchical summary and results using group data
-		m.generateGroupBasedReport(&sb, statusText)
+		m.generateGroupBasedReport(sb, statusText)
 	} else {
 		// No test results to report
 		sb.WriteString("## Test Results\n\n")
@@ -380,15 +380,15 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 			totalDuration += group.Duration.Seconds()
 		}
 
-		sb.WriteString(fmt.Sprintf("- Total test cases: %d\n", totalTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases completed: %d\n", completedTestCases))
+		fmt.Fprintf(sb, "- Total test cases: %d\n", totalTestCases)
+		fmt.Fprintf(sb, "- Test cases completed: %d\n", completedTestCases)
 		if runningTestCases > 0 {
-			sb.WriteString(fmt.Sprintf("- Test cases running: %d\n", runningTestCases))
+			fmt.Fprintf(sb, "- Test cases running: %d\n", runningTestCases)
 		}
-		sb.WriteString(fmt.Sprintf("- Test cases passed: %d\n", passedTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases failed: %d\n", failedTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases skipped: %d\n", skippedTestCases))
-		sb.WriteString(fmt.Sprintf("- Total duration: %.2fs\n\n", totalDuration))
+		fmt.Fprintf(sb, "- Test cases passed: %d\n", passedTestCases)
+		fmt.Fprintf(sb, "- Test cases failed: %d\n", failedTestCases)
+		fmt.Fprintf(sb, "- Test cases skipped: %d\n", skippedTestCases)
+		fmt.Fprintf(sb, "- Total duration: %.2fs\n\n", totalDuration)
 	}
 
 	// Test group results section with table format
@@ -473,7 +473,7 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 				reportFile = "./" + relPath
 			}
 
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", statusStr, filename, testsStr, durationStr, reportFile))
+			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n", statusStr, filename, testsStr, durationStr, reportFile)
 		}
 	}
 }
@@ -563,12 +563,12 @@ func countRunningTestCases(group *TestGroup) int {
 		filename := filepath.Base(group.Name)
 		durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
 
-		sb.WriteString(fmt.Sprintf("%s**%s** - %s %s", indentStr, filename, statusIcon, durationStr))
+		fmt.Fprintf(sb, "%s**%s** - %s %s", indentStr, filename, statusIcon, durationStr)
 
 		// Add test counts
 		if group.Stats.TotalTests > 0 {
-			sb.WriteString(fmt.Sprintf(" (%d tests: %d passed, %d failed, %d skipped)",
-				group.Stats.TotalTests, group.Stats.PassedTests, group.Stats.FailedTests, group.Stats.SkippedTests))
+			fmt.Fprintf(sb, " (%d tests: %d passed, %d failed, %d skipped)",
+				group.Stats.TotalTests, group.Stats.PassedTests, group.Stats.FailedTests, group.Stats.SkippedTests)
 		}
 		sb.WriteString("\n")
 
@@ -578,10 +578,10 @@ func countRunningTestCases(group *TestGroup) int {
 	} else {
 		// Suite-level groups
 		statusIcon := getGroupStatusIcon(group.Status)
-		sb.WriteString(fmt.Sprintf("%s**%s** - %s", indentStr, group.Name, statusIcon))
+		fmt.Fprintf(sb, "%s**%s** - %s", indentStr, group.Name, statusIcon)
 
 		if group.Stats.TotalTests > 0 {
-			sb.WriteString(fmt.Sprintf(" (%d tests)", group.Stats.TotalTests))
+			fmt.Fprintf(sb, " (%d tests)", group.Stats.TotalTests)
 		}
 		sb.WriteString("\n")
 	}
@@ -594,14 +594,14 @@ func countRunningTestCases(group *TestGroup) int {
 		if testCase.Duration > 0 {
 			durationStr = fmt.Sprintf(" (%.2fs)", testCase.Duration.Seconds())
 		}
-		sb.WriteString(fmt.Sprintf("%s%s %s%s\n", testIndent, testIcon, testCase.Name, durationStr))
+		fmt.Fprintf(sb, "%s%s %s%s\n", testIndent, testIcon, testCase.Name, durationStr)
 
 		// Show error for failed tests
 		if testCase.Status == TestStatusFail && testCase.Error != nil && testCase.Error.Message != "" {
 			errorIndent := strings.Repeat("  ", indent+2)
-			sb.WriteString(fmt.Sprintf("%s```\n", errorIndent))
-			sb.WriteString(fmt.Sprintf("%s%s\n", errorIndent, testCase.Error.Message))
-			sb.WriteString(fmt.Sprintf("%s```\n", errorIndent))
+			fmt.Fprintf(sb, "%s```\n", errorIndent)
+			fmt.Fprintf(sb, "%s%s\n", errorIndent, testCase.Error.Message)
+			fmt.Fprintf(sb, "%s```\n", errorIndent)
 		}
 	}
 

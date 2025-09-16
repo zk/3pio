@@ -90,7 +90,7 @@ func copyDir(src, dst string) error {
 			if err != nil {
 				return err
 			}
-			defer srcFile.Close()
+			defer func() { _ = srcFile.Close() }()
 
 			// Ensure parent directory exists
 			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
@@ -101,7 +101,7 @@ func copyDir(src, dst string) error {
 			if err != nil {
 				return err
 			}
-			defer dstFile.Close()
+			defer func() { _ = dstFile.Close() }()
 
 			// Copy the file content
 			if _, err = io.Copy(dstFile, srcFile); err != nil {
