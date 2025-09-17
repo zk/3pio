@@ -113,23 +113,22 @@ func TestSingleFailureDisplay(t *testing.T) {
 	// Create a temporary test file with just one failure
 	tempDir := t.TempDir()
 
-	// Create go.mod
-	goModContent := `module temptest
-go 1.21`
-	if err := os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod: %v", err)
+	// Create package.json for Jest
+	packageContent := `{
+		"name": "test-single-failure",
+		"scripts": {
+			"test": "jest"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(tempDir, "package.json"), []byte(packageContent), 0644); err != nil {
+		t.Fatalf("Failed to create package.json: %v", err)
 	}
 
-	// Create test file with single failure
-	testContent := `package temptest
-import (
-	"testing"
-	"time"
-)
-func TestSingleFailure(t *testing.T) {
-	t.Fatalf("This is the only failure at %v", time.Now().UnixNano())
-}`
-	if err := os.WriteFile(filepath.Join(tempDir, "single_test.go"), []byte(testContent), 0644); err != nil {
+	// Create Jest test file with single failure
+	testContent := `test('TestSingleFailure', () => {
+	expect(true).toBe(false); // This is the only failure
+});`
+	if err := os.WriteFile(filepath.Join(tempDir, "single.test.js"), []byte(testContent), 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -146,8 +145,8 @@ func TestSingleFailure(t *testing.T) {
 		t.Fatalf("Failed to get absolute binary path: %v", err)
 	}
 
-	// Run 3pio with caching disabled
-	cmd := exec.Command(binaryPath, "go", "test", "-count=1", ".")
+	// Run 3pio with Jest
+	cmd := exec.Command(binaryPath, "npx", "jest", "single.test.js")
 	cmd.Dir = tempDir
 
 	var stdout bytes.Buffer

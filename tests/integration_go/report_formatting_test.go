@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestTestResultFormattingInLogFiles tests that test results are properly formatted
@@ -166,6 +167,8 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 			if err := os.RemoveAll(threepioDir); err != nil && !os.IsNotExist(err) {
 				t.Fatalf("Failed to clean up .3pio directory: %v", err)
 			}
+			// Ensure the directory is really gone (Windows might have delays)
+			time.Sleep(100 * time.Millisecond)
 
 			// Prepare command with 3pio
 			args := append([]string{binaryPath}, tc.command...)
