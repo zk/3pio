@@ -48,6 +48,8 @@ func TestFailureDisplayFormat(t *testing.T) {
 	// Run 3pio with the test fixture (use -count=1 to disable test caching)
 	cmd := exec.Command(binaryPath, "go", "test", "-count=1", ".")
 	cmd.Dir = fixtureDir
+	// Inherit environment so 'go' executable can be found in subprocess
+	cmd.Env = os.Environ()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -148,6 +150,8 @@ func TestSingleFailureDisplay(t *testing.T) {
 	// Run 3pio with Jest
 	cmd := exec.Command(binaryPath, "npx", "jest", "single.test.js")
 	cmd.Dir = tempDir
+	// Inherit environment so tools can be found in subprocess
+	cmd.Env = os.Environ()
 
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
