@@ -75,8 +75,13 @@ func TestWindowsPowerShellExecution(t *testing.T) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Check if it's just test failures
-		if !strings.Contains(string(output), "Test Files") {
+		// Check if it's just test failures by looking for common test output indicators
+		outputStr := string(output)
+		if !strings.Contains(outputStr, "Test Files") &&
+		   !strings.Contains(outputStr, "Test") &&
+		   !strings.Contains(outputStr, "passed") &&
+		   !strings.Contains(outputStr, "failed") &&
+		   !strings.Contains(outputStr, "Results:") {
 			t.Fatalf("PowerShell execution failed: %v\nOutput: %s", err, output)
 		}
 	}

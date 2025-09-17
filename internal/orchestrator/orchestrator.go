@@ -350,6 +350,7 @@ func (o *Orchestrator) Run() error {
 	outputFileClosed := false
 	defer func() {
 		if !outputFileClosed {
+			_ = outputFile.Sync() // Ensure file is flushed on Windows
 			_ = outputFile.Close()
 		}
 	}()
@@ -400,13 +401,15 @@ func (o *Orchestrator) Run() error {
 	// Record start time for duration calculation
 	o.startTime = time.Now()
 
-	// Open output.log for reading (tail -f style)
-	// This works for ALL runners since they all write directly to output.log
-	tailReader, err := os.Open(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to open output.log for reading: %w", err)
+	// Open output.log for reading (tail -f style) only for native runners
+	var tailReader *os.File
+	if isNativeRunner {
+		tailReader, err = os.Open(outputPath)
+		if err != nil {
+			return fmt.Errorf("failed to open output.log for reading: %w", err)
+		}
+		o.logger.Debug("Opened output.log for tailing: %s", outputPath)
 	}
-	o.logger.Debug("Opened output.log for tailing: %s", outputPath)
 
 	// Process events and output concurrently
 	var wg sync.WaitGroup
@@ -429,7 +432,10 @@ func (o *Orchestrator) Run() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer func() { _ = tailReader.Close() }()
+			defer func() {
+				_ = tailReader.Close()
+				o.logger.Debug("Closed tail reader for native runner")
+			}()
 
 			// Create a custom reader that polls the file until process exits
 			fileReader := &TailReader{
@@ -513,7 +519,11 @@ func (o *Orchestrator) Run() error {
 	o.logger.Debug("Output capture completed")
 
 	// NOW it's safe to close the output file after all goroutines are done
+	// On Windows, we need to ensure the file is fully flushed before closing
 	outputFileClosed = true
+	if err := outputFile.Sync(); err != nil {
+		o.logger.Debug("Failed to sync output file: %v", err)
+	}
 	if err := outputFile.Close(); err != nil {
 		o.logger.Error("Failed to close output file: %v", err)
 	}
@@ -604,7 +614,8 @@ func (o *Orchestrator) Run() error {
 			// Show up to 3 failed tests
 			maxShow := 3
 			for i := 0; i < len(allFailedTests) && i < maxShow; i++ {
-				fmt.Printf("  × %s\n", allFailedTests[i])
+				// Use simple 'x' instead of Unicode × for better cross-platform compatibility
+				fmt.Printf("  x %s\n", allFailedTests[i])
 			}
 
 			// Show "+N more" if there are more than 3 failures

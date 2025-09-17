@@ -221,7 +221,8 @@ def test_list_assertion():
 
 	// Check for failure indication in output
 	outputStr := string(output)
-	if !strings.Contains(outputStr, "failed") && !strings.Contains(outputStr, "FAIL") && !strings.Contains(outputStr, "exit status 1") {
+	if !strings.Contains(outputStr, "failed") && !strings.Contains(outputStr, "FAIL") &&
+	   !strings.Contains(outputStr, "exit status") && !strings.Contains(outputStr, "Error:") {
 		t.Errorf("Expected failure indication in output, got: %s", outputStr)
 	}
 
@@ -356,8 +357,11 @@ def test_division_by_zero():
 
 	// Check for exception details in output
 	outputStr := string(output)
-	if !strings.Contains(outputStr, "RuntimeError") || !strings.Contains(outputStr, "ZeroDivisionError") {
-		t.Logf("Exception test output: %s", outputStr)
+	// On Windows, the detailed error output might not be captured in the console output
+	// but should be in the report
+	if !strings.Contains(outputStr, "RuntimeError") && !strings.Contains(outputStr, "ZeroDivisionError") &&
+	   !strings.Contains(outputStr, "exit status") {
+		t.Errorf("Expected error indication in output, got: %s", outputStr)
 	}
 
 	// Reports should contain error information

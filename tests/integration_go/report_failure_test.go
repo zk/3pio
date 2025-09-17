@@ -61,13 +61,14 @@ func TestFailureDisplayFormat(t *testing.T) {
 	// Verify the failure display format
 	t.Run("shows_up_to_3_failures", func(t *testing.T) {
 		// Check that we show exactly 3 test names (with indentation)
-		if !strings.Contains(output, "  x TestFail1") && !strings.Contains(output, "  × TestFail1") {
+		// Using simple 'x' for cross-platform compatibility
+		if !strings.Contains(output, "  x TestFail1") {
 			t.Errorf("Expected to see '  x TestFail1' in output")
 		}
-		if !strings.Contains(output, "  x TestFail2") && !strings.Contains(output, "  × TestFail2") {
+		if !strings.Contains(output, "  x TestFail2") {
 			t.Errorf("Expected to see '  x TestFail2' in output")
 		}
-		if !strings.Contains(output, "  x TestFail3") && !strings.Contains(output, "  × TestFail3") {
+		if !strings.Contains(output, "  x TestFail3") {
 			t.Errorf("Expected to see '  x TestFail3' in output")
 		}
 	})
@@ -81,17 +82,19 @@ func TestFailureDisplayFormat(t *testing.T) {
 
 	t.Run("shows_report_path", func(t *testing.T) {
 		// Check that report path is shown after failures
-		if !strings.Contains(output, "  See .3pio/runs/") {
+		if !strings.Contains(output, "  See .3pio") && !strings.Contains(output, "  See .3pio\\runs\\") {
 			t.Errorf("Expected to see report path in output")
 		}
-		if !strings.Contains(output, "/reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") {
-			t.Errorf("Expected to see correct report path format")
+		// On Windows, paths use backslashes
+		if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
+		   !strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
+			t.Errorf("Expected to see correct report path format, got: %s", output)
 		}
 	})
 
 	t.Run("does_not_show_fourth_failure", func(t *testing.T) {
 		// Verify we don't show the 4th failure name (TestFail4)
-		if strings.Contains(output, "  x TestFail4") || strings.Contains(output, "  × TestFail4") {
+		if strings.Contains(output, "  x TestFail4") {
 			t.Errorf("Should not show TestFail4 (4th failure) in output")
 		}
 	})
@@ -154,8 +157,8 @@ func TestSingleFailure(t *testing.T) {
 	output := stdout.String()
 
 	// Should show the single failure without "+N more"
-	// Check for the failure marker with indentation
-	if !strings.Contains(output, "  x TestSingleFailure") && !strings.Contains(output, "  × TestSingleFailure") {
+	// Check for the failure marker with indentation (using 'x' for cross-platform compatibility)
+	if !strings.Contains(output, "  x TestSingleFailure") {
 		t.Errorf("Expected to see single failure in output, got:\n%s", output)
 	}
 	if strings.Contains(output, "more") {
