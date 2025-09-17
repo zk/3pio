@@ -22,6 +22,7 @@ const (
 	TestStatusSkip    TestStatus = "SKIP"
 	TestStatusPending TestStatus = "PENDING"
 	TestStatusRunning TestStatus = "RUNNING"
+	TestStatusNoTests TestStatus = "NO_TESTS"
 )
 
 // Event is the base interface for all IPC events

@@ -177,9 +177,7 @@ var Logger = class _Logger {
     this.info("Initialization complete", config);
   }
   debug(message, data) {
-    if (process.env.THREEPIO_DEBUG === "1") {
-      this.writeLog("DEBUG", message, data);
-    }
+    this.writeLog("DEBUG", message, data);
   }
   info(message, data) {
     this.writeLog("INFO", message, data);
@@ -232,6 +230,10 @@ var Logger = class _Logger {
 
 // src/adapters/vitest.ts
 var packageJson = require_package();
+
+// Log level will be replaced at runtime
+const LOG_LEVEL = /*__LOG_LEVEL__*/"WARN"/*__LOG_LEVEL__*/;
+
 var ThreePioVitestReporter = class {
   originalStdoutWrite;
   originalStderrWrite;
@@ -244,8 +246,7 @@ var ThreePioVitestReporter = class {
   discoveredGroups = /* @__PURE__ */ new Map();
   groupStarts = /* @__PURE__ */ new Map();
   fileGroups = /* @__PURE__ */ new Map();
-  // Track test results for accurate suite totals
-  suiteTestResults = /* @__PURE__ */ new Map(); // Map<suiteName, {passed: number, failed: number, skipped: number}>
+  // Suite tracking removed - using modern Vitest 3+ API methods
   constructor() {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
@@ -525,120 +526,49 @@ var ThreePioVitestReporter = class {
   }
   
   onTestModuleEnd(testModule) {
-    // Log ALL data in testModule to see what's available
-    this.logger.info("[V3] onTestModuleEnd - Full module data", {
-      hasModule: !!testModule,
-      moduleKeys: testModule ? Object.keys(testModule) : [],
+    // Module end event - test results are handled via onTestCaseResult
+    this.logger.info("[V3] onTestModuleEnd called", {
       moduleId: testModule?.moduleId,
       filepath: testModule?.filepath,
-      name: testModule?.name,
-      hasChildren: !!testModule?.children,
-      childrenType: typeof testModule?.children,
-      childrenIsArray: Array.isArray(testModule?.children),
-      childrenKeys: testModule?.children && typeof testModule?.children === 'object' ? Object.keys(testModule?.children).slice(0, 10) : [],
-      hasTests: !!testModule?.tests,
-      testsLength: testModule?.tests?.length,
-      hasTasks: !!testModule?.tasks,
-      tasksLength: testModule?.tasks?.length,
-      // Check task field
-      hasTask: !!testModule?.task,
-      taskKeys: testModule?.task ? Object.keys(testModule.task).slice(0, 20) : [],
-      taskHasTasks: !!testModule?.task?.tasks,
-      taskTasksLength: testModule?.task?.tasks?.length
+      name: testModule?.name
     });
-    
-    // Send testFileResult event when module completes
+
+    // Send group result for the file when module completes
     const filePath = testModule?.filepath || testModule?.moduleId;
     if (filePath) {
-      // Determine module status from test results
-      let status = "PASS";
-      const failedTests = [];
-      
-      // Try to get test data from various possible locations
-      // testModule.children is a Set<Task> according to Vitest API, but sometimes it's an empty object
-      let testData = null;
-      if (testModule.children && testModule.children instanceof Set && testModule.children.size > 0) {
-        testData = Array.from(testModule.children);
-      } else if (testModule.task?.tasks && testModule.task.tasks.length > 0) {
-        testData = testModule.task.tasks;
-      } else if (testModule.tasks && testModule.tasks.length > 0) {
-        testData = testModule.tasks;
-      }
-      
-      if (testData && Array.isArray(testData)) {
-        this.logger.debug("Found test data array", { length: testData.length });
-        // Debug: Log first child to see what data is available
-        if (testData.length > 0) {
-          const firstChild = testData[0];
-          this.logger.debug("First child in module", {
-            type: firstChild.type,
-            name: firstChild.name,
-            hasResult: !!firstChild.result,
-            resultKeys: firstChild.result ? Object.keys(firstChild.result) : [],
-            resultState: firstChild.result?.state,
-            resultDuration: firstChild.result?.duration
-          });
-        }
-        this.sendTestCasesFromModule(filePath, testData);
-        
-        for (const child of testData) {
-          if (child.type === 'test' && child.result?.state === 'failed') {
-            status = "FAIL";
-            failedTests.push({
-              name: child.name,
-              duration: child.result?.duration
-            });
-          }
-        }
-      }
+      const fileGroup = this.fileGroups.get(filePath);
+      if (fileGroup) {
+        const fileDuration = fileGroup.startTime ? Date.now() - fileGroup.startTime : undefined;
 
-      // testFileResult event removed - using group events instead
+        // Calculate totals from tracked tests
+        const totals = {
+          total: fileGroup.tests.length,
+          passed: fileGroup.tests.filter(t => t.status === 'PASS').length,
+          failed: fileGroup.tests.filter(t => t.status === 'FAIL').length,
+          skipped: fileGroup.tests.filter(t => t.status === 'SKIP').length
+        };
+
+        const status = totals.failed > 0 ? 'FAIL' :
+                       totals.skipped === totals.total && totals.total > 0 ? 'SKIP' : 'PASS';
+
+        this.logger.ipc("send", "testGroupResult", { groupName: filePath, status, totals });
+        IPCSender.sendEvent({
+          eventType: "testGroupResult",
+          payload: {
+            groupName: filePath,
+            parentNames: [],
+            status: status,
+            duration: fileDuration,
+            totals: totals
+          }
+        }).catch((error) => {
+          this.logger.error("Failed to send testGroupResult", error);
+        });
+      }
     }
   }
   
-  // Helper method to send test case events from module children
-  sendTestCasesFromModule(filePath, children, suiteName = null) {
-    for (const child of children) {
-      if (child.type === 'test') {
-        // Send test case event
-        const testStatus = child.result?.state === 'failed' ? 'FAIL' : 
-                          child.result?.state === 'skipped' ? 'SKIP' : 'PASS';
-        // Build error object if test failed
-        let errorObj = null;
-        if (child.result?.errors && child.result.errors.length > 0) {
-          const firstError = child.result.errors[0];
-          errorObj = {
-            message: firstError.message || String(firstError),
-            stack: firstError.stack || '',
-            expected: firstError.expected || '',
-            actual: firstError.actual || '',
-            location: '',
-            errorType: firstError.name || 'Error'
-          };
-        }
-
-        const testCase = {
-          eventType: "testCase",
-          payload: {
-            filePath,
-            testName: child.name,
-            suiteName: suiteName,
-            status: testStatus,
-            duration: child.result?.duration,
-            error: errorObj
-          }
-        };
-        
-        this.logger.ipc("send", "testCase", testCase.payload);
-        IPCSender.sendEvent(testCase).catch((error) => {
-          this.logger.error("Failed to send testCase event", error);
-        });
-      } else if (child.type === 'suite' && child.children) {
-        // Recursively process suite children
-        this.sendTestCasesFromModule(filePath, child.children, child.name);
-      }
-    }
-  }
+  // sendTestCasesFromModule removed - using modern Vitest 3+ API methods instead
   
   onTestRunEnd(testModules, unhandledErrors, reason) {
     this.logger.info("[V3] onTestRunEnd called", { 
@@ -695,356 +625,25 @@ var ThreePioVitestReporter = class {
     this.startCapture();
   }
   onTestFileResult(file) {
-    if (!this.filesStarted.has(file.filepath)) {
-      this.filesStarted.add(file.filepath);
-      // testFileStart event removed - using group events instead
-    }
+    // Legacy method - no longer processing here
+    // All test results are handled via onTestCaseResult and onTestModuleEnd
     this.stopCapture();
-    if (file.tasks) {
-      this.sendTestCaseEvents(file.filepath, file.tasks);
-    }
-    let status = "PASS";
-    if (file.result?.state === "fail") {
-      status = "FAIL";
-    } else if (file.result?.state === "skip" || file.mode === "skip") {
-      status = "SKIP";
-    }
-    const testStats = file.result ? {
-      tests: file.result.tests?.length || 0,
-      duration: file.result.duration || 0,
-      state: file.result.state
-    } : {};
-    
-    // Collect failed tests for the payload (handle nested tasks)
-    const failedTests = [];
-    if (file.tasks) {
-      const collectFailedTests = (tasks) => {
-        for (const task of tasks) {
-          if (task.type === "test" && task.result?.state === "fail") {
-            failedTests.push({
-              name: task.name,
-              duration: task.result?.duration || 0
-            });
-          }
-          // Recursively check nested tasks (suites)
-          if (task.tasks && task.tasks.length > 0) {
-            collectFailedTests(task.tasks);
-          }
-        }
-      };
-      collectFailedTests(file.tasks);
-    }
-    
-    // Send GroupResult for the file
-    const fileGroup = this.fileGroups.get(file.filepath);
-    const fileDuration = fileGroup?.startTime ? Date.now() - fileGroup.startTime : undefined;
-
-    const totals = {
-      total: failedTests.length + (testStats.tests || 0),
-      passed: (testStats.tests || 0) - failedTests.length,
-      failed: failedTests.length,
-      skipped: 0 // TODO: Extract from file.tasks if available
-    };
-
-    this.logger.testFlow("Test file completed", file.filepath, { status, ...testStats, failedTests: failedTests.length });
-    this.logger.ipc("send", "testGroupResult", { groupName: file.filepath, status, totals });
-    IPCSender.sendEvent({
-      eventType: "testGroupResult",
-      payload: {
-        groupName: file.filepath,
-        parentNames: [],
-        status: status,
-        duration: fileDuration,
-        totals: totals
-      }
-    }).catch((error) => {
-      this.logger.error("Failed to send testGroupResult", error);
-    });
-
-    // testFileResult event removed - using group events instead
     this.currentTestFile = null;
   }
-  sendTestCaseEvents(filePath, tasks) {
-    this.logger.debug("sendTestCaseEvents called", {
-      filePath,
-      taskCount: tasks.length,
-      taskTypes: tasks.map(t => t.type)
-    });
-    for (const task of tasks) {
-      if (task.type === "test") {
-        const test = task;
-        const suiteName = test.suite?.name;
-        let status = "PASS";
-        if (test.result?.state === "fail") {
-          status = "FAIL";
-        } else if (test.result?.state === "skip" || test.mode === "skip") {
-          status = "SKIP";
-        }
-        // Build error object if test failed
-        let error = null;
-        if (test.result?.errors && test.result.errors.length > 0) {
-          const firstError = test.result.errors[0];
-          error = {
-            message: typeof firstError === "string" ? firstError : (firstError.message || String(firstError)),
-            stack: firstError.stack || '',
-            expected: firstError.expected || '',
-            actual: firstError.actual || '',
-            location: '',
-            errorType: firstError.name || 'Error'
-          };
-        }
-        
-        // Debug: Log the full test result object
-        this.logger.debug("Test result details", {
-          name: test.name,
-          hasResult: !!test.result,
-          resultKeys: test.result ? Object.keys(test.result) : [],
-          duration: test.result?.duration,
-          state: test.result?.state,
-          fullResult: JSON.stringify(test.result)
-        });
-        
-        // Extract hierarchy for this test case
-        const suiteChain = this.extractHierarchyFromTask(test, filePath);
-        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
-
-        // Ensure groups are discovered and started
-        this.ensureGroupsDiscovered(filePath, suiteChain);
-
-        // Start all parent groups
-        for (let i = 0; i <= suiteChain.length; i++) {
-          const hierarchy = [filePath, ...suiteChain.slice(0, i)];
-          this.ensureGroupStarted(hierarchy);
-        }
-
-        this.logger.testFlow("Sending test case event", test.name, {
-          suite: suiteName,
-          status,
-          duration: test.result?.duration,
-          parentNames: parentNames
-        });
-        // Track test result for suite totals
-        if (parentNames.length > 1) {
-          const suiteName = parentNames[parentNames.length - 1];
-          if (!this.suiteTestResults.has(suiteName)) {
-            this.suiteTestResults.set(suiteName, { passed: 0, failed: 0, skipped: 0, total: 0 });
-          }
-          const results = this.suiteTestResults.get(suiteName);
-          results.total++;
-          if (status === 'PASS') results.passed++;
-          else if (status === 'FAIL') results.failed++;
-          else if (status === 'SKIP') results.skipped++;
-        }
-
-        IPCSender.sendEvent({
-          eventType: "testCase",
-          payload: {
-            testName: test.name,
-            parentNames: parentNames,
-            status,
-            duration: test.result?.duration,
-            error
-          }
-        }).catch((error2) => {
-          this.logger.error("Failed to send testCase event", error2);
-        });
-      } else if (task.type === "suite") {
-        const suite = task;
-
-        // Extract hierarchy for this suite
-        const suiteChain = this.extractHierarchyFromTask(suite, filePath);
-        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain.slice(0, -1)); // Remove the suite itself from parents
-
-        // Send group start event for the suite
-        this.ensureGroupsDiscovered(filePath, suiteChain);
-        this.ensureGroupStarted([filePath, ...suiteChain]);
-
-        if (suite.tasks) {
-          this.sendTestCaseEvents(filePath, suite.tasks);
-        }
-
-        // Send group result event for the suite
-        // Calculate suite status based on test results
-        // The tasks have already been processed and sent, so their state might be removed
-        // Instead, count from what we know we sent
-        // For suites, we need to count based on the actual test results we already sent
-        // This is a limitation when processing in onFinished fallback mode
-        const failedCount = 0;  // Will be calculated from actual test results
-        const skippedCount = 0;
-        const passedCount = 0;
-        const totalCount = suite.tasks ? suite.tasks.length : 0;
-
-        // Debug counting
-        this.logger.debug("Suite task counting", {
-          suiteName: suite.name,
-          failedCount,
-          skippedCount,
-          passedCount,
-          totalCount,
-          hasTasks: !!suite.tasks,
-          tasksLength: suite.tasks?.length
-        });
-
-        let suiteStatus = 'PASS';
-        if (failedCount > 0) {
-          suiteStatus = 'FAIL';
-        } else if (skippedCount === totalCount && totalCount > 0) {
-          suiteStatus = 'SKIP';
-        }
-        const suiteDuration = suite.result?.duration || 0;
-        const suiteTotals = {
-          total: suite.tasks ? this.countTests(suite.tasks) : 0,
-          passed: suite.tasks ? this.countTestsByStatus(suite.tasks, 'passed') : 0,
-          failed: suite.tasks ? this.countTestsByStatus(suite.tasks, 'failed') : 0,
-          skipped: suite.tasks ? this.countTestsByStatus(suite.tasks, 'skipped') : 0
-        };
-
-        IPCSender.sendEvent({
-          eventType: "testGroupResult",
-          payload: {
-            groupName: suite.name,
-            parentNames: parentNames,
-            status: suiteStatus,
-            duration: suiteDuration,
-            totals: suiteTotals
-          }
-        }).catch((error) => {
-          this.logger.error("Failed to send testGroupResult for suite", error);
-        });
-      }
-    }
-  }
+  // sendTestCaseEvents removed - using modern Vitest 3+ API methods instead
   async onFinished(files, errors) {
     this.logger.lifecycle("Test run finishing", {
       files: files?.length || 0,
       errors: errors?.length || 0
     });
     this.stopCapture();
-    if (files && files.length > 0) {
-      this.logger.info("Processing files in onFinished (fallback mode)", { count: files.length });
+
+    // Minimal fallback for Vitest 1.x compatibility
+    // Modern Vitest 3+ uses onTestCaseResult and onTestModuleEnd instead
+    if (files && files.length > 0 && this.filesStarted.size === 0) {
+      this.logger.info("Using legacy fallback for older Vitest version", { count: files.length });
       for (const file of files) {
-        if (!this.filesStarted.has(file.filepath)) {
-          this.filesStarted.add(file.filepath);
-          // testFileStart event removed - using group events instead
-        }
-        if (file.tasks) {
-          // In onFinished, file.tasks typically contains one suite representing the describe block
-          // Check if we have a single suite that contains all tests
-          if (file.tasks.length === 1 && file.tasks[0].type === 'suite') {
-            // Send suite-level group events
-            const suite = file.tasks[0];
-            const suiteHierarchy = [file.filepath, suite.name];
-
-            // Ensure suite is discovered and started
-            this.ensureGroupsDiscovered(file.filepath, [suite.name]);
-            this.ensureGroupStarted(suiteHierarchy);
-
-            // Process the tests in the suite
-            if (suite.tasks) {
-              this.sendTestCaseEvents(file.filepath, suite.tasks);
-            }
-
-            // Send suite result based on tracked test results
-            const trackedResults = this.suiteTestResults.get(suite.name) || { passed: 0, failed: 0, skipped: 0, total: 0 };
-            let suiteStatus = 'PASS';
-            if (trackedResults.failed > 0) {
-              suiteStatus = 'FAIL';
-            } else if (trackedResults.skipped === trackedResults.total && trackedResults.total > 0) {
-              suiteStatus = 'SKIP';
-            }
-            const suiteDuration = suite.result?.duration || 0;
-
-            const suiteTotals = {
-              total: trackedResults.total,
-              passed: trackedResults.passed,
-              failed: trackedResults.failed,
-              skipped: trackedResults.skipped
-            };
-
-            IPCSender.sendEvent({
-              eventType: "testGroupResult",
-              payload: {
-                groupName: suite.name,
-                parentNames: [file.filepath],
-                status: suiteStatus,
-                duration: suiteDuration,
-                totals: suiteTotals
-              }
-            }).catch((error) => {
-              this.logger.error("Failed to send testGroupResult for suite", error);
-            });
-          } else {
-            // Multiple suites or direct tests
-            this.sendTestCaseEvents(file.filepath, file.tasks);
-          }
-        }
-        let status = "PASS";
-        if (file.result?.state === "fail") {
-          status = "FAIL";
-        } else if (file.result?.state === "skip" || file.mode === "skip") {
-          status = "SKIP";
-        }
-        // Collect failed tests for the payload (handle nested tasks)
-        const failedTests = [];
-        if (file.tasks) {
-          const collectFailedTests = (tasks) => {
-            for (const task of tasks) {
-              if (task.type === "test" && task.result?.state === "fail") {
-                failedTests.push({
-                  name: task.name,
-                  duration: task.result?.duration
-                });
-              }
-              // Recursively check nested tasks (suites)
-              if (task.tasks && task.tasks.length > 0) {
-                collectFailedTests(task.tasks);
-              }
-            }
-          };
-          collectFailedTests(file.tasks);
-        }
-
-        // Send group start event for the file
-        this.ensureGroupStarted([file.filepath]);
-
-        // Send group result event for the file
-        const fileDuration = file.result?.duration || 0;
-
-        // Calculate file totals from all tracked suite results
-        let fileTotals = { total: 0, passed: 0, failed: 0, skipped: 0 };
-
-        // If we have a single suite, use its totals
-        if (file.tasks && file.tasks.length === 1 && file.tasks[0].type === 'suite') {
-          const suite = file.tasks[0];
-          const trackedResults = this.suiteTestResults.get(suite.name);
-          if (trackedResults) {
-            fileTotals = trackedResults;
-          }
-        } else {
-          // Otherwise count all tests recursively
-          fileTotals = {
-            total: file.tasks ? this.countTests(file.tasks) : 0,
-            passed: file.tasks ? this.countTestsByStatus(file.tasks, 'passed') : 0,
-            failed: file.tasks ? this.countTestsByStatus(file.tasks, 'failed') : 0,
-            skipped: file.tasks ? this.countTestsByStatus(file.tasks, 'skipped') : 0
-          };
-        }
-
-        const totals = fileTotals;
-
-        this.logger.ipc("send", "testGroupResult", { groupName: file.filepath, status, totals });
-        IPCSender.sendEvent({
-          eventType: "testGroupResult",
-          payload: {
-            groupName: file.filepath,
-            parentNames: [],
-            status: status,
-            duration: fileDuration,
-            totals: totals
-          }
-        }).catch((error) => {
-          this.logger.error("Failed to send testGroupResult", error);
-        });
+        this.processFileResults(file);
       }
     }
     this.logger.lifecycle("Vitest adapter shutdown complete");
@@ -1072,39 +671,141 @@ var ThreePioVitestReporter = class {
     process.stderr.write = this.originalStderrWrite;
   }
 
-  // Helper method to count total tests in a task tree
-  countTests(tasks) {
+  // Simplified file processing for legacy Vitest compatibility
+  processFileResults(file) {
+    const filePath = file.filepath;
+
+    // Ensure file group is discovered and started
+    this.ensureGroupsDiscovered(filePath, []);
+    this.ensureGroupStarted([filePath]);
+
+    // Process test cases if available
+    if (file.tasks) {
+      this.processTasksSimple(filePath, file.tasks);
+    }
+
+    // Send file result
+    let status = "PASS";
+    if (file.result?.state === "fail") {
+      status = "FAIL";
+    } else if (file.result?.state === "skip" || file.mode === "skip") {
+      status = "SKIP";
+    }
+
+    const totals = {
+      total: file.tasks ? this.countTestsSimple(file.tasks) : 0,
+      passed: file.tasks ? this.countPassedTestsSimple(file.tasks) : 0,
+      failed: file.tasks ? this.countFailedTestsSimple(file.tasks) : 0,
+      skipped: file.tasks ? this.countSkippedTestsSimple(file.tasks) : 0
+    };
+
+    this.logger.ipc("send", "testGroupResult", { groupName: filePath, status, totals });
+    IPCSender.sendEvent({
+      eventType: "testGroupResult",
+      payload: {
+        groupName: filePath,
+        parentNames: [],
+        status: status,
+        duration: file.result?.duration || 0,
+        totals: totals
+      }
+    }).catch((error) => {
+      this.logger.error("Failed to send testGroupResult", error);
+    });
+  }
+
+  processTasksSimple(filePath, tasks) {
+    for (const task of tasks) {
+      if (task.type === "test") {
+        const status = task.result?.state === "fail" ? "FAIL" :
+                      task.result?.state === "skip" || task.mode === "skip" ? "SKIP" : "PASS";
+
+        let error = null;
+        if (task.result?.errors && task.result.errors.length > 0) {
+          const firstError = task.result.errors[0];
+          error = {
+            message: typeof firstError === "string" ? firstError : (firstError.message || String(firstError)),
+            stack: firstError.stack || '',
+            expected: firstError.expected || '',
+            actual: firstError.actual || '',
+            location: '',
+            errorType: firstError.name || 'Error'
+          };
+        }
+
+        // Simple hierarchy - just file and test name
+        const suiteChain = this.extractHierarchyFromTask(task, filePath);
+        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+
+        // Ensure groups are discovered and started
+        this.ensureGroupsDiscovered(filePath, suiteChain);
+        for (let i = 0; i <= suiteChain.length; i++) {
+          const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+          this.ensureGroupStarted(hierarchy);
+        }
+
+        this.logger.ipc("send", "testCase", { testName: task.name, parentNames, status });
+        IPCSender.sendEvent({
+          eventType: "testCase",
+          payload: {
+            testName: task.name,
+            parentNames: parentNames,
+            status,
+            duration: task.result?.duration,
+            error
+          }
+        }).catch((error2) => {
+          this.logger.error("Failed to send testCase event", error2);
+        });
+      } else if (task.type === "suite" && task.tasks) {
+        this.processTasksSimple(filePath, task.tasks);
+      }
+    }
+  }
+
+  countTestsSimple(tasks) {
     let count = 0;
     for (const task of tasks) {
       if (task.type === "test") {
         count++;
       } else if (task.tasks) {
-        count += this.countTests(task.tasks);
+        count += this.countTestsSimple(task.tasks);
       }
     }
     return count;
   }
 
-  // Helper method to count tests by status in a task tree
-  countTestsByStatus(tasks, status) {
+  countPassedTestsSimple(tasks) {
     let count = 0;
     for (const task of tasks) {
-      if (task.type === "test") {
-        // Debug: Log what we're checking
-        if (task.name && task.name.includes("fail")) {
-          this.logger.debug("Checking test status", {
-            name: task.name,
-            hasResult: !!task.result,
-            state: task.result?.state,
-            lookingFor: status,
-            matches: task.result?.state === status
-          });
-        }
-        if (task.result?.state === status) {
-          count++;
-        }
+      if (task.type === "test" && task.result?.state === "pass") {
+        count++;
       } else if (task.tasks) {
-        count += this.countTestsByStatus(task.tasks, status);
+        count += this.countPassedTestsSimple(task.tasks);
+      }
+    }
+    return count;
+  }
+
+  countFailedTestsSimple(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === "test" && task.result?.state === "fail") {
+        count++;
+      } else if (task.tasks) {
+        count += this.countFailedTestsSimple(task.tasks);
+      }
+    }
+    return count;
+  }
+
+  countSkippedTestsSimple(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === "test" && (task.result?.state === "skip" || task.mode === "skip")) {
+        count++;
+      } else if (task.tasks) {
+        count += this.countSkippedTestsSimple(task.tasks);
       }
     }
     return count;

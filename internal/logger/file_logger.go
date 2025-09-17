@@ -4,14 +4,58 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
+// LogLevel represents the severity of a log message
+type LogLevel int
+
+const (
+	DEBUG LogLevel = iota
+	INFO
+	WARN
+	ERROR
+)
+
+// String returns the string representation of a log level
+func (l LogLevel) String() string {
+	switch l {
+	case DEBUG:
+		return "DEBUG"
+	case INFO:
+		return "INFO"
+	case WARN:
+		return "WARN"
+	case ERROR:
+		return "ERROR"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// parseLogLevel converts a string to LogLevel, case-insensitive
+func parseLogLevel(level string) LogLevel {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "DEBUG":
+		return DEBUG
+	case "INFO":
+		return INFO
+	case "WARN":
+		return WARN
+	case "ERROR":
+		return ERROR
+	default:
+		return WARN // Default to WARN for invalid values
+	}
+}
+
 // FileLogger writes all log messages to .3pio/debug.log
 type FileLogger struct {
-	mu   sync.Mutex
-	file *os.File
+	mu       sync.Mutex
+	file     *os.File
+	minLevel LogLevel
 }
 
 // NewFileLogger creates a new file-based logger
@@ -43,14 +87,20 @@ func NewFileLogger() (*FileLogger, error) {
 		return nil, fmt.Errorf("failed to write log header: %w", err)
 	}
 
+	// Read log level from environment variable, default to WARN
+	logLevel := parseLogLevel(os.Getenv("THREEPIO_LOG_LEVEL"))
+
 	return &FileLogger{
-		file: file,
+		file:     file,
+		minLevel: logLevel,
 	}, nil
 }
 
 // Debug writes a debug message to the log file
 func (l *FileLogger) Debug(format string, args ...interface{}) {
-	l.writeLog("DEBUG", format, args...)
+	if l.minLevel <= DEBUG {
+		l.writeLog("DEBUG", format, args...)
+	}
 }
 
 // Error writes an error message to the log file and also to stderr
@@ -62,7 +112,16 @@ func (l *FileLogger) Error(format string, args ...interface{}) {
 
 // Info writes an info message to the log file
 func (l *FileLogger) Info(format string, args ...interface{}) {
-	l.writeLog("INFO", format, args...)
+	if l.minLevel <= INFO {
+		l.writeLog("INFO", format, args...)
+	}
+}
+
+// Warn writes a warning message to the log file
+func (l *FileLogger) Warn(format string, args ...interface{}) {
+	if l.minLevel <= WARN {
+		l.writeLog("WARN", format, args...)
+	}
 }
 
 // writeLog writes a timestamped log entry

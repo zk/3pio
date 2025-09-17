@@ -13,7 +13,7 @@ Welcome!
 
 If your user indicated they would like to install and use 3pio for running tests choose the package manager that best fits with their project or use case:
 
-- Python & pytest, `pip install threepio`
+- Python & pytest, `pip install threepio_test_runner`
 - JS/TS, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
 - JS/TS, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
 - Go, homebrew: `brew tap zk/3pio && brew install 3pio`
@@ -170,6 +170,79 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 ```
 
 
+### Creating investigation checklists for large test failures
+
+```bash
+> Create a checklist to investigate the test failures. Group by likely root cause.
+
+⏺ Read(.3pio/runs/20250914T081234-wonky-picard/test-run.md)
+  ⎿  Read 45 lines (ctrl+o to expand)
+
+⏺ Read(.3pio/runs/20250914T081234-wonky-picard/reports/src_api_test_js/index.md)
+  ⎿  Read 89 lines (ctrl+o to expand)
+
+⏺ Read(.3pio/runs/20250914T081234-wonky-picard/reports/src_auth_test_js/index.md)
+  ⎿  Read 67 lines (ctrl+o to expand)
+
+⏺ Test Failure Investigation Checklist
+
+  Overview: 47 failures across 12 test files
+
+  ---
+  ## Priority 1: Database Connection Issues (23 failures)
+
+  Affected files:
+  - src/api.test.js (8 failures)
+  - src/models.test.js (7 failures)
+  - src/integration.test.js (8 failures)
+
+  ☐ Check database connection string in test environment
+  ☐ Verify test database is running and accessible
+  ☐ Check for recent schema migrations not applied to test DB
+  ☐ Review database pool settings for test environment
+  ☐ Check if database teardown is happening properly between tests
+
+  ---
+  ## Priority 2: Authentication/Token Issues (15 failures)
+
+  Affected files:
+  - src/auth.test.js (9 failures)
+  - src/middleware.test.js (6 failures)
+
+  ☐ Verify JWT secret is set in test environment
+  ☐ Check token expiration settings
+  ☐ Review recent changes to auth middleware
+  ☐ Ensure mock auth is properly configured
+  ☐ Check for timing issues with token validation
+
+  ---
+  ## Priority 3: External Service Mocking (9 failures)
+
+  Affected files:
+  - src/services/email.test.js (4 failures)
+  - src/services/payment.test.js (3 failures)
+  - src/webhooks.test.js (2 failures)
+
+  ☐ Verify all external service mocks are initialized
+  ☐ Check if API keys are mocked correctly
+  ☐ Review nock/msw interceptors for completeness
+  ☐ Ensure cleanup happens between test runs
+
+  ---
+  ## Investigation Order:
+  1. Start with database issues (likely root cause for majority)
+  2. Fix auth after DB (may depend on DB being fixed)
+  3. Address mocking issues last (independent failures)
+
+  ## Quick wins:
+  - Database issues might fix 23/47 failures (49%)
+  - Auth fix could resolve another 15/47 (32%)
+  - Together: potential 81% reduction in failures
+```
+
+3pio's persistent reports let your agent analyze patterns across many failures without overwhelming context. The agent can create actionable investigation plans and revisit specific failures as needed.
+
+
 ### Test duration by file / group
 
 ```bash
@@ -231,7 +304,7 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 3. **Dev tool, not CI tool**: 3pio is designed to be used at dev time by your agent. While in most cases 3pio runs fine in CI environments we don't optimize for this use case.
 
 
-## Future working
+## Future work
 
 - All the test runners
 - Improve output context efficiency

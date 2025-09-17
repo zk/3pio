@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zk/3pio/internal/logger"
 )
 
 func TestOrchestrator_FileLocations(t *testing.T) {
@@ -21,8 +23,8 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	}
 
 	config := Config{
-		Command: []string{"npm", "test"}, // Use npm test which will be recognized
-		Logger:  &mockLogger{},
+		Command: []string{"echo", "test"}, // Use echo which is always available instead of npm
+		Logger:  logger.NewTestLogger(),
 	}
 
 	orch, err := New(config)
@@ -34,7 +36,7 @@ func TestOrchestrator_FileLocations(t *testing.T) {
 	}()
 
 	// Run the orchestrator which will initialize paths
-	// It will fail but that's ok - we just need initialization
+	// It will fail to detect a test runner but that's ok - we just need path initialization
 	err = orch.Run()
 	if err != nil {
 		t.Logf("Run() returned error (expected): %v", err)

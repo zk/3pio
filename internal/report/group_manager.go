@@ -10,8 +10,14 @@ import (
 	"time"
 
 	"github.com/zk/3pio/internal/ipc"
-	"github.com/zk/3pio/internal/logger"
 )
+
+// Logger interface for debug logging
+type Logger interface {
+	Debug(format string, args ...interface{})
+	Error(format string, args ...interface{})
+	Info(format string, args ...interface{})
+}
 
 // GroupManager manages the hierarchical test group state
 type GroupManager struct {
@@ -20,7 +26,7 @@ type GroupManager struct {
 	rootGroups []*TestGroup          // Top-level groups (typically files)
 	runDir     string
 	ipcPath    string
-	logger     *logger.FileLogger
+	logger     Logger
 
 	// Debouncing for report generation
 	pendingUpdates map[string]time.Time // Group ID -> last update time
@@ -29,7 +35,7 @@ type GroupManager struct {
 }
 
 // NewGroupManager creates a new GroupManager instance
-func NewGroupManager(runDir string, ipcPath string, logger *logger.FileLogger) *GroupManager {
+func NewGroupManager(runDir string, ipcPath string, logger Logger) *GroupManager {
 	return &GroupManager{
 		groups:         make(map[string]*TestGroup),
 		rootGroups:     make([]*TestGroup, 0),
@@ -214,6 +220,8 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 		group.Status = TestStatusFail
 	case "SKIP":
 		group.Status = TestStatusSkip
+	case "NO_TESTS":
+		group.Status = TestStatusNoTests
 	default:
 		group.Status = TestStatusPending
 	}
@@ -247,6 +255,71 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 
 	gm.logInfo("Completed group: %s [%s]",
 		BuildHierarchicalPath(group), group.Status)
+
+	return nil
+}
+
+// ProcessGroupError handles a group error event
+func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
+
+	payload := event.Payload
+
+	// Convert absolute paths to relative paths
+	groupName := gm.makeRelativePath(payload.GroupName)
+	parentNames := make([]string, len(payload.ParentNames))
+	for i, name := range payload.ParentNames {
+		parentNames[i] = gm.makeRelativePath(name)
+	}
+
+	groupID := GenerateGroupID(groupName, parentNames)
+
+	group, exists := gm.groups[groupID]
+	if !exists {
+		// Auto-discover the group if it doesn't exist
+		err := gm.ensureGroupHierarchy(append(parentNames, groupName))
+		if err != nil {
+			return err
+		}
+		group = gm.groups[groupID]
+	}
+
+	// Set error status
+	group.Status = TestStatusError
+	group.EndTime = time.Now()
+
+	// Use provided duration if available
+	if payload.Duration > 0 {
+		group.Duration = time.Duration(payload.Duration) * time.Millisecond
+	} else if !group.StartTime.IsZero() {
+		group.Duration = group.EndTime.Sub(group.StartTime)
+	}
+	group.Updated = time.Now()
+
+	// Store error information
+	if payload.Error != nil {
+		group.ErrorInfo = &TestError{
+			Message: payload.Error.Message,
+			Type:    payload.ErrorType,
+		}
+	}
+
+	// Set totals to indicate setup failure for group results display
+	group.Stats.SetupFailed = true
+
+	// Propagate completion to ancestors
+	gm.propagateCompletion(group)
+
+	// Schedule report update
+	gm.scheduleReportUpdate(groupID)
+
+	errorMessage := "unknown error"
+	if payload.Error != nil {
+		errorMessage = payload.Error.Message
+	}
+	gm.logInfo("Group error: %s [%s] - %s",
+		BuildHierarchicalPath(group), payload.ErrorType, errorMessage)
 
 	return nil
 }
@@ -317,12 +390,12 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	// Set error if present
 	if payload.Error != nil {
 		testCase.Error = &TestError{
-			Message:   payload.Error.Message,
-			Stack:     payload.Error.Stack,
-			Expected:  payload.Error.Expected,
-			Actual:    payload.Error.Actual,
-			Location:  payload.Error.Location,
-			ErrorType: payload.Error.ErrorType,
+			Message:  payload.Error.Message,
+			Stack:    payload.Error.Stack,
+			Expected: payload.Error.Expected,
+			Actual:   payload.Error.Actual,
+			Location: payload.Error.Location,
+			Type:     payload.Error.ErrorType,
 		}
 	}
 
@@ -726,11 +799,14 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 	if len(group.TestCases) > 0 {
 		content += "## Test case results\n\n"
 		for _, tc := range group.TestCases {
-			icon := "✓"
-			if tc.Status == TestStatusFail {
+			var icon string
+			switch tc.Status {
+			case TestStatusFail:
 				icon = "✕"
-			} else if tc.Status == TestStatusSkip {
+			case TestStatusSkip:
 				icon = "○"
+			default:
+				icon = "✓"
 			}
 
 			content += fmt.Sprintf("- %s %s", icon, tc.Name)
@@ -767,18 +843,18 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 			// Name column
 			nameStr := subgroup.Name
 
-			// Tests column - show breakdown of test results
+			// Tests column - show breakdown of test results (using recursive counts)
 			var testsStr string
-			if subgroup.Stats.TotalTests > 0 {
+			if subgroup.Stats.TotalTestsRecursive > 0 {
 				parts := []string{}
-				if subgroup.Stats.PassedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d passed", subgroup.Stats.PassedTests))
+				if subgroup.Stats.PassedTestsRecursive > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", subgroup.Stats.PassedTestsRecursive))
 				}
-				if subgroup.Stats.FailedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d failed", subgroup.Stats.FailedTests))
+				if subgroup.Stats.FailedTestsRecursive > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", subgroup.Stats.FailedTestsRecursive))
 				}
-				if subgroup.Stats.SkippedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d skipped", subgroup.Stats.SkippedTests))
+				if subgroup.Stats.SkippedTestsRecursive > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", subgroup.Stats.SkippedTestsRecursive))
 				}
 				testsStr = strings.Join(parts, ", ")
 			} else {
@@ -912,15 +988,18 @@ func (gm *GroupManager) generateSummaryReport() string {
 	// Root groups
 	content += "## Test Groups\n\n"
 	for _, group := range gm.rootGroups {
-		icon := "✓"
-		if group.Status == TestStatusFail {
+		var icon string
+		switch group.Status {
+		case TestStatusFail:
 			icon = "✕"
-		} else if group.Status == TestStatusSkip {
+		case TestStatusSkip:
 			icon = "○"
-		} else if group.Status == TestStatusRunning {
+		case TestStatusRunning:
 			icon = "⚡"
-		} else if group.Status == TestStatusPending {
+		case TestStatusPending:
 			icon = "⏳"
+		default:
+			icon = "✓"
 		}
 
 		relPath := GetRelativeReportPath(group, gm.runDir)

@@ -1,0 +1,13 @@
+.3pio/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+*.log
+.DS_Store
+coverage.txt
+coverage.html

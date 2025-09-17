@@ -42,7 +42,7 @@ func TestGenerateGroupID(t *testing.T) {
 
 			// Verify it's hex
 			for _, c := range id {
-				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 					t.Errorf("ID contains non-hex character: %c", c)
 				}
 			}

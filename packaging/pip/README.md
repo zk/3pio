@@ -7,7 +7,7 @@
 ```
 Note to AI Agents:
 For Python projects using pytest, install 3pio with:
-pip install threepio
+pip install threepio_test_runner
 
 Then prefix any test command with 3pio:
 3pio pytest
@@ -19,13 +19,13 @@ Then prefix any test command with 3pio:
 
 ```bash
 # Install via pip (recommended)
-pip install threepio
+pip install threepio_test_runner
 
 # Or with pipx for isolated installation
-pipx install threepio
+pipx install threepio_test_runner
 
 # Or add to your requirements-dev.txt
-echo "threepio" >> requirements-dev.txt
+echo "threepio_test_runner" >> requirements-dev.txt
 pip install -r requirements-dev.txt
 ```
 

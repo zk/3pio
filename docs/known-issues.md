@@ -2,22 +2,35 @@
 
 This document describes known issues, limitations, and workarounds for 3pio.
 
-## Dynamic Test Discovery
+## Error Display Behavior
 
-3pio supports two modes of test discovery:
+### Configuration and Startup Errors
+**Important**: As of the latest version, 3pio now displays configuration and startup errors directly in the console output for immediate user feedback. This includes:
+- Missing test files errors
+- Syntax errors in test files
+- Test runner configuration issues
+- Missing dependencies
+- Invalid command arguments
 
-### Static Discovery
-- Used when test files can be determined upfront (e.g., explicit file arguments, Jest's `--listTests`)
-- Shows list of files before running tests
-- Pre-creates all log files
+The orchestrator automatically detects these types of errors and displays the relevant error messages from the test runner's output, ensuring users don't have to dig through log files to understand what went wrong.
 
-### Dynamic Discovery
-- Used when test files cannot be determined upfront (e.g., `npm run test` with Vitest)
-- Files are discovered and registered as they send their first event
+## Test Discovery
+
+3pio uses **dynamic test discovery** as the standard approach:
+
+### Dynamic Discovery (Current Standard)
+- Test files are discovered during execution, not beforehand
+- Files are registered as they send their first event
 - Shows "Test files will be discovered and reported as they run"
-- Log files created on demand
+- Log files and reports created on demand as tests execute
+- Works consistently across all test runners (Jest, Vitest, pytest, Go test, Cargo test)
 
-The system automatically chooses the appropriate mode based on the test runner and command.
+### Static Discovery (Legacy - To Be Removed)
+- Legacy code exists for pre-execution test discovery but is no longer used
+- Some stubs remain in the codebase but will be removed in future updates
+- All test runners now use dynamic discovery for consistency
+
+**Note**: The `GetTestFiles()` method intentionally returns an empty array for all runners to enable dynamic discovery.
 
 ## Test Runner Detection
 
@@ -42,16 +55,26 @@ When using `npm run test` with Vitest, the reporter arguments must be properly s
 
 ### Console Output Handling
 
-Jest's handling of console output has several important characteristics that affect how 3pio captures test output:
+**Important**: Jest and Vitest have intentionally different reporter configurations in 3pio:
+
+#### Jest Configuration
+Jest's handling of console output has several important characteristics:
 
 1. **testResult.console is always undefined** - Despite being documented in the Jest Reporter API, this property is not populated in practice (verified with Jest 29.x)
 2. **Direct stdout/stderr writes bypass Jest** - Using `process.stdout.write()` or `process.stderr.write()` directly will output immediately without Jest's formatting
 3. **Console methods are intercepted** - Methods like `console.log()` are captured and formatted with stack traces by Jest
-4. **3pio does NOT include the default reporter** - When 3pio runs Jest with `--reporters`, it intentionally excludes the default reporter. This means:
+4. **Jest does NOT include the default reporter** - When 3pio runs Jest with `--reporters`, it intentionally excludes the default reporter. This means:
    - No duplicate output in the console
    - All test output is captured via IPC events with file path associations
    - Individual test log files are created from IPC events, not by parsing output.log
-   - This is a deliberate design choice to prevent output duplication and maintain clean console output
+   - Clean, minimal console output with only 3pio's formatted results
+
+#### Vitest Configuration
+**Vitest DOES include the default reporter** - This is an intentional difference from Jest:
+   - Provides better user experience with familiar Vitest output
+   - Users see progress indicators and test results in real-time
+   - 3pio captures output in parallel without interfering with the default reporter
+   - This dual output approach works well with Vitest's architecture
 
 For detailed investigation and implications, see [Jest Console Handling](./jest-console-handling.md).
 
@@ -95,36 +118,46 @@ Error: Could not resolve a module for a custom reporter.
   Module name: --coverage
 ```
 
-## Coverage Mode Limitations
+## Coverage Mode - UNSUPPORTED
 
-### Coverage Reporting Interference
+### ⚠️ Coverage Mode is Not Supported
 
-When test runners are executed with coverage enabled (e.g., `--coverage` flag), 3pio may fail to capture individual test results:
+**3pio does not support running tests with coverage enabled.** Coverage mode interferes with 3pio's ability to capture test results and should not be used together.
 
-#### Affected Commands
+#### Affected Commands (Will Not Work Properly)
 - `vitest --coverage` or `vitest run --coverage`
 - `jest --coverage` or `jest --collectCoverage`
 - `pytest --cov=module`
+- Any test command with coverage flags
 
-#### Symptoms
-- Tests run successfully but 3pio only captures the final summary
-- `test-run.md` shows 0 files despite tests executing
-- `output.log` contains test results but individual test tracking is lost
+#### Why Coverage is Incompatible
+- Coverage instrumentation changes how test runners output results
+- Coverage reporters take precedence over 3pio's custom reporters
+- This prevents 3pio's adapters from receiving test events
+- Results in 0 test files being tracked despite tests executing
 
-#### Why This Happens
-Coverage instrumentation changes how test runners output results. The coverage reporter often takes precedence over custom reporters, preventing 3pio's adapter from receiving test events.
+#### Symptoms When Coverage is Enabled
+- `test-run.md` shows 0 files despite tests running
+- `output.log` contains test output but no structured test tracking
+- Individual test results are not captured
 
-#### Workaround
-Run tests without coverage during development:
+#### Recommendation
+Run tests without coverage when using 3pio:
 ```bash
 # Instead of
-3pio npm test:ci  # (which includes --coverage)
+3pio npm run test:coverage
+3pio jest --coverage
+3pio vitest --coverage
 
 # Use
-3pio npm test -- --run --no-coverage
+3pio npm test
+3pio jest
+3pio vitest run
 ```
 
-**Note**: This primarily affects CI/CD workflows where coverage is mandatory. For day-to-day development, developers typically run tests without coverage for faster feedback.
+**Note**: If you need both test results tracking (via 3pio) and coverage data, run them separately:
+1. Use 3pio for test execution and result tracking
+2. Run coverage separately without 3pio for coverage metrics
 
 ## Environment Variables
 
@@ -148,14 +181,49 @@ When multiple test adapters run in parallel, they write to the same IPC file wit
 This is not expected to cause issues in normal operation but is documented for transparency.
 
 
+## Rust/Cargo Nextest Specific Behaviors
+
+### Test Count Discrepancy with Nextest
+
+**Important**: When using cargo nextest with 3pio, you may notice different test counts compared to running nextest directly.
+
+#### The Behavior
+- **Direct nextest run** (human format): Reports ~2733 tests started
+- **3pio with nextest** (JSON format): Reports 2756 tests
+- **Discrepancy**: ~22-23 additional tests reported by 3pio
+
+#### Root Cause
+This is **NOT a bug in 3pio**. The discrepancy occurs because:
+
+1. **Nextest behaves differently between output formats**:
+   - Human format (default): May consolidate or group certain tests
+   - JSON format (`--message-format libtest-json`): Reports all individual tests
+
+2. **Duplicate test names across modules**: Many Rust projects have identically-named tests in different modules. For example, in Zed:
+   - `test_parse_remote_url_given_https_url` exists in 7 different provider modules
+   - 72 test names are duplicated across different modules
+   - All 2756 tests are unique when considering their full module paths
+
+#### What This Means
+- 3pio correctly processes ALL unique tests that nextest reports in JSON format
+- The test counts are accurate - they just represent different granularities
+- All tests are properly tracked with their full module paths
+- Exit codes and pass/fail results remain consistent
+
+#### No Action Required
+This is expected behavior when nextest switches to JSON output format. Your tests are running correctly and 3pio is capturing all results accurately.
+
+For a detailed investigation of this behavior, see [Test Count Discrepancy Investigation](/noggin/investigations/test-count-discrepancy-zed.md).
+
 ## File System Limitations
 
 ### Write Permissions Required
 
 3pio requires write access to the project directory to function properly:
 
-- **Required directories**: `.3pio/runs/`, `.3pio/ipc/`, `.3pio/adapters/` (or future `.3pio/runs/[runID]/adapter/`)
-- **Files created**: Test adapters, IPC communication files, test reports, and log files
+- **Required directories**: `.3pio/runs/`, `.3pio/ipc/`, `.3pio/runs/[runID]/adapters/`
+- **Files created**: Test adapters (in `[runID]/adapters/`), IPC communication files, test reports, and log files
+- **Adapter extraction**: Each test run extracts adapters to `.3pio/runs/[runID]/adapters/` for isolation
 - **Common failure scenarios**:
   - Running in read-only containers
   - CI/CD environments with restricted permissions
@@ -179,3 +247,34 @@ This is not expected to cause issues in normal operation but is documented for t
 - IPC files are written to `.3pio/ipc/` which must be writable
 - Large test suites may generate significant disk I/O for IPC communication
 - Report files use debounced writes to minimize file system operations
+
+## Cross-Platform Compatibility
+
+### Windows-Specific Considerations
+
+#### File Locking Behavior
+Windows has stricter file locking semantics than Unix systems:
+- **Output file handling**: Files must be explicitly synced (`file.Sync()`) before closing to ensure Windows releases handles properly
+- **Tail reading**: Only native runners (Go test, Cargo test) use tail readers to avoid file locking conflicts with Jest/Vitest/pytest
+- **Cleanup timing**: Test cleanup may need small delays on Windows to ensure file handles are fully released
+
+#### Path Separators
+- Report paths use forward slashes internally but may display with backslashes in Windows console output
+- Test detection and report generation handle both forward and backward slashes appropriately
+- File paths in test output respect the platform's native separator
+
+#### Console Output
+- Unicode characters (like ×) are replaced with ASCII equivalents (x) for better Windows terminal compatibility
+- Test failure indicators use simple ASCII characters to ensure consistent display across all platforms
+
+### Platform-Specific Test Behavior
+
+#### Pytest on Windows
+- Error output may be less detailed in console compared to Unix systems
+- Full error details are always available in the generated reports
+- Exit codes are properly mirrored regardless of output verbosity
+
+#### PowerShell Execution
+- 3pio works correctly when invoked from PowerShell
+- Command quoting is handled automatically for PowerShell compatibility
+- Binary detection includes `.exe` extension on Windows

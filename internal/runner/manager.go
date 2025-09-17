@@ -23,10 +23,7 @@ func (m *Manager) Close() error {
 }
 
 // NewManager creates a new runner manager
-func NewManager() *Manager {
-	// Create a logger for the manager
-	fileLogger, _ := logger.NewFileLogger()
-
+func NewManager(fileLogger *logger.FileLogger) *Manager {
 	m := &Manager{
 		runners: make(map[string]Definition),
 		logger:  fileLogger,
@@ -39,6 +36,13 @@ func NewManager() *Manager {
 
 	// Register Go test runner (native, no adapter)
 	m.Register("go", definitions.NewGoTestWrapper(fileLogger))
+
+	// Register Rust test runners (native, no adapters)
+	cargoImpl := definitions.NewCargoTestDefinition(fileLogger)
+	m.Register("cargo", definitions.NewCargoTestWrapper(cargoImpl))
+
+	nextestImpl := definitions.NewNextestDefinition(fileLogger)
+	m.Register("nextest", definitions.NewNextestWrapper(nextestImpl))
 
 	return m
 }
@@ -81,9 +85,19 @@ func (m *Manager) GetDefinition(name string) (Definition, bool) {
 
 // isPackageManager checks if a command is a package manager
 func isPackageManager(cmd string) bool {
+	// Extract the base command name from the full path
+	baseName := cmd
+	if idx := strings.LastIndex(cmd, "/"); idx != -1 {
+		baseName = cmd[idx+1:]
+	}
+	if idx := strings.LastIndex(baseName, "\\"); idx != -1 {
+		baseName = baseName[idx+1:]
+	}
+
+	// Check for exact matches of package manager names
 	managers := []string{"npm", "yarn", "pnpm", "bun"}
 	for _, m := range managers {
-		if strings.Contains(cmd, m) {
+		if baseName == m {
 			return true
 		}
 	}

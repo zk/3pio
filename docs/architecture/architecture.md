@@ -67,6 +67,25 @@ Provides file-based communication between CLI and test adapters:
 - Validates event schema and types
 - Provides Events channel for orchestrator consumption
 
+#### File Watching Strategy
+The system uses different file watching approaches based on the writer/reader relationship:
+
+**For `ipc.jsonl` (IPC Manager uses fsnotify):**
+- 3pio is the READER, adapters/native runners are WRITERS
+- fsnotify efficiently detects when external processes append events
+- No polling needed since we're watching for external changes
+- Clean goroutine termination via `Cleanup()` method
+
+**For `output.log` (TailReader for native runners only):**
+- 3pio is BOTH the WRITER (capturing stdout/stderr) AND the READER (via TailReader)
+- Cannot use fsnotify as it would trigger on our own writes
+- Polls with 10ms intervals to simulate `tail -f` behavior
+- **Only used for native runners** (Go test, Cargo test/nextest) to parse their JSON output
+- **Not used for Jest/Vitest/pytest** to avoid file locking issues on Windows
+- Native runners output JSON to stdout → 3pio captures to output.log → 3pio reads it back
+- Files are explicitly synced (`file.Sync()`) before closing for Windows compatibility
+- Relies on `processExited` channel for termination
+
 ### 6. Embedded Adapters (`internal/adapters/`)
 JavaScript and Python reporters embedded in the Go binary:
 - `jest.js`: Jest reporter implementation
@@ -86,17 +105,18 @@ JavaScript and Python reporters embedded in the Go binary:
 4. Runner Manager detects test runner
 5. Orchestrator creates directory structure
 6. For adapter-based runners (Jest/Vitest/pytest):
-   - Embedded adapters extracted to temp directory
-   - Command modified to include adapter
-7. For native runners (Go test):
-   - Command modified to add `-json` flag
+   - Embedded adapters extracted to `.3pio/runs/[runID]/adapters/`
+   - Command modified to include adapter path
+7. For native runners (Go test, Cargo test):
+   - Command modified to add JSON output flags (`-json` for Go, `--format json` for Rust)
    - No adapter extraction needed
 8. Report Manager initialized with Group Manager
 9. IPC Manager starts watching for events
 10. Orchestrator spawns test process with modified command
-11. For adapter-based runners:
-    - Test adapter discovers group hierarchy
-    - Sends testGroupDiscovered events for all groups
+11. Test discovery happens dynamically during execution:
+    - Adapter-based runners: Test files discovered as they execute
+    - Native runners: Tests discovered from JSON output stream
+    - No pre-execution discovery or dry runs performed
     - Sends testGroupStart when groups begin execution
     - Sends testCase events with parent hierarchy
     - Sends testGroupResult when groups complete
@@ -208,16 +228,23 @@ Note: Collection events provide immediate feedback during test discovery phase
 │   └── [runID]/
 │       ├── test-run.md                         # Main report with group hierarchy
 │       ├── output.log                          # Complete stdout/stderr
+│       ├── adapters/                           # Extracted test adapters
+│       │   ├── jest.js                        # Jest reporter (if applicable)
+│       │   ├── vitest.js                      # Vitest reporter (if applicable)
+│       │   └── pytest_adapter.py              # pytest plugin (if applicable)
 │       └── reports/                            # Hierarchical group reports
 │           ├── src_components_button_test_js/  # File group directory
 │           │   ├── index.md                    # File-level tests
-│           │   ├── button_rendering.md         # Describe block tests
-│           │   └── button_rendering/           # Nested describe
-│           │       ├── with_props.md          # Nested tests
-│           │       └── without_props.md       # Nested tests
+│           │   └── button_rendering/           # Nested describe directory
+│           │       ├── index.md                # Describe block tests
+│           │       ├── with_props/            # Nested test suite
+│           │       │   └── index.md            # Tests in this suite
+│           │       └── without_props/         # Nested test suite
+│           │           └── index.md            # Tests in this suite
 │           └── test_math_py/                   # Python file group
 │               ├── index.md                    # Module-level tests
-│               └── testmathoperations.md       # Class-based tests
+│               └── testmathoperations/         # Class-based test directory
+│                   └── index.md                # Class test methods
 ├── ipc/
 │   └── [runID].jsonl                          # IPC communication
 └── debug.log                                   # Debug logging
@@ -247,8 +274,9 @@ tests/                  # Integration tests and fixtures
 
 ### Embedded Adapters
 - Compiled into binary for zero dependencies
-- Extracted at runtime with IPC path injection
-- Each run gets unique adapter instance
+- Extracted at runtime to `.3pio/runs/[runID]/adapters/`
+- Each run gets unique adapter instance with IPC path injection
+- Automatically cleaned up with run directory
 
 ### File-Based IPC
 - Simple, reliable cross-platform mechanism
@@ -283,19 +311,51 @@ tests/                  # Integration tests and fixtures
 - Buffered file operations
 - Minimal file system calls
 
+## Design Decision: File-Based Output Capture
+
+### Why output.log Instead of Direct Streaming?
+
+3pio writes all captured stdout/stderr to `output.log` because of a critical issue with direct process stream reading:
+
+**The Core Problem**: When reading directly from process pipes with very large test suites, we were losing output. The process would produce data faster than we could consume it, causing buffer overruns and data loss.
+
+**The Solution**: Write everything to disk first, then read it back. This ensures:
+1. **No data loss** - The OS handles buffering to disk, preventing overruns
+2. **Backpressure handling** - Disk writes can keep up with even the fastest output
+3. **Reliable parsing** - For native runners (Go, Cargo), we can read the file at our own pace to parse JSON events
+
+**Additional Benefits**:
+- Debugging artifact - output.log persists for troubleshooting
+- Crash recovery - Output survives even if 3pio crashes
+- Simpler architecture - No complex buffering or stream synchronization
+
+The file-based approach trades a small amount of disk I/O for guaranteed data integrity, which is essential for reliable test reporting.
+
 ## Error Handling
 
+### Error Display Strategy
+- **Configuration errors are shown directly in console output** for immediate user feedback
+- The orchestrator detects configuration/startup errors by checking:
+  - Zero test groups discovered
+  - Non-standard exit codes (not 0 or 1)
+  - No test execution activity
+- When configuration errors are detected, the actual error message from output.log is displayed to the user
+- This ensures users see errors like missing test files, syntax errors, or configuration problems immediately
+
 ### Startup Failures
-- Test runner not found → Clear error message
-- Permission issues → Fallback paths
-- Missing dependencies → Helpful suggestions
+- Test runner not found → Clear error message displayed in console
+- Permission issues → Fallback paths with error notification
+- Missing dependencies → Helpful suggestions shown to user
+- Configuration errors → Full error output displayed from test runner
 
 ### Runtime Failures
 - Process crashes → Partial reports saved
 - Signal interruption → Graceful shutdown
 - IPC failures → Continue with degraded functionality
+- Test failures → Reported in structured format
 
 ### Recovery Mechanisms
 - Incremental writes ensure partial data preserved
 - File handles properly closed on exit
 - Exit codes accurately mirrored
+- Error messages preserved in output.log for debugging

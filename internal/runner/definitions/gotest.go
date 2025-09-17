@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,8 +15,8 @@ import (
 
 // GoTestDefinition implements support for Go's native test runner
 type GoTestDefinition struct {
-	logger     *logger.FileLogger
-	packageMap map[string]*PackageInfo
+	logger *logger.FileLogger
+	// packageMap removed - no longer using go list
 	testStates map[string]*TestState
 	mu         sync.RWMutex
 	ipcWriter  *IPCWriter
@@ -32,6 +30,7 @@ type GoTestDefinition struct {
 	packageStatuses   map[string]string            // Track overall status per package
 	packageGroups     map[string]*PackageGroupInfo // Track package-level group info
 	packageResultSent map[string]bool              // Track if result has been sent for package
+	packageErrors     map[string][]string          // Buffer package-level error output
 
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool           // Track discovered groups to avoid duplicates
@@ -39,15 +38,7 @@ type GoTestDefinition struct {
 	subgroupStats    map[string]*SubgroupStats // Track test counts and timing for subgroups
 }
 
-// PackageInfo holds information about a Go package
-type PackageInfo struct {
-	ImportPath   string   `json:"ImportPath"`
-	Dir          string   `json:"Dir"`
-	TestGoFiles  []string `json:"TestGoFiles"`
-	XTestGoFiles []string `json:"XTestGoFiles"`
-	IsCached     bool
-	Status       string
-}
+// PackageInfo removed - no longer using go list for package metadata
 
 // TestState tracks the state of a running test
 type TestState struct {
@@ -103,8 +94,8 @@ type IPCWriter struct {
 // NewGoTestDefinition creates a new Go test runner definition
 func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 	return &GoTestDefinition{
-		logger:            logger,
-		packageMap:        make(map[string]*PackageInfo),
+		logger: logger,
+		// packageMap removed - using dynamic discovery
 		testStates:        make(map[string]*TestState),
 		packageTestFiles:  make(map[string][]string),
 		packageStarted:    make(map[string]bool),
@@ -114,6 +105,7 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		packageStatuses:   make(map[string]string),
 		packageGroups:     make(map[string]*PackageGroupInfo),
 		packageResultSent: make(map[string]bool),
+		packageErrors:     make(map[string][]string),
 		discoveredGroups:  make(map[string]bool),
 		groupStarts:       make(map[string]bool),
 		subgroupStats:     make(map[string]*SubgroupStats),
@@ -192,41 +184,13 @@ func (g *GoTestDefinition) GetTestFiles(args []string) ([]string, error) {
 		return testFiles, nil
 	}
 
-	// Build package patterns from args
-	patterns := g.extractPackagePatterns(args)
+	// Go list removed for performance - causes 200-500ms startup latency
+	// Tests are discovered dynamically from JSON output instead
+	// This means we can't provide upfront file discovery, but test execution works fine
+	g.logger.Debug("Skipping go list for performance - using dynamic discovery")
 
-	// If no patterns, use current directory
-	if len(patterns) == 0 {
-		patterns = []string{"./..."}
-	}
-
-	// Run go list to get package info
-	start := time.Now()
-	packageMap, err := g.runGoList(patterns)
-	if err != nil {
-		g.logger.Debug("Failed to run go list: %v", err)
-		return []string{}, nil // Return empty for dynamic discovery
-	}
-	g.logger.Debug("go list completed in %v", time.Since(start))
-
-	// Store package map for later use
-	g.packageMap = packageMap
-
-	// Note: buildTestToFileMap() removed - it was legacy code that caused performance issues
-	// Go tests operate at package level, so test-to-file mapping provides no value
-
-	// Extract all test files from packages
-	var allTestFiles []string
-	for _, pkg := range packageMap {
-		for _, file := range pkg.TestGoFiles {
-			allTestFiles = append(allTestFiles, filepath.Join(pkg.Dir, file))
-		}
-		for _, file := range pkg.XTestGoFiles {
-			allTestFiles = append(allTestFiles, filepath.Join(pkg.Dir, file))
-		}
-	}
-
-	return allTestFiles, nil
+	// Return empty list to trigger dynamic discovery from test output
+	return []string{}, nil
 }
 
 // RequiresAdapter returns false as Go test doesn't need an external adapter
@@ -249,6 +213,12 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 	}()
 
 	scanner := bufio.NewScanner(stdout)
+	// Configure larger buffer for long JSON lines (especially with embedded output)
+	// Default is 64KB which can be exceeded by test output
+	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB max line size
+	buf := make([]byte, 0, 1024*1024)         // 1MB initial buffer
+	scanner.Buffer(buf, maxScanTokenSize)
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
@@ -267,8 +237,23 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading output: %w", err)
+	// Check for scanner error but don't fail immediately - we need to finalize groups
+	scanErr := scanner.Err()
+	if scanErr != nil {
+		g.logger.Debug("Scanner encountered error (will finalize groups anyway): %v", scanErr)
+	}
+
+	// Finalize any pending groups even if scanner had an error
+	g.logger.Debug("Finalizing pending groups...")
+	g.finalizePendingGroups()
+
+	if scanErr != nil {
+		// Log the error but don't fail - we've already processed the events
+		g.logger.Debug("Scanner error (may be due to pipe closing): %v", scanErr)
+		// Only return error if it's not a closed pipe error
+		if !strings.Contains(scanErr.Error(), "file already closed") && !strings.Contains(scanErr.Error(), "closed pipe") {
+			return fmt.Errorf("error reading output: %w", scanErr)
+		}
 	}
 
 	return nil
@@ -344,10 +329,7 @@ func (g *GoTestDefinition) handlePackageStart(event *GoTestEvent) {
 		g.packageStarted[event.Package] = true
 	}
 
-	// Package mapping is ready - groups are handled at package level for Go
-	if _, ok := g.packageMap[event.Package]; !ok {
-		g.logger.Debug("Package %s started but not in packageMap", event.Package)
-	}
+	// Package mapping removed - discovered dynamically from test output
 }
 
 // handleTestRun processes test run events
@@ -598,24 +580,16 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Update package info
-	if pkg, ok := g.packageMap[event.Package]; ok {
-		pkg.Status = strings.ToUpper(event.Action)
+	// Check if cached (without packageMap)
+	var isCached bool
+	if event.Output != "" && strings.Contains(event.Output, "(cached)") {
+		isCached = true
+	}
 
-		// Check if cached
-		if event.Output != "" && strings.Contains(event.Output, "(cached)") {
-			pkg.IsCached = true
-		}
-
-		// testFileStart/testFileResult events removed - using group events instead
-		// Cached packages are handled by group events
-		if pkg.IsCached {
-			g.logger.Debug("Cached package detected: %s", event.Package)
-		} else if len(pkg.TestGoFiles) == 0 && len(pkg.XTestGoFiles) == 0 {
-			// Package has no test files - this shouldn't normally happen
-			// but handle it just in case
-			g.logger.Debug("Package %s has no test files", event.Package)
-		}
+	// testFileStart/testFileResult events removed - using group events instead
+	// Cached packages are handled by group events
+	if isCached {
+		g.logger.Debug("Cached package detected: %s", event.Package)
 	}
 
 	// Send package result if we haven't already
@@ -664,8 +638,26 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			}
 		}
 
+		// Detect setup failures and send testGroupError event
+		if event.Action == "fail" && totals["total"].(int) == 0 {
+			// This is a setup failure - construct error message
+			errorMessage := g.constructErrorMessage(event.Package)
+
+			// Send testGroupError event
+			g.sendGroupError(event.Package, []string{}, "SETUP_FAILURE", event.Elapsed, errorMessage)
+
+			// Mark setupFailed in testGroupResult totals
+			totals["setupFailed"] = true
+		}
+
 		// Send GroupResult for the package
 		g.sendGroupResult(event.Package, []string{}, status, event.Elapsed, totals)
+
+		// Clear the started flag since we've sent the result
+		delete(g.packageStarted, event.Package)
+
+		// Clean up buffered errors to prevent memory leaks
+		g.cleanupPackageErrors(event.Package)
 
 		g.logger.Debug("Sent package result for %s: status=%s, duration=%.2fs, tests=%d",
 			event.Package, status, event.Elapsed, totals["total"])
@@ -684,6 +676,18 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 			state.Output = append(state.Output, event.Output)
 		}
 	} else {
+		// Package-level output processing
+
+		// Filter and capture relevant error lines
+		output := strings.TrimSpace(event.Output)
+		if g.isErrorOutput(output) {
+			// Initialize package error buffer if needed
+			if g.packageErrors == nil {
+				g.packageErrors = make(map[string][]string)
+			}
+			g.packageErrors[event.Package] = append(g.packageErrors[event.Package], output)
+		}
+
 		// Check for "no test files" indicator
 		if strings.Contains(event.Output, "[no test files]") {
 			// Ensure package group exists
@@ -702,7 +706,7 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 		filePath := g.getFilePathForPackage(event.Package)
 		if filePath != "" {
 			// Output capture handled by group events
-			g.logger.Debug("Package output for %s: %s", event.Package, strings.TrimSpace(event.Output))
+			g.logger.Debug("Package output for %s: %s", event.Package, output)
 		}
 	}
 }
@@ -714,38 +718,10 @@ func (g *GoTestDefinition) getFilePathForTest(packageName, testName string) stri
 	return g.getFilePathForPackage(packageName)
 }
 
-// getFilePathForPackage maps a package to its first test file
+// getFilePathForPackage simplified - no longer maps to files without go list
 func (g *GoTestDefinition) getFilePathForPackage(packageName string) string {
-	if pkg, ok := g.packageMap[packageName]; ok {
-		var absolutePath string
-		if len(pkg.TestGoFiles) > 0 {
-			absolutePath = filepath.Join(pkg.Dir, pkg.TestGoFiles[0])
-		} else if len(pkg.XTestGoFiles) > 0 {
-			absolutePath = filepath.Join(pkg.Dir, pkg.XTestGoFiles[0])
-		} else {
-			return ""
-		}
-
-		// Convert to relative path
-		cwd, err := os.Getwd()
-		if err != nil {
-			// If we can't get cwd, return the absolute path
-			return absolutePath
-		}
-
-		relPath, err := filepath.Rel(cwd, absolutePath)
-		if err != nil {
-			// If we can't get relative path, return the absolute path
-			return absolutePath
-		}
-
-		// Always use "./" prefix for consistency
-		if !strings.HasPrefix(relPath, ".") && !strings.HasPrefix(relPath, "/") {
-			relPath = "./" + relPath
-		}
-
-		return relPath
-	}
+	// Without go list, we can't map packages to files
+	// Return empty string to indicate no file mapping available
 	return ""
 }
 
@@ -853,40 +829,9 @@ func (g *GoTestDefinition) extractPackagePatterns(args []string) []string {
 	return patterns
 }
 
-// runGoList executes go list -json to get package information
-func (g *GoTestDefinition) runGoList(patterns []string) (map[string]*PackageInfo, error) {
-	args := append([]string{"list", "-json"}, patterns...)
-	cmd := exec.Command("go", args...)
+// runGoList removed - no longer using go list
 
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("go list failed: %w", err)
-	}
-
-	return g.parseGoListOutput(output)
-}
-
-// parseGoListOutput parses the output of go list -json
-func (g *GoTestDefinition) parseGoListOutput(output []byte) (map[string]*PackageInfo, error) {
-	packages := make(map[string]*PackageInfo)
-	decoder := json.NewDecoder(strings.NewReader(string(output)))
-
-	for {
-		var pkg PackageInfo
-		if err := decoder.Decode(&pkg); err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, fmt.Errorf("failed to parse go list output: %w", err)
-		}
-
-		// Only include packages with test files
-		if len(pkg.TestGoFiles) > 0 || len(pkg.XTestGoFiles) > 0 {
-			packages[pkg.ImportPath] = &pkg
-		}
-	}
-
-	return packages, nil
-}
+// parseGoListOutput removed - no longer using go list
 
 // IPC event sending methods
 
@@ -954,6 +899,161 @@ func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames [
 	if err := g.ipcWriter.WriteEvent(event); err != nil {
 		g.logger.Debug("Failed to write test case event: %v", err)
 	}
+}
+
+// finalizePendingGroups sends group results for any groups that haven't been finalized
+func (g *GoTestDefinition) finalizePendingGroups() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Check if there are any package groups that haven't been finalized
+	for pkgName, pkgGroup := range g.packageGroups {
+		// Check if this package has been started but not completed
+		if _, started := g.packageStarted[pkgName]; started {
+			// Check if we already sent a result for this package
+			// (packageStarted is set when we send the group start, and should be cleared when we send result)
+			g.logger.Debug("Checking if package %s needs finalization", pkgName)
+
+			// Calculate totals from tracked tests
+			totals := map[string]interface{}{
+				"total":   0,
+				"passed":  0,
+				"failed":  0,
+				"skipped": 0,
+			}
+
+			status := "FAIL" // Default to FAIL if incomplete
+
+			if len(pkgGroup.Tests) > 0 {
+				totals["total"] = len(pkgGroup.Tests)
+				for _, test := range pkgGroup.Tests {
+					switch test.Status {
+					case "PASS":
+						totals["passed"] = totals["passed"].(int) + 1
+					case "FAIL":
+						totals["failed"] = totals["failed"].(int) + 1
+					case "SKIP":
+						totals["skipped"] = totals["skipped"].(int) + 1
+					}
+				}
+
+				// Determine status based on test results
+				if totals["failed"].(int) > 0 {
+					status = "FAIL"
+				} else if totals["passed"].(int) > 0 {
+					status = "PASS"
+				} else if totals["skipped"].(int) > 0 {
+					status = "SKIP"
+				}
+			}
+
+			g.logger.Debug("Finalizing incomplete package %s with status %s (passed=%d, failed=%d, skipped=%d)",
+				pkgName, status, totals["passed"], totals["failed"], totals["skipped"])
+			g.sendGroupResult(pkgName, []string{}, status, 0, totals)
+
+			// Clear the started flag so we don't finalize again
+			delete(g.packageStarted, pkgName)
+		}
+	}
+}
+
+// isErrorOutput determines if a line of output should be captured as an error
+func (g *GoTestDefinition) isErrorOutput(output string) bool {
+	// Skip empty lines and standard go test output
+	if output == "" {
+		return false
+	}
+
+	// Skip standard success/info lines
+	skipPatterns := []string{
+		"?   \t",    // No test files indicator
+		"ok  \t",    // Package passed
+		"FAIL\t",    // Package failed (redundant with status)
+		"coverage:", // Coverage information
+		"=== RUN",   // Test start (should be captured by test-specific logic)
+		"--- PASS",  // Test pass (should be captured by test-specific logic)
+		"--- FAIL",  // Test fail (should be captured by test-specific logic)
+		"--- SKIP",  // Test skip (should be captured by test-specific logic)
+	}
+
+	for _, pattern := range skipPatterns {
+		if strings.Contains(output, pattern) {
+			return false
+		}
+	}
+
+	// Capture everything else as potential error output
+	return true
+}
+
+// constructErrorMessage builds an error message from buffered package output
+func (g *GoTestDefinition) constructErrorMessage(packageName string) string {
+	// Get buffered error output for this package
+	errorLines, hasErrors := g.packageErrors[packageName]
+
+	if !hasErrors || len(errorLines) == 0 {
+		// Fallback message if no specific error captured
+		return "Package failed during setup or compilation"
+	}
+
+	// Join error lines with newlines for readability
+	message := strings.Join(errorLines, "\n")
+
+	// Clean up common noise
+	message = g.cleanErrorMessage(message)
+
+	return message
+}
+
+// cleanErrorMessage removes noise from error messages
+func (g *GoTestDefinition) cleanErrorMessage(message string) string {
+	// Remove leading/trailing whitespace
+	message = strings.TrimSpace(message)
+
+	// Remove redundant "FAIL" lines since status is already FAIL
+	lines := strings.Split(message, "\n")
+	var cleanLines []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Skip redundant FAIL lines like "FAIL\tpackage.name\t1.23s"
+		if strings.HasPrefix(line, "FAIL\t") {
+			continue
+		}
+
+		cleanLines = append(cleanLines, line)
+	}
+
+	return strings.Join(cleanLines, "\n")
+}
+
+// sendGroupError sends a testGroupError event
+func (g *GoTestDefinition) sendGroupError(groupName string, parentNames []string, errorType string, duration float64, message string) {
+	event := map[string]interface{}{
+		"eventType": "testGroupError",
+		"payload": map[string]interface{}{
+			"groupName":   groupName,
+			"parentNames": parentNames,
+			"errorType":   errorType,
+			"duration":    duration * 1000, // Convert seconds to milliseconds
+			"error": map[string]interface{}{
+				"message": message,
+				"phase":   "setup",
+			},
+		},
+	}
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testGroupError: %v", err)
+	}
+}
+
+// cleanupPackageErrors removes buffered errors to prevent memory leaks
+func (g *GoTestDefinition) cleanupPackageErrors(packageName string) {
+	delete(g.packageErrors, packageName)
 }
 
 // sendTestFileResult, sendTestFileResultWithDuration, sendStdoutChunk removed - using group events instead

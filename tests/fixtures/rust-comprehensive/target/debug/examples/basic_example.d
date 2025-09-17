@@ -1,0 +1,1 @@
+/Users/zk/code/3pio/tests/fixtures/rust-comprehensive/target/debug/examples/basic_example: /Users/zk/code/3pio/tests/fixtures/rust-comprehensive/examples/basic_example.rs /Users/zk/code/3pio/tests/fixtures/rust-comprehensive/src/lib.rs

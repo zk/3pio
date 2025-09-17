@@ -66,5 +66,8 @@ releases/
 
 # Embedded adapters are committed
 !internal/adapters/*.js
-!internal/adapters/*.pyopen-source/
-open-source/grpc-go
+!internal/adapters/*.py
+
+# Open source projects for testing (only ignore at root)
+/open-source/
+open-source/

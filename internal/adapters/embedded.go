@@ -22,14 +22,14 @@ var (
 	pytestAdapter []byte
 )
 
-// GetAdapterPath returns the path to an extracted adapter with IPC path injected
-func GetAdapterPath(name string, ipcPath string, runDir string) (string, error) {
+// GetAdapterPath returns the path to an extracted adapter with IPC path and log level injected
+func GetAdapterPath(name string, ipcPath string, runDir string, logLevel string) (string, error) {
 	// No caching needed since each run gets its own adapter
-	return extractAdapter(name, ipcPath, runDir)
+	return extractAdapter(name, ipcPath, runDir, logLevel)
 }
 
-// extractAdapter extracts an embedded adapter with IPC path injected
-func extractAdapter(name string, ipcPath string, runDir string) (string, error) {
+// extractAdapter extracts an embedded adapter with IPC path and log level injected
+func extractAdapter(name string, ipcPath string, runDir string, logLevel string) (string, error) {
 	var content []byte
 	var filename string
 	var isESM bool
@@ -73,6 +73,21 @@ func extractAdapter(name string, ipcPath string, runDir string) (string, error) 
 		escapedPath := strconv.Quote(ipcPath)
 		pattern := regexp.MustCompile(`#__IPC_PATH__#".*?"#__IPC_PATH__#`)
 		contentStr = pattern.ReplaceAllString(contentStr, escapedPath)
+	}
+
+	// Inject log level into all adapters
+	// For JavaScript adapters, use JSON-like escaping for log level
+	if name == "vitest.js" || name == "jest.js" {
+		escapedLogLevel := strconv.Quote(logLevel)
+		logPattern := regexp.MustCompile(`/\*__LOG_LEVEL__\*/".*?"/\*__LOG_LEVEL__\*/`)
+		contentStr = logPattern.ReplaceAllString(contentStr, escapedLogLevel)
+	}
+
+	// For Python adapter, use Python string escaping for log level
+	if name == "pytest_adapter.py" {
+		escapedLogLevel := strconv.Quote(logLevel)
+		logPattern := regexp.MustCompile(`#__LOG_LEVEL__#".*?"#__LOG_LEVEL__#`)
+		contentStr = logPattern.ReplaceAllString(contentStr, escapedLogLevel)
 	}
 
 	content = []byte(contentStr)
@@ -137,10 +152,4 @@ func isProjectESM() bool {
 	}
 
 	return pkg.Type == "module"
-}
-
-// CleanupAdapters removes all extracted adapter files
-func CleanupAdapters() error {
-	adapterDir := filepath.Join(".3pio", "adapters")
-	return os.RemoveAll(adapterDir)
 }

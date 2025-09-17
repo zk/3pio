@@ -13,6 +13,8 @@ const (
 	TestStatusPass    TestStatus = "PASS"
 	TestStatusFail    TestStatus = "FAIL"
 	TestStatusSkip    TestStatus = "SKIP"
+	TestStatusNoTests TestStatus = "NO_TESTS"
+	TestStatusError   TestStatus = "ERROR"
 )
 
 // TestGroup represents a hierarchical group of tests (file, describe block, class, etc.)
@@ -39,6 +41,9 @@ type TestGroup struct {
 	// Statistics
 	Stats TestGroupStats
 
+	// Error information for group-level failures
+	ErrorInfo *TestError
+
 	// Output
 	Stdout string // Accumulated stdout for this group
 	Stderr string // Accumulated stderr for this group
@@ -50,6 +55,7 @@ type TestGroupStats struct {
 	PassedTests  int
 	FailedTests  int
 	SkippedTests int
+	SetupFailed  bool // Indicates this group failed during setup/initialization
 
 	// Recursive counts (includes subgroups)
 	TotalTestsRecursive   int
@@ -79,26 +85,27 @@ type TestCase struct {
 	Stderr string // stderr captured during this test
 }
 
-// TestError represents error information for a failed test
+// TestError represents error information for a failed test or group
 type TestError struct {
-	Message   string // Error message
-	Stack     string // Stack trace
-	Expected  string // Expected value (for assertions)
-	Actual    string // Actual value (for assertions)
-	Location  string // File:line where error occurred
-	ErrorType string // Type of error (e.g., "AssertionError")
+	Message  string // Error message
+	Stack    string // Stack trace
+	Expected string // Expected value (for assertions)
+	Actual   string // Actual value (for assertions)
+	Location string // File:line where error occurred
+	Type     string // Type of error (e.g., "AssertionError", "SETUP_FAILURE")
 }
 
 // IsComplete returns true if the group has finished executing
 func (g *TestGroup) IsComplete() bool {
 	return g.Status == TestStatusPass ||
 		g.Status == TestStatusFail ||
-		g.Status == TestStatusSkip
+		g.Status == TestStatusSkip ||
+		g.Status == TestStatusError
 }
 
 // HasFailures returns true if the group or any of its children have failures
 func (g *TestGroup) HasFailures() bool {
-	if g.Status == TestStatusFail {
+	if g.Status == TestStatusFail || g.Status == TestStatusError {
 		return true
 	}
 

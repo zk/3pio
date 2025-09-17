@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/zk/3pio/internal/ipc"
-	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/runner"
 )
 
@@ -26,7 +25,6 @@ type Manager struct {
 	groupManager *GroupManager
 
 	// Track if we created our own FileLogger that needs closing
-	ownedFileLogger *logger.FileLogger
 
 	// File handles for incremental writing
 	fileHandles map[string]*os.File
@@ -38,16 +36,17 @@ type Manager struct {
 	stdoutBuffers map[string][]string
 	stderrBuffers map[string][]string
 
+	// Debouncing for main report writes
+	writeTimer   *time.Timer
+	writeMutex   sync.Mutex
+	pendingWrite bool
+
 	mu           sync.RWMutex
 	debounceTime time.Duration
 	maxWaitTime  time.Duration
-}
 
-// Logger interface for debug logging
-type Logger interface {
-	Debug(format string, args ...interface{})
-	Error(format string, args ...interface{})
-	Info(format string, args ...interface{})
+	// Track test run start time for wall-clock duration
+	startTime time.Time
 }
 
 // NewManager creates a new report manager
@@ -71,30 +70,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 	}
 
 	// Initialize GroupManager for hierarchical test organization
-	// Cast the logger to FileLogger if possible, otherwise use a wrapper
-	var fileLogger *logger.FileLogger
-	var ownedFileLogger *logger.FileLogger
-	if fl, ok := lg.(*logger.FileLogger); ok {
-		fileLogger = fl
-	} else {
-		// In test environments, don't create a real FileLogger
-		// Check if this is a test logger (by type name)
-		typeName := fmt.Sprintf("%T", lg)
-		if strings.Contains(strings.ToLower(typeName), "mock") || strings.Contains(strings.ToLower(typeName), "noop") || strings.Contains(strings.ToLower(typeName), "test") {
-			// Use nil logger for tests to avoid file handle issues
-			fileLogger = nil // GroupManager should handle nil logger
-		} else {
-			// Create a new file logger for production use
-			var err error
-			fileLogger, err = logger.NewFileLogger()
-			if err != nil {
-				return nil, fmt.Errorf("failed to create file logger for group manager: %w", err)
-			}
-			ownedFileLogger = fileLogger // Track that we created this logger
-		}
-	}
-
-	groupManager := NewGroupManager(runDir, "", fileLogger)
+	groupManager := NewGroupManager(runDir, "", lg)
 
 	return &Manager{
 		runDir:          runDir,
@@ -103,15 +79,16 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		detectedRunner:  detectedRunner,
 		modifiedCommand: modifiedCommand,
 		groupManager:    groupManager,
-		ownedFileLogger: ownedFileLogger,
 		fileHandles:     make(map[string]*os.File),
 		fileBuffers:     make(map[string][]string),
 		debouncers:      make(map[string]*time.Timer),
 		outputFile:      outputFile,
 		stdoutBuffers:   make(map[string][]string),
 		stderrBuffers:   make(map[string][]string),
-		debounceTime:    100 * time.Millisecond,
+		pendingWrite:    false,
+		debounceTime:    200 * time.Millisecond,
 		maxWaitTime:     500 * time.Millisecond,
+		startTime:       time.Now(),
 	}, nil
 }
 
@@ -128,6 +105,7 @@ func (m *Manager) Initialize(args string) error {
 	defer m.mu.Unlock()
 
 	now := time.Now()
+	m.startTime = now // Record exact start time for wall-clock duration
 	m.state = &ipc.TestRunState{
 		Timestamp: now,
 		Status:    "RUNNING",
@@ -156,25 +134,55 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 	case ipc.CollectionErrorEvent:
 		return m.handleCollectionError(e)
 
-	// Group events - forward to GroupManager
+	// Group events - forward to GroupManager and trigger report updates
 	case ipc.GroupDiscoveredEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessGroupDiscovered(e)
+			err := m.groupManager.ProcessGroupDiscovered(e)
+			if err != nil {
+				return err
+			}
+			// Schedule test-run.md update when new groups are discovered
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupStartEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessGroupStart(e)
+			err := m.groupManager.ProcessGroupStart(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md to show group as RUNNING
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupResultEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessGroupResult(e)
+			err := m.groupManager.ProcessGroupResult(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md with final group status
+			return m.scheduleWrite()
+		}
+
+	case ipc.GroupErrorEvent:
+		if m.groupManager != nil {
+			err := m.groupManager.ProcessGroupError(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md with error information
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupTestCaseEvent:
 		if m.groupManager != nil {
-			return m.groupManager.ProcessTestCase(e)
+			err := m.groupManager.ProcessTestCase(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md with incremental test counts
+			return m.scheduleWrite()
 		}
 
 	case ipc.GroupStdoutChunkEvent:
@@ -243,9 +251,37 @@ func (m *Manager) SetExecutionError(filePath string, errorMsg string) error {
 
 // scheduleWrite schedules a debounced state write
 func (m *Manager) scheduleWrite() error {
-	// For now, write immediately
-	// TODO: Implement debouncing for state writes
-	return m.writeState()
+	m.writeMutex.Lock()
+	defer m.writeMutex.Unlock()
+
+	m.pendingWrite = true
+
+	// Cancel existing timer
+	if m.writeTimer != nil {
+		m.writeTimer.Stop()
+	}
+
+	// Schedule write after debounceTime of inactivity
+	m.writeTimer = time.AfterFunc(m.debounceTime, func() {
+		m.flushWrite()
+	})
+
+	return nil
+}
+
+// flushWrite executes pending write to disk
+func (m *Manager) flushWrite() {
+	m.writeMutex.Lock()
+	if !m.pendingWrite {
+		m.writeMutex.Unlock()
+		return
+	}
+	m.pendingWrite = false
+	m.writeMutex.Unlock()
+
+	if err := m.writeState(); err != nil {
+		m.logger.Error("Failed to write state: %v", err)
+	}
 }
 
 // writeState writes the current state to test-run.md
@@ -276,7 +312,7 @@ func (m *Manager) writeOutputLogHeader(args string) error {
 
 // generateMarkdownReport generates the markdown report
 func (m *Manager) generateMarkdownReport() string {
-	var sb strings.Builder
+	sb := &strings.Builder{}
 
 	// Extract run ID from runDir
 	runID := filepath.Base(m.runDir)
@@ -297,18 +333,18 @@ func (m *Manager) generateMarkdownReport() string {
 
 	// YAML frontmatter
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("run_id: %s\n", runID))
-	sb.WriteString(fmt.Sprintf("run_path: %s\n", m.runDir))
-	sb.WriteString(fmt.Sprintf("detected_runner: %s\n", m.detectedRunner))
-	sb.WriteString(fmt.Sprintf("modified_command: `%s`\n", m.modifiedCommand))
-	sb.WriteString(fmt.Sprintf("created: %s\n", m.state.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z")))
-	sb.WriteString(fmt.Sprintf("updated: %s\n", m.state.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z")))
-	sb.WriteString(fmt.Sprintf("status: %s\n", statusText))
+	fmt.Fprintf(sb, "run_id: %s\n", runID)
+	fmt.Fprintf(sb, "run_path: %s\n", m.runDir)
+	fmt.Fprintf(sb, "detected_runner: %s\n", m.detectedRunner)
+	fmt.Fprintf(sb, "modified_command: `%s`\n", m.modifiedCommand)
+	fmt.Fprintf(sb, "created: %s\n", m.state.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z"))
+	fmt.Fprintf(sb, "updated: %s\n", m.state.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"))
+	fmt.Fprintf(sb, "status: %s\n", statusText)
 	sb.WriteString("---\n\n")
 
 	// Header
 	sb.WriteString("# 3pio Test Run\n\n")
-	sb.WriteString(fmt.Sprintf("- Test command: `%s`\n", m.state.Arguments))
+	fmt.Fprintf(sb, "- Test command: `%s`\n", m.state.Arguments)
 	sb.WriteString("- Run stdout/stderr: `./output.log`\n\n")
 
 	// Error details if status is ERRORED
@@ -322,7 +358,7 @@ func (m *Manager) generateMarkdownReport() string {
 	// Always use group-based reporting
 	if m.groupManager != nil {
 		// Generate hierarchical summary and results using group data
-		m.generateGroupBasedReport(&sb, statusText)
+		m.generateGroupBasedReport(sb, statusText)
 	} else {
 		// No test results to report
 		sb.WriteString("## Test Results\n\n")
@@ -345,7 +381,10 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 		passedTestCases := 0
 		failedTestCases := 0
 		skippedTestCases := 0
-		var totalDuration float64
+		runningTestCases := 0
+
+		// Calculate wall-clock duration from start time
+		totalDuration := time.Since(m.startTime).Seconds()
 
 		for _, group := range rootGroups {
 			// Count all test cases in the group and its subgroups
@@ -354,15 +393,18 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 			passedTestCases += countPassedTestCases(group)
 			failedTestCases += countFailedTestCases(group)
 			skippedTestCases += countSkippedTestCases(group)
-			totalDuration += group.Duration.Seconds()
+			runningTestCases += countRunningTestCases(group)
 		}
 
-		sb.WriteString(fmt.Sprintf("- Total test cases: %d\n", totalTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases completed: %d\n", completedTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases passed: %d\n", passedTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases failed: %d\n", failedTestCases))
-		sb.WriteString(fmt.Sprintf("- Test cases skipped: %d\n", skippedTestCases))
-		sb.WriteString(fmt.Sprintf("- Total duration: %.2fs\n\n", totalDuration))
+		fmt.Fprintf(sb, "- Total test cases: %d\n", totalTestCases)
+		fmt.Fprintf(sb, "- Test cases completed: %d\n", completedTestCases)
+		if runningTestCases > 0 {
+			fmt.Fprintf(sb, "- Test cases running: %d\n", runningTestCases)
+		}
+		fmt.Fprintf(sb, "- Test cases passed: %d\n", passedTestCases)
+		fmt.Fprintf(sb, "- Test cases failed: %d\n", failedTestCases)
+		fmt.Fprintf(sb, "- Test cases skipped: %d\n", skippedTestCases)
+		fmt.Fprintf(sb, "- Total duration: %.2fs\n\n", totalDuration)
 	}
 
 	// Test group results section with table format
@@ -378,9 +420,36 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 			}
 			filename := filepath.Base(group.Name)
 
-			// Tests column - show breakdown of test results like individual group reports
+			// Tests column - show breakdown of test results including running tests
 			var testsStr string
-			if group.Stats.TotalTests > 0 {
+			runningCount := countRunningTestCases(group)
+			totalCount := countTotalTestCases(group)
+
+			if statusStr == "RUNNING" || runningCount > 0 {
+				// Show running progress
+				parts := []string{}
+				if group.Stats.PassedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
+				}
+				if group.Stats.FailedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", group.Stats.FailedTests))
+				}
+				if runningCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d running", runningCount))
+				}
+				if group.Stats.SkippedTests > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
+				}
+				if totalCount > 0 && len(parts) == 0 {
+					// No tests have started yet
+					testsStr = fmt.Sprintf("%d pending", totalCount)
+				} else if len(parts) > 0 {
+					testsStr = strings.Join(parts, ", ")
+				} else {
+					testsStr = "-"
+				}
+			} else if group.Stats.TotalTests > 0 {
+				// Completed group - show final results
 				parts := []string{}
 				if group.Stats.PassedTests > 0 {
 					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
@@ -392,11 +461,29 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
 				}
 				testsStr = strings.Join(parts, ", ")
+			} else if group.Stats.SetupFailed {
+				// Setup failure - no tests ran
+				testsStr = "setup failed"
 			} else {
 				testsStr = "0 tests"
 			}
 
-			durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
+			// Duration column - show elapsed time for running groups, final duration for completed
+			var durationStr string
+			if statusStr == "RUNNING" && !group.StartTime.IsZero() {
+				// Show elapsed time for running groups
+				elapsed := time.Since(group.StartTime).Seconds()
+				durationStr = fmt.Sprintf("%.2fs", elapsed)
+			} else if group.Duration > 0 {
+				// Show final duration for completed groups
+				durationStr = fmt.Sprintf("%.2fs", group.Duration.Seconds())
+			} else if statusStr == "PENDING" {
+				// Not started yet
+				durationStr = "-"
+			} else {
+				// Fallback
+				durationStr = "0.00s"
+			}
 
 			// Generate report file path
 			reportFile := GetReportFilePath(group, m.runDir)
@@ -405,7 +492,7 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 				reportFile = "./" + relPath
 			}
 
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n", statusStr, filename, testsStr, durationStr, reportFile))
+			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n", statusStr, filename, testsStr, durationStr, reportFile)
 		}
 	}
 }
@@ -471,6 +558,19 @@ func countSkippedTestCases(group *TestGroup) int {
 	return count
 }
 
+func countRunningTestCases(group *TestGroup) int {
+	count := 0
+	for _, test := range group.TestCases {
+		if test.Status == TestStatusRunning || test.Status == TestStatusPending {
+			count++
+		}
+	}
+	for _, subgroup := range group.Subgroups {
+		count += countRunningTestCases(subgroup)
+	}
+	return count
+}
+
 // generateGroupReportSection is kept for potential future use but currently not called
 // It generates a hierarchical report section for a group
 /* func (m *Manager) generateGroupReportSection(sb *strings.Builder, group *TestGroup, indent int) {
@@ -482,12 +582,12 @@ func countSkippedTestCases(group *TestGroup) int {
 		filename := filepath.Base(group.Name)
 		durationStr := fmt.Sprintf("%.2fs", group.Duration.Seconds())
 
-		sb.WriteString(fmt.Sprintf("%s**%s** - %s %s", indentStr, filename, statusIcon, durationStr))
+		fmt.Fprintf(sb, "%s**%s** - %s %s", indentStr, filename, statusIcon, durationStr)
 
 		// Add test counts
 		if group.Stats.TotalTests > 0 {
-			sb.WriteString(fmt.Sprintf(" (%d tests: %d passed, %d failed, %d skipped)",
-				group.Stats.TotalTests, group.Stats.PassedTests, group.Stats.FailedTests, group.Stats.SkippedTests))
+			fmt.Fprintf(sb, " (%d tests: %d passed, %d failed, %d skipped)",
+				group.Stats.TotalTests, group.Stats.PassedTests, group.Stats.FailedTests, group.Stats.SkippedTests)
 		}
 		sb.WriteString("\n")
 
@@ -497,10 +597,10 @@ func countSkippedTestCases(group *TestGroup) int {
 	} else {
 		// Suite-level groups
 		statusIcon := getGroupStatusIcon(group.Status)
-		sb.WriteString(fmt.Sprintf("%s**%s** - %s", indentStr, group.Name, statusIcon))
+		fmt.Fprintf(sb, "%s**%s** - %s", indentStr, group.Name, statusIcon)
 
 		if group.Stats.TotalTests > 0 {
-			sb.WriteString(fmt.Sprintf(" (%d tests)", group.Stats.TotalTests))
+			fmt.Fprintf(sb, " (%d tests)", group.Stats.TotalTests)
 		}
 		sb.WriteString("\n")
 	}
@@ -513,14 +613,14 @@ func countSkippedTestCases(group *TestGroup) int {
 		if testCase.Duration > 0 {
 			durationStr = fmt.Sprintf(" (%.2fs)", testCase.Duration.Seconds())
 		}
-		sb.WriteString(fmt.Sprintf("%s%s %s%s\n", testIndent, testIcon, testCase.Name, durationStr))
+		fmt.Fprintf(sb, "%s%s %s%s\n", testIndent, testIcon, testCase.Name, durationStr)
 
 		// Show error for failed tests
 		if testCase.Status == TestStatusFail && testCase.Error != nil && testCase.Error.Message != "" {
 			errorIndent := strings.Repeat("  ", indent+2)
-			sb.WriteString(fmt.Sprintf("%s```\n", errorIndent))
-			sb.WriteString(fmt.Sprintf("%s%s\n", errorIndent, testCase.Error.Message))
-			sb.WriteString(fmt.Sprintf("%s```\n", errorIndent))
+			fmt.Fprintf(sb, "%s```\n", errorIndent)
+			fmt.Fprintf(sb, "%s%s\n", errorIndent, testCase.Error.Message)
+			fmt.Fprintf(sb, "%s```\n", errorIndent)
 		}
 	}
 
@@ -555,13 +655,15 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 	}
 
 	// Close our owned FileLogger if we created one
-	if m.ownedFileLogger != nil {
-		_ = m.ownedFileLogger.Close()
-		m.ownedFileLogger = nil
-	}
 
 	// Update final status if we have state and it's not already finalized
 	if m.state != nil && m.state.Status != "COMPLETE" && m.state.Status != "ERROR" {
+		// Cancel any pending timer to prevent race condition
+		if m.writeTimer != nil {
+			m.writeTimer.Stop()
+			m.writeTimer = nil
+		}
+
 		// Only set ERROR status for actual command errors, not test failures
 		if len(errorDetails) > 0 && errorDetails[0] != "" {
 			m.state.Status = "ERROR"
@@ -570,7 +672,7 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 			m.state.Status = "COMPLETE"
 		}
 
-		// Write final state
+		// Write final state immediately (bypass debouncing)
 		return m.writeState()
 	}
 

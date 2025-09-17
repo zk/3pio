@@ -41,13 +41,13 @@ func NewGoTestWrapper(logger *logger.FileLogger) *GoTestWrapper {
 
 // Matches checks if the command is for go test
 func (g *GoTestWrapper) Matches(command []string) bool {
-	return g.GoTestDefinition.Detect(command)
+	return g.Detect(command)
 }
 
 // BuildCommand builds the command with -json flag
 func (g *GoTestWrapper) BuildCommand(args []string, adapterPath string) []string {
 	// adapterPath is ignored for Go test
-	return g.GoTestDefinition.ModifyCommand(args, "", "")
+	return g.ModifyCommand(args, "", "")
 }
 
 // GetAdapterFileName returns empty string as Go doesn't need an adapter

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -18,7 +17,6 @@ type Manager struct {
 	IPCPath   string
 	watcher   *fsnotify.Watcher
 	Events    chan Event
-	errors    chan error
 	stopChan  chan struct{}
 	stopped   chan struct{} // Signals when watchLoop has stopped
 	mu        sync.RWMutex
@@ -26,6 +24,7 @@ type Manager struct {
 	logger    Logger
 	file      *os.File
 	reader    *bufio.Reader
+	readerMu  sync.Mutex // Protects concurrent access to reader
 }
 
 // Logger interface for debug logging
@@ -54,8 +53,7 @@ func NewManager(ipcPath string, logger Logger) (*Manager, error) {
 
 	return &Manager{
 		IPCPath:  ipcPath,
-		Events:   make(chan Event, 100),
-		errors:   make(chan error, 10),
+		Events:   make(chan Event, 10000), // Large buffer for handling burst of events
 		stopChan: make(chan struct{}),
 		stopped:  make(chan struct{}),
 		logger:   logger,
@@ -77,22 +75,25 @@ func (m *Manager) WatchEvents() error {
 		return fmt.Errorf("failed to watch IPC file: %w", err)
 	}
 
-	// Start processing existing content
-	go m.readExistingEvents()
-
-	// Start watching for changes
+	// Start the single watch loop that handles both existing and new events
 	go m.watchLoop()
+
+	// Trigger initial read of any existing content
+	go m.readEvents()
 
 	return nil
 }
 
-// readExistingEvents reads any existing events in the file
-func (m *Manager) readExistingEvents() {
+// readEvents reads events from the current position in the file
+func (m *Manager) readEvents() {
+	m.readerMu.Lock()
+	defer m.readerMu.Unlock()
+
 	for {
 		line, err := m.reader.ReadBytes('\n')
 		if err != nil {
 			if err != io.EOF {
-				m.logger.Error("Error reading existing events: %v", err)
+				m.logger.Error("Error reading events: %v", err)
 			}
 			break
 		}
@@ -103,9 +104,10 @@ func (m *Manager) readExistingEvents() {
 	}
 }
 
-// watchLoop watches for file changes and reads new events
+// watchLoop watches for file changes and triggers reads
 func (m *Manager) watchLoop() {
 	defer close(m.stopped)
+
 	for {
 		select {
 		case event, ok := <-m.watcher.Events:
@@ -115,35 +117,18 @@ func (m *Manager) watchLoop() {
 
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				m.logger.Debug("IPC file modified: %s", event.Name)
-				m.readNewEvents()
+				m.readEvents()
 			}
 
 		case err, ok := <-m.watcher.Errors:
 			if !ok {
 				return
 			}
+			// Log the error but don't block on channel send
 			m.logger.Error("Watcher error: %v", err)
-			m.errors <- err
 
 		case <-m.stopChan:
 			return
-		}
-	}
-}
-
-// readNewEvents reads new events from the current position
-func (m *Manager) readNewEvents() {
-	for {
-		line, err := m.reader.ReadBytes('\n')
-		if err != nil {
-			if err != io.EOF {
-				m.logger.Error("Error reading new events: %v", err)
-			}
-			break
-		}
-
-		if len(line) > 0 {
-			m.parseAndSendEvent(line)
 		}
 	}
 }
@@ -231,6 +216,14 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		}
 		event = e
 
+	case EventTypeGroupError:
+		var e GroupErrorEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group error event: %v", err)
+			return
+		}
+		event = e
+
 	case EventTypeGroupStdout:
 		var e GroupStdoutChunkEvent
 		if err := json.Unmarshal(line, &e); err != nil {
@@ -252,13 +245,9 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		return
 	}
 
-	// Send event to channel
-	select {
-	case m.Events <- event:
-		m.logger.Debug("Sent event: %s", eventType)
-	case <-time.After(time.Second):
-		m.logger.Error("Timeout sending event: %s", eventType)
-	}
+	// Send event to channel (blocking send for natural backpressure)
+	m.Events <- event
+	m.logger.Debug("Processing IPC event: %s", eventType)
 }
 
 // Cleanup stops watching and closes resources
@@ -291,9 +280,6 @@ func (m *Manager) Cleanup() error {
 	m.closeOnce.Do(func() {
 		if m.Events != nil {
 			close(m.Events)
-		}
-		if m.errors != nil {
-			close(m.errors)
 		}
 	})
 
