@@ -76,13 +76,15 @@ The system uses different file watching approaches based on the writer/reader re
 - No polling needed since we're watching for external changes
 - Clean goroutine termination via `Cleanup()` method
 
-**For `output.log` (TailReader uses polling):**
+**For `output.log` (TailReader for native runners only):**
 - 3pio is BOTH the WRITER (capturing stdout/stderr) AND the READER (via TailReader)
 - Cannot use fsnotify as it would trigger on our own writes
 - Polls with 10ms intervals to simulate `tail -f` behavior
-- Only used for native runners (Go, Cargo) to parse their JSON output
+- **Only used for native runners** (Go test, Cargo test/nextest) to parse their JSON output
+- **Not used for Jest/Vitest/pytest** to avoid file locking issues on Windows
 - Native runners output JSON to stdout → 3pio captures to output.log → 3pio reads it back
-- Relies on `processExited` channel for termination (source of SIGINT bug)
+- Files are explicitly synced (`file.Sync()`) before closing for Windows compatibility
+- Relies on `processExited` channel for termination
 
 ### 6. Embedded Adapters (`internal/adapters/`)
 JavaScript and Python reporters embedded in the Go binary:

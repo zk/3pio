@@ -181,6 +181,40 @@ When multiple test adapters run in parallel, they write to the same IPC file wit
 This is not expected to cause issues in normal operation but is documented for transparency.
 
 
+## Rust/Cargo Nextest Specific Behaviors
+
+### Test Count Discrepancy with Nextest
+
+**Important**: When using cargo nextest with 3pio, you may notice different test counts compared to running nextest directly.
+
+#### The Behavior
+- **Direct nextest run** (human format): Reports ~2733 tests started
+- **3pio with nextest** (JSON format): Reports 2756 tests
+- **Discrepancy**: ~22-23 additional tests reported by 3pio
+
+#### Root Cause
+This is **NOT a bug in 3pio**. The discrepancy occurs because:
+
+1. **Nextest behaves differently between output formats**:
+   - Human format (default): May consolidate or group certain tests
+   - JSON format (`--message-format libtest-json`): Reports all individual tests
+
+2. **Duplicate test names across modules**: Many Rust projects have identically-named tests in different modules. For example, in Zed:
+   - `test_parse_remote_url_given_https_url` exists in 7 different provider modules
+   - 72 test names are duplicated across different modules
+   - All 2756 tests are unique when considering their full module paths
+
+#### What This Means
+- 3pio correctly processes ALL unique tests that nextest reports in JSON format
+- The test counts are accurate - they just represent different granularities
+- All tests are properly tracked with their full module paths
+- Exit codes and pass/fail results remain consistent
+
+#### No Action Required
+This is expected behavior when nextest switches to JSON output format. Your tests are running correctly and 3pio is capturing all results accurately.
+
+For a detailed investigation of this behavior, see [Test Count Discrepancy Investigation](/noggin/investigations/test-count-discrepancy-zed.md).
+
 ## File System Limitations
 
 ### Write Permissions Required
@@ -213,3 +247,34 @@ This is not expected to cause issues in normal operation but is documented for t
 - IPC files are written to `.3pio/ipc/` which must be writable
 - Large test suites may generate significant disk I/O for IPC communication
 - Report files use debounced writes to minimize file system operations
+
+## Cross-Platform Compatibility
+
+### Windows-Specific Considerations
+
+#### File Locking Behavior
+Windows has stricter file locking semantics than Unix systems:
+- **Output file handling**: Files must be explicitly synced (`file.Sync()`) before closing to ensure Windows releases handles properly
+- **Tail reading**: Only native runners (Go test, Cargo test) use tail readers to avoid file locking conflicts with Jest/Vitest/pytest
+- **Cleanup timing**: Test cleanup may need small delays on Windows to ensure file handles are fully released
+
+#### Path Separators
+- Report paths use forward slashes internally but may display with backslashes in Windows console output
+- Test detection and report generation handle both forward and backward slashes appropriately
+- File paths in test output respect the platform's native separator
+
+#### Console Output
+- Unicode characters (like ×) are replaced with ASCII equivalents (x) for better Windows terminal compatibility
+- Test failure indicators use simple ASCII characters to ensure consistent display across all platforms
+
+### Platform-Specific Test Behavior
+
+#### Pytest on Windows
+- Error output may be less detailed in console compared to Unix systems
+- Full error details are always available in the generated reports
+- Exit codes are properly mirrored regardless of output verbosity
+
+#### PowerShell Execution
+- 3pio works correctly when invoked from PowerShell
+- Command quoting is handled automatically for PowerShell compatibility
+- Binary detection includes `.exe` extension on Windows

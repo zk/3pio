@@ -119,6 +119,13 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 - Output log: `.3pio/runs/[timestamp]-[name]/output.log` (contains all stdout/stderr from test run)
 - Test logs: `.3pio/runs/[timestamp]-[name]/logs/[sanitized-test-file].log` (per-file output with test case boundaries)
 
+### Cross-Platform Compatibility
+- **File Locking**: TailReader only used for native runners (Go test, Cargo test) to avoid Windows file locking issues
+- **File Syncing**: Explicit `file.Sync()` calls before closing files for Windows compatibility
+- **Path Separators**: Handle both forward and backward slashes in file paths
+- **Console Output**: Use ASCII characters (x) instead of Unicode (×) for cross-platform terminal compatibility
+- **Binary Detection**: Include `.exe` extension detection on Windows
+
 ## Testing Requirements
 
 ### Unit Tests Required For

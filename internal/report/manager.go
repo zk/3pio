@@ -44,6 +44,9 @@ type Manager struct {
 	mu           sync.RWMutex
 	debounceTime time.Duration
 	maxWaitTime  time.Duration
+
+	// Track test run start time for wall-clock duration
+	startTime time.Time
 }
 
 // NewManager creates a new report manager
@@ -85,6 +88,7 @@ func NewManager(runDir string, parser runner.OutputParser, lg Logger, detectedRu
 		pendingWrite:    false,
 		debounceTime:    200 * time.Millisecond,
 		maxWaitTime:     500 * time.Millisecond,
+		startTime:       time.Now(),
 	}, nil
 }
 
@@ -101,6 +105,7 @@ func (m *Manager) Initialize(args string) error {
 	defer m.mu.Unlock()
 
 	now := time.Now()
+	m.startTime = now // Record exact start time for wall-clock duration
 	m.state = &ipc.TestRunState{
 		Timestamp: now,
 		Status:    "RUNNING",
@@ -367,7 +372,9 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 		failedTestCases := 0
 		skippedTestCases := 0
 		runningTestCases := 0
-		var totalDuration float64
+
+		// Calculate wall-clock duration from start time
+		totalDuration := time.Since(m.startTime).Seconds()
 
 		for _, group := range rootGroups {
 			// Count all test cases in the group and its subgroups
@@ -377,7 +384,6 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 			failedTestCases += countFailedTestCases(group)
 			skippedTestCases += countSkippedTestCases(group)
 			runningTestCases += countRunningTestCases(group)
-			totalDuration += group.Duration.Seconds()
 		}
 
 		fmt.Fprintf(sb, "- Total test cases: %d\n", totalTestCases)

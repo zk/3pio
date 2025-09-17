@@ -216,7 +216,7 @@ func (n *NextestDefinition) processSuiteEvent(event *NextestEvent, testCount *in
 	case "started":
 		// Nextest doesn't provide test count at start, track as we go
 		n.sendCollectionStart(0)
-	case "finished":
+	case "ok", "failed":
 		// Send collection finish event
 		n.sendCollectionFinish(*testCount)
 		// Finalize any remaining groups

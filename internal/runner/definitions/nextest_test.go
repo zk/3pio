@@ -1,6 +1,8 @@
 package definitions
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -292,6 +294,109 @@ func TestNextestDefinition_ParseTestName(t *testing.T) {
 			// For now, we just verify the definition handles various formats
 			// without crashing
 			_ = def
+		})
+	}
+}
+
+func TestNextestDefinition_SuiteCompletionEvents(t *testing.T) {
+	logger, _ := logger.NewFileLogger()
+	defer func() { _ = logger.Close() }()
+	def := NewNextestDefinition(logger)
+
+	tests := []struct {
+		name           string
+		jsonEvents     string
+		expectedGroups int
+		checkStatus    bool
+	}{
+		{
+			name: "suite with ok event",
+			jsonEvents: `{"type":"suite","event":"started","test_count":2}
+{"type":"test","event":"started","name":"my_crate::tests::test1"}
+{"type":"test","event":"ok","name":"my_crate::tests::test1","exec_time":0.001}
+{"type":"test","event":"started","name":"my_crate::tests::test2"}
+{"type":"test","event":"ok","name":"my_crate::tests::test2","exec_time":0.002}
+{"type":"suite","event":"ok","passed":2,"failed":0,"ignored":0,"exec_time":0.003}
+`,
+			expectedGroups: 1,
+			checkStatus:    true,
+		},
+		{
+			name: "suite with failed event",
+			jsonEvents: `{"type":"suite","event":"started","test_count":2}
+{"type":"test","event":"started","name":"my_crate::tests::test1"}
+{"type":"test","event":"failed","name":"my_crate::tests::test1","stdout":"assertion failed"}
+{"type":"test","event":"started","name":"my_crate::tests::test2"}
+{"type":"test","event":"ok","name":"my_crate::tests::test2","exec_time":0.002}
+{"type":"suite","event":"failed","passed":1,"failed":1,"ignored":0,"exec_time":0.003}
+`,
+			expectedGroups: 1,
+			checkStatus:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary IPC file
+			tempFile, err := os.CreateTemp("", "test-nextest-ipc-*.jsonl")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			tempPath := tempFile.Name()
+			tempFile.Close()
+			defer os.Remove(tempPath)
+
+			// Process the JSON events
+			reader := bytes.NewReader([]byte(tt.jsonEvents))
+			err = def.ProcessOutput(reader, tempPath)
+			if err != nil {
+				t.Errorf("ProcessOutput failed: %v", err)
+			}
+
+			// Read and verify IPC events
+			ipcData, err := os.ReadFile(tempPath)
+			if err != nil {
+				t.Fatalf("Failed to read IPC file: %v", err)
+			}
+
+			// Debug: Print IPC data
+			t.Logf("IPC data: %s", string(ipcData))
+
+			// Parse IPC events and check for testGroupResult
+			lines := strings.Split(string(ipcData), "\n")
+			groupResultCount := 0
+			for _, line := range lines {
+				if line == "" {
+					continue
+				}
+
+				// Parse JSON event
+				var event map[string]interface{}
+				if err := json.Unmarshal([]byte(line), &event); err != nil {
+					t.Errorf("Failed to parse IPC event: %v", err)
+					continue
+				}
+
+				if eventType, ok := event["eventType"].(string); ok && eventType == "testGroupResult" {
+					groupResultCount++
+					if tt.checkStatus {
+						// Verify the group has a final status (not RUNNING)
+						if payload, ok := event["payload"].(map[string]interface{}); ok {
+							if status, ok := payload["status"].(string); ok {
+								if status == "RUNNING" {
+									t.Errorf("Group should not be in RUNNING state after suite completion")
+								}
+							} else {
+								t.Errorf("Group result missing status field")
+							}
+						}
+				}
+			}
+			}
+
+			if groupResultCount != tt.expectedGroups {
+				t.Errorf("Expected %d testGroupResult events, got %d", tt.expectedGroups, groupResultCount)
+			}
 		})
 	}
 }
