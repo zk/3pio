@@ -144,14 +144,6 @@ func (o *Orchestrator) Close() error {
 }
 
 // Run executes the test command with 3pio instrumentation
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (o *Orchestrator) Run() error {
 	// Ensure cleanup on exit
 	defer func() {
