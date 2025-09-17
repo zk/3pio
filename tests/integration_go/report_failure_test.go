@@ -87,7 +87,7 @@ func TestFailureDisplayFormat(t *testing.T) {
 		}
 		// On Windows, paths use backslashes
 		if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
-		   !strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
+			!strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
 			t.Errorf("Expected to see correct report path format, got: %s", output)
 		}
 	})

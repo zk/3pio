@@ -223,8 +223,8 @@ def test_list_assertion():
 	outputStr := string(output)
 	// On Windows, pytest output might only show "Error: exit status"
 	if !strings.Contains(outputStr, "failed") && !strings.Contains(outputStr, "FAIL") &&
-	   !strings.Contains(outputStr, "exit status") && !strings.Contains(outputStr, "Error") &&
-	   !strings.Contains(outputStr, "Results:") {
+		!strings.Contains(outputStr, "exit status") && !strings.Contains(outputStr, "Error") &&
+		!strings.Contains(outputStr, "Results:") {
 		t.Errorf("Expected failure indication in output, got: %s", outputStr)
 	}
 
@@ -236,7 +236,7 @@ def test_list_assertion():
 
 	// On Windows, report might use different format or might be minimal
 	if !strings.Contains(reportStr, "FAIL") && !strings.Contains(reportStr, "fail") &&
-	   !strings.Contains(reportStr, "Failed") && !strings.Contains(reportStr, "error") {
+		!strings.Contains(reportStr, "Failed") && !strings.Contains(reportStr, "error") {
 		t.Logf("Report might not contain explicit failure markers on Windows: %s", reportStr)
 	}
 }
@@ -364,8 +364,8 @@ def test_division_by_zero():
 	// On Windows, the detailed error output might not be captured in the console output
 	// Just check that there's some error indication
 	if !strings.Contains(outputStr, "RuntimeError") && !strings.Contains(outputStr, "ZeroDivisionError") &&
-	   !strings.Contains(outputStr, "exit status") && !strings.Contains(outputStr, "Error") &&
-	   !strings.Contains(outputStr, "Results:") {
+		!strings.Contains(outputStr, "exit status") && !strings.Contains(outputStr, "Error") &&
+		!strings.Contains(outputStr, "Results:") {
 		t.Errorf("Expected error indication in output, got: %s", outputStr)
 	}
 
@@ -376,7 +376,7 @@ def test_division_by_zero():
 
 	// On Windows, report might use different format or might be minimal
 	if !strings.Contains(string(content), "FAIL") && !strings.Contains(string(content), "fail") &&
-	   !strings.Contains(string(content), "Failed") && !strings.Contains(string(content), "error") {
+		!strings.Contains(string(content), "Failed") && !strings.Contains(string(content), "error") {
 		t.Logf("Report might not contain explicit failure markers on Windows: %s", string(content))
 	}
 }
