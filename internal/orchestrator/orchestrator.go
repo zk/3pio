@@ -551,22 +551,22 @@ func (o *Orchestrator) Run() error {
 				errorDetails = stderrContent
 			}
 
-			// For config errors, also check output.log for error details
-			if errorDetails == "exit status 1" || errorDetails == "exit status 2" {
-				// Read first part of output.log to get actual error message
+			// For config/setup errors (non-zero exit with no tests run),
+			// show the actual output instead of generic "exit status N"
+			if (errorDetails == "exit status 1" || errorDetails == "exit status 2") && o.totalGroups == 0 {
+				// Read first part of output.log to show actual error
 				if outputContent, err := os.ReadFile(outputPath); err == nil {
 					lines := strings.Split(string(outputContent), "\n")
-					// Look for error indicators in first 50 lines
-					for i := 0; i < len(lines) && i < 50; i++ {
-						line := strings.TrimSpace(lines[i])
-						if strings.Contains(line, "Error") || strings.Contains(line, "error") ||
-							strings.Contains(line, "preset") || strings.Contains(line, "Cannot") ||
-							strings.Contains(line, "Failed") || strings.Contains(line, "No module named") {
-							// Found error details, use them
-							errorDetails = strings.Join(lines[i:min(i+10, len(lines))], "\n")
-							shouldShowError = true
-							break
+					// Show first non-empty lines (up to 10 lines)
+					var errorLines []string
+					for i := 0; i < len(lines) && len(errorLines) < 10; i++ {
+						if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
+							errorLines = append(errorLines, lines[i])
 						}
+					}
+					if len(errorLines) > 0 {
+						errorDetails = strings.Join(errorLines, "\n")
+						shouldShowError = true
 					}
 				}
 			} else {
