@@ -561,7 +561,7 @@ func (o *Orchestrator) Run() error {
 						line := strings.TrimSpace(lines[i])
 						if strings.Contains(line, "Error") || strings.Contains(line, "error") ||
 							strings.Contains(line, "preset") || strings.Contains(line, "Cannot") ||
-							strings.Contains(line, "Failed") {
+							strings.Contains(line, "Failed") || strings.Contains(line, "No module named") {
 							// Found error details, use them
 							errorDetails = strings.Join(lines[i:min(i+10, len(lines))], "\n")
 							shouldShowError = true
@@ -603,40 +603,7 @@ func (o *Orchestrator) Run() error {
 		}
 		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
 		fmt.Printf("Test failures! %s\n", randomExclamation)
-
-		// Display failed test names (up to 3, with +N more if there are more)
-		allFailedTests := []string{}
-		for _, tests := range o.groupFailedTests {
-			allFailedTests = append(allFailedTests, tests...)
-		}
-
-		if len(allFailedTests) > 0 {
-			// Show up to 3 failed tests
-			maxShow := 3
-			for i := 0; i < len(allFailedTests) && i < maxShow; i++ {
-				// Use simple 'x' instead of Unicode × for better cross-platform compatibility
-				fmt.Printf("  x %s\n", allFailedTests[i])
-			}
-
-			// Show "+N more" if there are more than 3 failures
-			if len(allFailedTests) > maxShow {
-				fmt.Printf("  +%d more\n", len(allFailedTests)-maxShow)
-			}
-
-			// Show path to report for more details
-			reportPath := filepath.Join(o.runDir, "reports")
-			// Find the first report file
-			if entries, err := os.ReadDir(reportPath); err == nil && len(entries) > 0 {
-				for _, entry := range entries {
-					if entry.IsDir() {
-						fmt.Printf("  See %s/%s/index.md for details\n",
-							filepath.Join(".3pio", "runs", filepath.Base(o.runDir), "reports"),
-							entry.Name())
-						break
-					}
-				}
-			}
-		}
+		// Test details are shown inline with each failing group
 	} else if o.passedGroups > 0 && o.skippedGroups == 0 {
 		// All tests that ran passed (no skips)
 		fmt.Println("Splendid! All tests passed successfully")
@@ -689,13 +656,13 @@ func (o *Orchestrator) Run() error {
 // processEvents processes IPC events and displays console output
 func (o *Orchestrator) processEvents() {
 	for event := range o.ipcManager.Events {
-		// Handle console output for different event types
-		o.handleConsoleOutput(event)
-
-		// Pass event to report manager
+		// Pass event to report manager FIRST to update state
 		if err := o.reportManager.HandleEvent(event); err != nil {
 			o.logger.Error("Failed to handle event: %v", err)
 		}
+
+		// Then handle console output for different event types
+		o.handleConsoleOutput(event)
 	}
 }
 
