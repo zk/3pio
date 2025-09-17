@@ -144,14 +144,6 @@ func (o *Orchestrator) Close() error {
 }
 
 // Run executes the test command with 3pio instrumentation
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (o *Orchestrator) Run() error {
 	// Ensure cleanup on exit
 	defer func() {
@@ -551,22 +543,22 @@ func (o *Orchestrator) Run() error {
 				errorDetails = stderrContent
 			}
 
-			// For config errors, also check output.log for error details
-			if errorDetails == "exit status 1" || errorDetails == "exit status 2" {
-				// Read first part of output.log to get actual error message
+			// For config/setup errors (non-zero exit with no tests run),
+			// show the actual output instead of generic "exit status N"
+			if (errorDetails == "exit status 1" || errorDetails == "exit status 2") && o.totalGroups == 0 {
+				// Read first part of output.log to show actual error
 				if outputContent, err := os.ReadFile(outputPath); err == nil {
 					lines := strings.Split(string(outputContent), "\n")
-					// Look for error indicators in first 50 lines
-					for i := 0; i < len(lines) && i < 50; i++ {
-						line := strings.TrimSpace(lines[i])
-						if strings.Contains(line, "Error") || strings.Contains(line, "error") ||
-							strings.Contains(line, "preset") || strings.Contains(line, "Cannot") ||
-							strings.Contains(line, "Failed") {
-							// Found error details, use them
-							errorDetails = strings.Join(lines[i:min(i+10, len(lines))], "\n")
-							shouldShowError = true
-							break
+					// Show first non-empty lines (up to 10 lines)
+					var errorLines []string
+					for i := 0; i < len(lines) && len(errorLines) < 10; i++ {
+						if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
+							errorLines = append(errorLines, lines[i])
 						}
+					}
+					if len(errorLines) > 0 {
+						errorDetails = strings.Join(errorLines, "\n")
+						shouldShowError = true
 					}
 				}
 			} else {
@@ -603,40 +595,7 @@ func (o *Orchestrator) Run() error {
 		}
 		randomExclamation := exclamations[time.Now().UnixNano()%int64(len(exclamations))]
 		fmt.Printf("Test failures! %s\n", randomExclamation)
-
-		// Display failed test names (up to 3, with +N more if there are more)
-		allFailedTests := []string{}
-		for _, tests := range o.groupFailedTests {
-			allFailedTests = append(allFailedTests, tests...)
-		}
-
-		if len(allFailedTests) > 0 {
-			// Show up to 3 failed tests
-			maxShow := 3
-			for i := 0; i < len(allFailedTests) && i < maxShow; i++ {
-				// Use simple 'x' instead of Unicode × for better cross-platform compatibility
-				fmt.Printf("  x %s\n", allFailedTests[i])
-			}
-
-			// Show "+N more" if there are more than 3 failures
-			if len(allFailedTests) > maxShow {
-				fmt.Printf("  +%d more\n", len(allFailedTests)-maxShow)
-			}
-
-			// Show path to report for more details
-			reportPath := filepath.Join(o.runDir, "reports")
-			// Find the first report file
-			if entries, err := os.ReadDir(reportPath); err == nil && len(entries) > 0 {
-				for _, entry := range entries {
-					if entry.IsDir() {
-						fmt.Printf("  See %s/%s/index.md for details\n",
-							filepath.Join(".3pio", "runs", filepath.Base(o.runDir), "reports"),
-							entry.Name())
-						break
-					}
-				}
-			}
-		}
+		// Test details are shown inline with each failing group
 	} else if o.passedGroups > 0 && o.skippedGroups == 0 {
 		// All tests that ran passed (no skips)
 		fmt.Println("Splendid! All tests passed successfully")
@@ -689,13 +648,13 @@ func (o *Orchestrator) Run() error {
 // processEvents processes IPC events and displays console output
 func (o *Orchestrator) processEvents() {
 	for event := range o.ipcManager.Events {
-		// Handle console output for different event types
-		o.handleConsoleOutput(event)
-
-		// Pass event to report manager
+		// Pass event to report manager FIRST to update state
 		if err := o.reportManager.HandleEvent(event); err != nil {
 			o.logger.Error("Failed to handle event: %v", err)
 		}
+
+		// Then handle console output for different event types
+		o.handleConsoleOutput(event)
 	}
 }
 

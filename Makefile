@@ -43,16 +43,15 @@ dev:
 
 # Run tests
 test:
-	@echo "Running Go tests..."
-	go test -v -race ./internal/...
-
-# Run integration tests
-test-integration:
+	@echo "Running unit tests..."
+	go test -v -race ./cmd/... ./internal/...
 	@echo "Running integration tests..."
 	go test -v ./tests/integration_go/...
 
-# Run all tests
-test-all: test test-integration
+# Run integration tests only
+test-integration:
+	@echo "Running integration tests..."
+	go test -v ./tests/integration_go/...
 
 # Generate test coverage
 coverage:
@@ -230,9 +229,8 @@ help:
 	@echo "  make build           - Build the 3pio binary"
 	@echo "  make adapters        - Build test runner adapters"
 	@echo "  make dev             - Build with debug symbols"
-	@echo "  make test            - Run unit tests"
-	@echo "  make test-integration - Run integration tests"
-	@echo "  make test-all        - Run all tests"
+	@echo "  make test            - Run all tests (unit + integration)"
+	@echo "  make test-integration - Run integration tests only"
 	@echo "  make coverage        - Generate test coverage report"
 	@echo "  make fmt             - Format code"
 	@echo "  make lint            - Run linter"

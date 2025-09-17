@@ -325,7 +325,8 @@ func (g *GoTestDefinition) handlePackageStart(event *GoTestEvent) {
 
 		// Send discovery event for package
 		g.sendGroupDiscovered(event.Package, []string{})
-		g.sendGroupStart(event.Package, []string{})
+		// Use ensureGroupStarted to prevent duplicate start events
+		g.ensureGroupStarted([]string{event.Package})
 		g.packageStarted[event.Package] = true
 	}
 
