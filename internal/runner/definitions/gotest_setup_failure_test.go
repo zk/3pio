@@ -13,11 +13,11 @@ import (
 // TestGoTestDefinition_SetupFailure tests the new setup failure handling
 func TestGoTestDefinition_SetupFailure(t *testing.T) {
 	tests := []struct {
-		name              string
-		events            []GoTestEvent
-		expectedGroupError bool
+		name                 string
+		events               []GoTestEvent
+		expectedGroupError   bool
 		expectedErrorMessage string
-		expectedTotals    map[string]interface{}
+		expectedTotals       map[string]interface{}
 	}{
 		{
 			name: "Setup failure with error message",
@@ -27,7 +27,7 @@ func TestGoTestDefinition_SetupFailure(t *testing.T) {
 				{Action: "output", Package: "example.com/pkg", Output: "FAIL\texample.com/pkg\t0.854s\n"},
 				{Action: "fail", Package: "example.com/pkg", Elapsed: 0.856},
 			},
-			expectedGroupError: true,
+			expectedGroupError:   true,
 			expectedErrorMessage: "No test mode selected, please selected either e2e mode with \"--tags e2e\" or integration mode with \"--tags integration\"",
 			expectedTotals: map[string]interface{}{
 				"total": 0, "passed": 0, "failed": 0, "skipped": 0, "setupFailed": true,
@@ -41,7 +41,7 @@ func TestGoTestDefinition_SetupFailure(t *testing.T) {
 				{Action: "output", Package: "example.com/pkg", Output: "./main.go:5:2: undefined: nonExistentFunction\n"},
 				{Action: "fail", Package: "example.com/pkg", Elapsed: 0.123},
 			},
-			expectedGroupError: true,
+			expectedGroupError:   true,
 			expectedErrorMessage: "./main.go:5:2: undefined: nonExistentFunction",
 			expectedTotals: map[string]interface{}{
 				"total": 0, "passed": 0, "failed": 0, "skipped": 0, "setupFailed": true,
