@@ -193,8 +193,8 @@ func TestNextestDefinition_ProcessJSONEvents(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 	tempPath := tempFile.Name()
-	tempFile.Close()
-	defer os.Remove(tempPath)
+	_ = tempFile.Close()
+	defer func() { _ = os.Remove(tempPath) }()
 
 	// Process the events
 	err = def.ProcessOutput(reader, tempPath)
@@ -344,8 +344,8 @@ func TestNextestDefinition_SuiteCompletionEvents(t *testing.T) {
 				t.Fatalf("Failed to create temp file: %v", err)
 			}
 			tempPath := tempFile.Name()
-			tempFile.Close()
-			defer os.Remove(tempPath)
+			_ = tempFile.Close()
+			defer func() { _ = os.Remove(tempPath) }()
 
 			// Process the JSON events
 			reader := bytes.NewReader([]byte(tt.jsonEvents))

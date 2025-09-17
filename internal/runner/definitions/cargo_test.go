@@ -160,8 +160,8 @@ func TestCargoTestDefinition_ProcessJSONEvents(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 	tempPath := tempFile.Name()
-	tempFile.Close()
-	defer os.Remove(tempPath)
+	_ = tempFile.Close()
+	defer func() { _ = os.Remove(tempPath) }()
 
 	// Process the events
 	err = def.ProcessOutput(reader, tempPath)
