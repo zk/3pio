@@ -220,13 +220,22 @@ EOF
 
 #### Execute Test Runs
 
+**CRITICAL REQUIREMENT: RUN ALL TESTS**
+
+Open source testing MUST run the complete test suite, not subsets or samples. The goal is to validate 3pio against real-world complexity and scale. Running partial test suites defeats the purpose of comprehensive validation.
+
 **Standard Test Execution:**
 ```bash
-# Run primary test command
+# Run ALL tests - use the project's main test command that runs the complete suite
 ~/code/3pio/build/3pio npm test
 
+# For projects with multiple test commands, run ALL of them
+~/code/3pio/build/3pio npm run test:unit
+~/code/3pio/build/3pio npm run test:integration
+~/code/3pio/build/3pio npm run test:e2e
+
 # Document results
-echo "### Primary Test Run" >> "$REPORT_FILE"
+echo "### Complete Test Suite Run" >> "$REPORT_FILE"
 echo "\`\`\`bash" >> "$REPORT_FILE"
 echo "~/code/3pio/build/3pio npm test" >> "$REPORT_FILE"
 echo "\`\`\`" >> "$REPORT_FILE"
@@ -279,29 +288,27 @@ done
 
 *Go:*
 ```bash
-# Standard go test
+# Run ALL tests - always use ./... for complete coverage
 ~/code/3pio/build/3pio go test ./...
-~/code/3pio/build/3pio go test ./cmd/...
-~/code/3pio/build/3pio go test -short ./...
 
-# Package-specific
-~/code/3pio/build/3pio go test ./internal/server
+# For projects with long-running tests, run complete suite without -short flag
+# Only use -short as a fallback if full tests are impractical due to infrastructure requirements
+~/code/3pio/build/3pio go test ./...
+
+# AVOID package-specific testing unless documenting why full suite cannot run
 ```
 
 *Rust:*
 ```bash
-# cargo test
-~/code/3pio/build/3pio cargo test
-~/code/3pio/build/3pio cargo test --lib
+# Run ALL tests - complete workspace coverage
 ~/code/3pio/build/3pio cargo test --workspace
 
-# cargo nextest (if available)
+# If nextest is available, run complete suite with nextest
 if command -v cargo-nextest >/dev/null 2>&1; then
-    ~/code/3pio/build/3pio cargo nextest run
+    ~/code/3pio/build/3pio cargo nextest run --workspace
 fi
 
-# Specific packages
-~/code/3pio/build/3pio cargo test -p core
+# AVOID --lib or package-specific flags unless documenting why full suite cannot run
 ```
 
 ### Step 5: Results Analysis and Documentation
@@ -544,10 +551,12 @@ chmod +x "test-${PROJECT_NAME}.sh"
 
 ### Large Test Suites
 **Symptom**: Performance degradation or timeouts
-**Solutions**:
-- Test smaller subsets: `~/code/3pio/build/3pio npm test -- --testPathPattern=unit`
-- Use test filtering: `~/code/3pio/build/3pio go test ./cmd/...`
-- Check for memory usage during large runs
+**REQUIRED APPROACH**: Run the complete test suite anyway - this is the point of open source testing
+**Solutions for genuine issues**:
+- Increase timeout limits and be patient
+- Monitor memory usage and system resources
+- Document performance issues found
+- Only use test filtering if the complete suite is literally impossible to run (document why)
 
 ### Permission Issues
 **Symptom**: Cannot create `.3pio` directory

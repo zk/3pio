@@ -43,6 +43,8 @@ func TestFailureDisplayFormat(t *testing.T) {
 	// Clear Go test cache for this package first
 	cleanCmd := exec.Command("go", "clean", "-testcache")
 	cleanCmd.Dir = fixtureDir
+	// Inherit environment so 'go' executable can be found
+	cleanCmd.Env = os.Environ()
 	_ = cleanCmd.Run()
 
 	// Run 3pio with the test fixture (use -count=1 to disable test caching)
