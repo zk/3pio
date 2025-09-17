@@ -261,9 +261,35 @@ class ThreePioJestReporter {
       }
     }
     
+    // Send testCase events for all tests (including skipped ones)
+    // Jest only calls onTestCaseResult for tests that run, not skipped tests
+    if (testResult.testResults) {
+      const sentTests = new Set();
+      for (const testCase of testResult.testResults) {
+        // Create a unique ID for this test to avoid duplicates
+        const testId = `${test.path}:${(testCase.ancestorTitles || []).join(':')}:${testCase.title}`;
+
+        // Only send if we haven't already sent this test via onTestCaseResult
+        if (!sentTests.has(testId) && (testCase.status === 'skipped' || testCase.status === 'pending')) {
+          const parentNames = [test.path, ...(testCase.ancestorTitles || [])];
+          let status = 'SKIP';
+
+          sendEvent({
+            eventType: 'testCase',
+            payload: {
+              testName: testCase.title,
+              parentNames: parentNames,
+              status: status,
+              duration: testCase.duration || 0
+            }
+          });
+        }
+      }
+    }
+
     // Send GroupResult for all describe blocks (from deepest to shallowest)
     const processedGroups = new Set();
-    
+
     if (testResult.testResults) {
       // Group tests by their ancestor titles to find describe blocks
       const describeGroups = new Map();
@@ -298,18 +324,21 @@ class ThreePioJestReporter {
           const groupId = getGroupId([...parentNames, groupName]);
           if (!processedGroups.has(groupId)) {
             processedGroups.add(groupId);
-            
+
+            // Ensure the group and its parents are discovered before sending results
+            ensureGroupsDiscovered(test.path, groupInfo.ancestorTitles);
+
             let groupStatus = 'PASS';
             if (groupTotals.failed > 0) {
               groupStatus = 'FAIL';
             } else if (groupTotals.passed === 0 && groupTotals.skipped > 0) {
               groupStatus = 'SKIP';
             }
-            
+
             // Calculate duration if we tracked start time
             const startTime = groupStarts.get(groupId);
             const duration = startTime ? Date.now() - startTime : undefined;
-            
+
             sendEvent({
               eventType: 'testGroupResult',
               payload: {

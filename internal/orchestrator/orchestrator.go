@@ -609,9 +609,10 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Format results summary
-	// For cargo test, show test case counts; for others, show group counts
-	if strings.HasPrefix(o.detectedRunner, "cargo") && o.totalTests > 0 {
-		// Show test case counts for cargo
+	// Show test case counts when we have actual test counts with skipped tests
+	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
+	if o.totalTests > 0 && (o.skippedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+		// Show test case counts
 		if o.skippedTests > 0 {
 			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
 				o.passedTests, o.failedTests, o.skippedTests, o.totalTests)
@@ -622,7 +623,7 @@ func (o *Orchestrator) Run() error {
 			fmt.Printf("Results:     %d passed, %d total\n", o.passedTests, o.totalTests)
 		}
 	} else {
-		// Show group counts for other runners
+		// Show group counts for other runners or when no test-level detail available
 		if o.skippedGroups > 0 {
 			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
 				o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
@@ -900,8 +901,26 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		return
 	}
 
-	// Display group status using raw groupName
-	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+	// Build status string with counts: PASS(N) FAIL(M) SKIP(O)
+	var statusParts []string
+	if group.Stats.FailedTests > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTests))
+	}
+	if group.Stats.PassedTests > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTests))
+	}
+	if group.Stats.SkippedTests > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTests))
+	}
+
+	// If no tests at all, just show the status
+	statusStr := ""
+	if len(statusParts) > 0 {
+		statusStr = strings.Join(statusParts, " ")
+	} else {
+		statusStr = getGroupStatusString(convertReportStatusToIPC(group.Status))
+	}
+
 	o.logger.Debug("displayGroupHierarchy: displaying status=%s (group.Status=%s) for %s",
 		statusStr, group.Status, group.Name)
 
@@ -927,7 +946,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// Display the file result using raw groupName
 	elapsedTime := o.formatElapsedTime()
-	fmt.Printf("%s %-8s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+	// Adjust format to accommodate longer status string
+	fmt.Printf("%s %-20s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 
 	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
