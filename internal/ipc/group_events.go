@@ -5,6 +5,7 @@ const (
 	EventTypeGroupDiscovered EventType = "testGroupDiscovered"
 	EventTypeGroupStart      EventType = "testGroupStart"
 	EventTypeGroupResult     EventType = "testGroupResult"
+	EventTypeGroupError      EventType = "testGroupError"
 	EventTypeGroupTestCase   EventType = "testCase"
 	EventTypeGroupStdout     EventType = "groupStdout"
 	EventTypeGroupStderr     EventType = "groupStderr"
@@ -59,10 +60,11 @@ type GroupResultPayload struct {
 
 // GroupTotals holds test count statistics for a group
 type GroupTotals struct {
-	Passed  int `json:"passed"`
-	Failed  int `json:"failed"`
-	Skipped int `json:"skipped"`
-	Total   int `json:"total,omitempty"`
+	Passed      int  `json:"passed"`
+	Failed      int  `json:"failed"`
+	Skipped     int  `json:"skipped"`
+	Total       int  `json:"total,omitempty"`
+	SetupFailed bool `json:"setupFailed,omitempty"`
 }
 
 // GroupTestCaseEvent represents an individual test case result with group hierarchy
@@ -118,6 +120,30 @@ type OutputChunkPayload struct {
 	Timestamp   int64    `json:"timestamp,omitempty"`
 }
 
+// GroupErrorEvent represents group-level errors (setup failures, compilation errors, etc.)
+type GroupErrorEvent struct {
+	EventType string            `json:"eventType"`
+	Payload   GroupErrorPayload `json:"payload"`
+}
+
+func (e GroupErrorEvent) Type() EventType { return EventTypeGroupError }
+
+type GroupErrorPayload struct {
+	GroupName   string                 `json:"groupName"`
+	ParentNames []string               `json:"parentNames,omitempty"`
+	ErrorType   string                 `json:"errorType"`          // "SETUP_FAILURE", "COMPILATION_FAILURE", etc.
+	Duration    float64                `json:"duration,omitempty"` // Duration in milliseconds
+	Error       *GroupError            `json:"error,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Timestamp   int64                  `json:"timestamp,omitempty"`
+}
+
+// GroupError contains error information for group-level failures
+type GroupError struct {
+	Message string `json:"message"`
+	Phase   string `json:"phase,omitempty"` // "setup", "compilation", "collection", etc.
+}
+
 // GenericEvent is used for parsing unknown event types
 type GenericEvent struct {
 	EventType string                 `json:"eventType"`
@@ -161,6 +187,23 @@ func NewGroupResultEvent(groupName string, parentNames []string, status string, 
 	}
 }
 
+// NewGroupErrorEvent creates a new group error event
+func NewGroupErrorEvent(groupName string, parentNames []string, errorType string, duration float64, message string) GroupErrorEvent {
+	return GroupErrorEvent{
+		EventType: string(EventTypeGroupError),
+		Payload: GroupErrorPayload{
+			GroupName:   groupName,
+			ParentNames: parentNames,
+			ErrorType:   errorType,
+			Duration:    duration,
+			Error: &GroupError{
+				Message: message,
+				Phase:   "setup",
+			},
+		},
+	}
+}
+
 // NewGroupTestCaseEvent creates a new test case event with group hierarchy
 func NewGroupTestCaseEvent(testName string, parentNames []string, status string) GroupTestCaseEvent {
 	return GroupTestCaseEvent{
@@ -176,7 +219,7 @@ func NewGroupTestCaseEvent(testName string, parentNames []string, status string)
 // IsGroupEvent returns true if the event type is a group-related event
 func IsGroupEvent(eventType string) bool {
 	switch EventType(eventType) {
-	case EventTypeGroupDiscovered, EventTypeGroupStart, EventTypeGroupResult:
+	case EventTypeGroupDiscovered, EventTypeGroupStart, EventTypeGroupResult, EventTypeGroupError:
 		return true
 	default:
 		return false

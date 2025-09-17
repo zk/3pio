@@ -165,6 +165,16 @@ func (m *Manager) HandleEvent(event ipc.Event) error {
 			return m.scheduleWrite()
 		}
 
+	case ipc.GroupErrorEvent:
+		if m.groupManager != nil {
+			err := m.groupManager.ProcessGroupError(e)
+			if err != nil {
+				return err
+			}
+			// Update test-run.md with error information
+			return m.scheduleWrite()
+		}
+
 	case ipc.GroupTestCaseEvent:
 		if m.groupManager != nil {
 			err := m.groupManager.ProcessTestCase(e)
@@ -451,6 +461,9 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
 				}
 				testsStr = strings.Join(parts, ", ")
+			} else if group.Stats.SetupFailed {
+				// Setup failure - no tests ran
+				testsStr = "setup failed"
 			} else {
 				testsStr = "0 tests"
 			}

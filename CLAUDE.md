@@ -97,7 +97,8 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 - `testGroupDiscovered`: `{ eventType: "testGroupDiscovered", payload: { groupName, parentNames } }`
 - `testGroupStart`: `{ eventType: "testGroupStart", payload: { groupName, parentNames } }`
 - `testCase`: `{ eventType: "testCase", payload: { testName, parentNames, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
-- `testGroupResult`: `{ eventType: "testGroupResult", payload: { groupName, parentNames, status, duration?, totals? } }`
+- `testGroupResult`: `{ eventType: "testGroupResult", payload: { groupName, parentNames, status, duration?, totals?, setupFailed? } }`
+- `testGroupError`: `{ eventType: "testGroupError", payload: { groupName, parentNames, errorType, duration?, error } }`
 - `groupStdout`: `{ eventType: "groupStdout", payload: { groupName, parentNames, chunk } }`
 - `groupStderr`: `{ eventType: "groupStderr", payload: { groupName, parentNames, chunk } }`
 
@@ -193,3 +194,5 @@ For detailed information about these issues and their solutions, see `docs/known
 - Before opening a pr, lint and `gofmt`.
 - Avoid code in documentation, only pseudo code or call examples
 - Lint after every batch of edits
+- When running tests any failure is important. Never move on or report success if there are failing tests.
+- Never disable or skip tests to get CI to pass.

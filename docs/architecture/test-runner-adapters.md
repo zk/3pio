@@ -199,6 +199,31 @@ Indicates test group completion:
 }
 ```
 
+### testGroupError
+Reports group-level errors that occur before individual tests can run (setup failures, compilation errors, etc.):
+```json
+{
+  "eventType": "testGroupError",
+  "payload": {
+    "groupName": "Math operations",
+    "parentNames": ["src/math.test.js"],
+    "errorType": "SETUP_FAILURE",
+    "duration": 856,
+    "error": {
+      "message": "No test mode selected, please selected either e2e mode with \"--tags e2e\" or integration mode with \"--tags integration\"",
+      "phase": "setup"
+    }
+  }
+}
+```
+
+**Error Types:**
+- `SETUP_FAILURE`: Package/group failed before tests could run
+- `COLLECTION_FAILURE`: Test discovery/collection failed
+- `COMPILATION_FAILURE`: Code compilation/transpilation failed
+- `IMPORT_FAILURE`: Module import/dependency errors
+- `CONFIGURATION_FAILURE`: Invalid test configuration
+
 ### groupStdout / groupStderr
 Captures console output at group level:
 ```json

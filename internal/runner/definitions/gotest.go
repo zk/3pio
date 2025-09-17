@@ -30,6 +30,7 @@ type GoTestDefinition struct {
 	packageStatuses   map[string]string            // Track overall status per package
 	packageGroups     map[string]*PackageGroupInfo // Track package-level group info
 	packageResultSent map[string]bool              // Track if result has been sent for package
+	packageErrors     map[string][]string          // Buffer package-level error output
 
 	// Group tracking for universal abstractions
 	discoveredGroups map[string]bool           // Track discovered groups to avoid duplicates
@@ -104,6 +105,7 @@ func NewGoTestDefinition(logger *logger.FileLogger) *GoTestDefinition {
 		packageStatuses:   make(map[string]string),
 		packageGroups:     make(map[string]*PackageGroupInfo),
 		packageResultSent: make(map[string]bool),
+		packageErrors:     make(map[string][]string),
 		discoveredGroups:  make(map[string]bool),
 		groupStarts:       make(map[string]bool),
 		subgroupStats:     make(map[string]*SubgroupStats),
@@ -636,11 +638,26 @@ func (g *GoTestDefinition) handlePackageResult(event *GoTestEvent) {
 			}
 		}
 
+		// Detect setup failures and send testGroupError event
+		if event.Action == "fail" && totals["total"].(int) == 0 {
+			// This is a setup failure - construct error message
+			errorMessage := g.constructErrorMessage(event.Package)
+
+			// Send testGroupError event
+			g.sendGroupError(event.Package, []string{}, "SETUP_FAILURE", event.Elapsed, errorMessage)
+
+			// Mark setupFailed in testGroupResult totals
+			totals["setupFailed"] = true
+		}
+
 		// Send GroupResult for the package
 		g.sendGroupResult(event.Package, []string{}, status, event.Elapsed, totals)
 
 		// Clear the started flag since we've sent the result
 		delete(g.packageStarted, event.Package)
+
+		// Clean up buffered errors to prevent memory leaks
+		g.cleanupPackageErrors(event.Package)
 
 		g.logger.Debug("Sent package result for %s: status=%s, duration=%.2fs, tests=%d",
 			event.Package, status, event.Elapsed, totals["total"])
@@ -659,6 +676,18 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 			state.Output = append(state.Output, event.Output)
 		}
 	} else {
+		// Package-level output processing
+
+		// Filter and capture relevant error lines
+		output := strings.TrimSpace(event.Output)
+		if g.isErrorOutput(output) {
+			// Initialize package error buffer if needed
+			if g.packageErrors == nil {
+				g.packageErrors = make(map[string][]string)
+			}
+			g.packageErrors[event.Package] = append(g.packageErrors[event.Package], output)
+		}
+
 		// Check for "no test files" indicator
 		if strings.Contains(event.Output, "[no test files]") {
 			// Ensure package group exists
@@ -677,7 +706,7 @@ func (g *GoTestDefinition) handleOutput(event *GoTestEvent) {
 		filePath := g.getFilePathForPackage(event.Package)
 		if filePath != "" {
 			// Output capture handled by group events
-			g.logger.Debug("Package output for %s: %s", event.Package, strings.TrimSpace(event.Output))
+			g.logger.Debug("Package output for %s: %s", event.Package, output)
 		}
 	}
 }
@@ -926,6 +955,105 @@ func (g *GoTestDefinition) finalizePendingGroups() {
 			delete(g.packageStarted, pkgName)
 		}
 	}
+}
+
+// isErrorOutput determines if a line of output should be captured as an error
+func (g *GoTestDefinition) isErrorOutput(output string) bool {
+	// Skip empty lines and standard go test output
+	if output == "" {
+		return false
+	}
+
+	// Skip standard success/info lines
+	skipPatterns := []string{
+		"?   \t",    // No test files indicator
+		"ok  \t",    // Package passed
+		"FAIL\t",    // Package failed (redundant with status)
+		"coverage:", // Coverage information
+		"=== RUN",   // Test start (should be captured by test-specific logic)
+		"--- PASS",  // Test pass (should be captured by test-specific logic)
+		"--- FAIL",  // Test fail (should be captured by test-specific logic)
+		"--- SKIP",  // Test skip (should be captured by test-specific logic)
+	}
+
+	for _, pattern := range skipPatterns {
+		if strings.Contains(output, pattern) {
+			return false
+		}
+	}
+
+	// Capture everything else as potential error output
+	return true
+}
+
+// constructErrorMessage builds an error message from buffered package output
+func (g *GoTestDefinition) constructErrorMessage(packageName string) string {
+	// Get buffered error output for this package
+	errorLines, hasErrors := g.packageErrors[packageName]
+
+	if !hasErrors || len(errorLines) == 0 {
+		// Fallback message if no specific error captured
+		return "Package failed during setup or compilation"
+	}
+
+	// Join error lines with newlines for readability
+	message := strings.Join(errorLines, "\n")
+
+	// Clean up common noise
+	message = g.cleanErrorMessage(message)
+
+	return message
+}
+
+// cleanErrorMessage removes noise from error messages
+func (g *GoTestDefinition) cleanErrorMessage(message string) string {
+	// Remove leading/trailing whitespace
+	message = strings.TrimSpace(message)
+
+	// Remove redundant "FAIL" lines since status is already FAIL
+	lines := strings.Split(message, "\n")
+	var cleanLines []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Skip redundant FAIL lines like "FAIL\tpackage.name\t1.23s"
+		if strings.HasPrefix(line, "FAIL\t") {
+			continue
+		}
+
+		cleanLines = append(cleanLines, line)
+	}
+
+	return strings.Join(cleanLines, "\n")
+}
+
+// sendGroupError sends a testGroupError event
+func (g *GoTestDefinition) sendGroupError(groupName string, parentNames []string, errorType string, duration float64, message string) {
+	event := map[string]interface{}{
+		"eventType": "testGroupError",
+		"payload": map[string]interface{}{
+			"groupName":   groupName,
+			"parentNames": parentNames,
+			"errorType":   errorType,
+			"duration":    duration * 1000, // Convert seconds to milliseconds
+			"error": map[string]interface{}{
+				"message": message,
+				"phase":   "setup",
+			},
+		},
+	}
+	if err := g.ipcWriter.WriteEvent(event); err != nil {
+		g.logger.Error("Failed to send testGroupError: %v", err)
+	}
+}
+
+// cleanupPackageErrors removes buffered errors to prevent memory leaks
+func (g *GoTestDefinition) cleanupPackageErrors(packageName string) {
+	delete(g.packageErrors, packageName)
 }
 
 // sendTestFileResult, sendTestFileResultWithDuration, sendStdoutChunk removed - using group events instead

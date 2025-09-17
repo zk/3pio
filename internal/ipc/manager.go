@@ -216,6 +216,14 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		}
 		event = e
 
+	case EventTypeGroupError:
+		var e GroupErrorEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			m.logger.Debug("Failed to parse group error event: %v", err)
+			return
+		}
+		event = e
+
 	case EventTypeGroupStdout:
 		var e GroupStdoutChunkEvent
 		if err := json.Unmarshal(line, &e); err != nil {

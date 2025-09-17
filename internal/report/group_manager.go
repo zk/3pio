@@ -259,6 +259,71 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 	return nil
 }
 
+// ProcessGroupError handles a group error event
+func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
+
+	payload := event.Payload
+
+	// Convert absolute paths to relative paths
+	groupName := gm.makeRelativePath(payload.GroupName)
+	parentNames := make([]string, len(payload.ParentNames))
+	for i, name := range payload.ParentNames {
+		parentNames[i] = gm.makeRelativePath(name)
+	}
+
+	groupID := GenerateGroupID(groupName, parentNames)
+
+	group, exists := gm.groups[groupID]
+	if !exists {
+		// Auto-discover the group if it doesn't exist
+		err := gm.ensureGroupHierarchy(append(parentNames, groupName))
+		if err != nil {
+			return err
+		}
+		group = gm.groups[groupID]
+	}
+
+	// Set error status
+	group.Status = TestStatusError
+	group.EndTime = time.Now()
+
+	// Use provided duration if available
+	if payload.Duration > 0 {
+		group.Duration = time.Duration(payload.Duration) * time.Millisecond
+	} else if !group.StartTime.IsZero() {
+		group.Duration = group.EndTime.Sub(group.StartTime)
+	}
+	group.Updated = time.Now()
+
+	// Store error information
+	if payload.Error != nil {
+		group.ErrorInfo = &TestError{
+			Message: payload.Error.Message,
+			Type:    payload.ErrorType,
+		}
+	}
+
+	// Set totals to indicate setup failure for group results display
+	group.Stats.SetupFailed = true
+
+	// Propagate completion to ancestors
+	gm.propagateCompletion(group)
+
+	// Schedule report update
+	gm.scheduleReportUpdate(groupID)
+
+	errorMessage := "unknown error"
+	if payload.Error != nil {
+		errorMessage = payload.Error.Message
+	}
+	gm.logInfo("Group error: %s [%s] - %s",
+		BuildHierarchicalPath(group), payload.ErrorType, errorMessage)
+
+	return nil
+}
+
 // ProcessTestCase handles a test case event
 func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	gm.mu.Lock()
@@ -325,12 +390,12 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 	// Set error if present
 	if payload.Error != nil {
 		testCase.Error = &TestError{
-			Message:   payload.Error.Message,
-			Stack:     payload.Error.Stack,
-			Expected:  payload.Error.Expected,
-			Actual:    payload.Error.Actual,
-			Location:  payload.Error.Location,
-			ErrorType: payload.Error.ErrorType,
+			Message:  payload.Error.Message,
+			Stack:    payload.Error.Stack,
+			Expected: payload.Error.Expected,
+			Actual:   payload.Error.Actual,
+			Location: payload.Error.Location,
+			Type:     payload.Error.ErrorType,
 		}
 	}
 
