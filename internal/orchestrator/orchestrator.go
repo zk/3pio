@@ -875,28 +875,31 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	o.logger.Debug("displayGroupHierarchy: group=%s, hasTestCases=%v, testCases=%d, subgroups=%d",
 		group.Name, group.HasTestCases(), len(group.TestCases), len(group.Subgroups))
 
-	// For groups without test cases, show their actual status (SKIP or FAIL)
+	// For groups without test cases, only show if they failed
 	if !group.HasTestCases() {
-		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+		// Only display if the group failed (e.g., setup failure) or has no tests
+		if group.Status == report.TestStatusFail || o.noTestGroups[group.Name] {
+			statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
 
-		// Check if this is a package with no test files
-		if o.noTestGroups[group.Name] {
-			statusStr = "NO_TESTS"
-		}
+			// Check if this is a package with no test files
+			if o.noTestGroups[group.Name] {
+				statusStr = "NO_TESTS"
+			}
 
-		o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
+			o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
 
-		// Get duration for groups with no tests (cargo reports duration even for 0 tests)
-		durationStr := ""
-		if eventDuration >= 0 {
-			durationSec := eventDuration / 1000.0 // Convert ms to seconds
-			durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
-		}
+			// Get duration for groups with no tests (cargo reports duration even for 0 tests)
+			durationStr := ""
+			if eventDuration >= 0 {
+				durationSec := eventDuration / 1000.0 // Convert ms to seconds
+				durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
+			}
 
-		// Only show if not pending (pending means it never really ran)
-		if group.Status != report.TestStatusPending {
-			elapsedTime := o.formatElapsedTime()
-			fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+			// Only show if not pending (pending means it never really ran)
+			if group.Status != report.TestStatusPending {
+				elapsedTime := o.formatElapsedTime()
+				fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+			}
 		}
 		return
 	}
@@ -944,13 +947,14 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		}
 	}
 
-	// Display the file result using raw groupName
-	elapsedTime := o.formatElapsedTime()
-	// Print without fixed-width padding for status
-	fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+	// Only display group line if there are failures
+	if group.Stats.FailedTests > 0 {
+		// Display the file result using raw groupName
+		elapsedTime := o.formatElapsedTime()
+		// Print without fixed-width padding for status
+		fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 
-	// If the file failed, show details
-	if group.Status == report.TestStatusFail {
+		// Show failure details
 		// Collect all failed test names from the group hierarchy
 		failedTests := o.collectFailedTests(group)
 

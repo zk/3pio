@@ -133,10 +133,12 @@ func TestMultiPackageFailureReportPath(t *testing.T) {
 		}
 	})
 
-	// Verify pkg_alpha passes
+	// Verify pkg_alpha passes (shown in results summary)
 	t.Run("shows_alpha_passes", func(t *testing.T) {
-		if !strings.Contains(output, "PASS") || !strings.Contains(output, "pkg_alpha") {
-			t.Errorf("Expected pkg_alpha to pass")
+		// With our change to only show failure lines, passing packages won't have a dedicated line
+		// Check the results summary to verify 1 package passed
+		if !strings.Contains(output, "1 passed") {
+			t.Errorf("Expected results to show 1 package passed (pkg_alpha)")
 		}
 	})
 }
