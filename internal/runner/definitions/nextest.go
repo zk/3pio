@@ -308,6 +308,44 @@ func (n *NextestDefinition) processTestEvent(event *NextestEvent, testCount *int
 		(*testCount)++
 
 	case "ok", "failed", "ignored":
+		// Ensure groups are created even if we didn't see a "started" event
+		// (This can happen in some test scenarios)
+		if !n.groupStarts[packageName] {
+			// Create the package group if it doesn't exist
+			if !n.discoveredGroups[packageName] {
+				n.sendGroupDiscovered(packageName, parentNames)
+				n.discoveredGroups[packageName] = true
+			}
+			n.sendGroupStart(packageName, parentNames)
+			n.groupStarts[packageName] = true
+			n.packageGroups[packageName] = &NextestPackageGroupInfo{
+				Name:      packageName,
+				StartTime: time.Now(),
+				Tests:     []NextestTestInfo{},
+				Status:    "RUNNING",
+			}
+			// Update testParents to include packageName
+			testParents = append(parentNames, packageName)
+
+			// Handle nested modules if needed
+			if len(parts) > 2 {
+				for i := 1; i < len(parts)-1; i++ {
+					moduleName := parts[i]
+					moduleParents := append(parentNames, parts[:i]...)
+					moduleKey := strings.Join(parts[:i+1], "::")
+					if !n.discoveredGroups[moduleKey] {
+						n.sendGroupDiscovered(moduleName, moduleParents)
+						n.discoveredGroups[moduleKey] = true
+					}
+					if !n.groupStarts[moduleKey] {
+						n.sendGroupStart(moduleName, moduleParents)
+						n.groupStarts[moduleKey] = true
+					}
+					testParents = append(testParents, moduleName)
+				}
+			}
+		}
+
 		// Map status
 		var status string
 		switch event.Event {
@@ -330,10 +368,7 @@ func (n *NextestDefinition) processTestEvent(event *NextestEvent, testCount *int
 				Duration: event.ExecTime,
 			})
 
-			// Update group status if test failed
-			if status == "FAIL" && group.Status != "FAIL" {
-				group.Status = "FAIL"
-			}
+			// Don't update group status here - let finalizePendingGroups determine final status
 		}
 
 		// Clean up test state

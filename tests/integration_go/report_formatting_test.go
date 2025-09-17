@@ -62,7 +62,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 		},
 		{
 			fixtureName: "basic-pytest",
-			command:     []string{"python", "-m", "pytest", "-v"},
+			command:     []string{"python3", "-m", "pytest", "-v"},
 			testRunner:  "pytest",
 			expectPass:  true,
 			expectFail:  true,
@@ -86,7 +86,7 @@ func TestTestResultFormattingInLogFiles(t *testing.T) {
 		},
 		{
 			fixtureName: "empty-pytest",
-			command:     []string{"python", "-m", "pytest", "-v"},
+			command:     []string{"python3", "-m", "pytest", "-v"},
 			testRunner:  "pytest",
 			expectFail:  true,
 			expectSkip:  false, // Skip reporting is not consistent in group-based reports
