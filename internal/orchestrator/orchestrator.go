@@ -159,8 +159,9 @@ func (o *Orchestrator) Run() error {
 
 	// Print greeting and command
 	testCommand := strings.Join(o.command, " ")
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	fmt.Println()
-	fmt.Println("Greetings! I will now execute the test command:")
+	fmt.Printf("Greetings! The time is now %s. I will now execute the test command:\n", timestamp)
 	fmt.Printf("`%s`\n", testCommand)
 	fmt.Println()
 
@@ -168,7 +169,7 @@ func (o *Orchestrator) Run() error {
 	reportPath := filepath.Join(o.runDir, "test-run.md")
 	fmt.Printf("Full report: %s\n", reportPath)
 	fmt.Println()
-	fmt.Println("Beginning test execution now...")
+	fmt.Println("Beginning test execution now, there will be no output until test results come in.")
 	fmt.Println()
 
 	// Detect test runner
@@ -816,8 +817,8 @@ func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []strin
 	}
 
 	// Normalize the path for consistent display
-	normalizedGroupName := o.makeRelativePath(groupName)
-	fmt.Printf("%-8s %s\n", "RUNNING", normalizedGroupName)
+	// normalizedGroupName := o.makeRelativePath(groupName)
+	// No longer printing RUNNING status to console
 }
 
 // displayGroupResult displays the result of a completed group
@@ -893,7 +894,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 		// Only show if not pending (pending means it never really ran)
 		if group.Status != report.TestStatusPending {
-			fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
+			elapsedTime := o.formatElapsedTime()
+			fmt.Printf("%s %-8s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 		}
 		return
 	}
@@ -924,7 +926,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	}
 
 	// Display the file result using raw groupName
-	fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
+	elapsedTime := o.formatElapsedTime()
+	fmt.Printf("%s %-8s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 
 	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
@@ -970,6 +973,25 @@ func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 	}
 
 	return failedTests
+}
+
+// formatElapsedTime formats the elapsed time from start in a progressive display
+func (o *Orchestrator) formatElapsedTime() string {
+	elapsed := time.Since(o.startTime)
+	totalSeconds := int(elapsed.Seconds())
+
+	if totalSeconds < 60 {
+		return fmt.Sprintf("[T+ %ds]", totalSeconds)
+	} else if totalSeconds < 3600 {
+		minutes := totalSeconds / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("[T+ %dm%ds]", minutes, seconds)
+	} else {
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("[T+ %dh%dm%ds]", hours, minutes, seconds)
+	}
 }
 
 // getGroupStatusString returns a status string for groups in console output
