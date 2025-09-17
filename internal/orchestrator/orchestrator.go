@@ -896,7 +896,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		// Only show if not pending (pending means it never really ran)
 		if group.Status != report.TestStatusPending {
 			elapsedTime := o.formatElapsedTime()
-			fmt.Printf("%s %-8s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+			fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 		}
 		return
 	}
@@ -946,8 +946,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// Display the file result using raw groupName
 	elapsedTime := o.formatElapsedTime()
-	// Adjust format to accommodate longer status string
-	fmt.Printf("%s %-20s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+	// Print without fixed-width padding for status
+	fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 
 	// If the file failed, show details
 	if group.Status == report.TestStatusFail {
