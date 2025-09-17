@@ -10,8 +10,8 @@ permissions:
   id-token: write  # For cosign signing
 
 env:
-  GO_VERSION: '1.23'
-  NODE_VERSION: '18'
+  GO_VERSION: '1.25.1'
+  NODE_VERSION: '22'
 
 jobs:
   test:
@@ -32,8 +32,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       # Node.js is needed for adapters but no root package.json exists
-      
+
       - name: Install test fixture dependencies
         run: |
           for dir in tests/fixtures/*/; do
