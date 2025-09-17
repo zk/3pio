@@ -159,8 +159,9 @@ func (o *Orchestrator) Run() error {
 
 	// Print greeting and command
 	testCommand := strings.Join(o.command, " ")
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	fmt.Println()
-	fmt.Println("Greetings! I will now execute the test command:")
+	fmt.Printf("Greetings! The time is now %s. I will now execute the test command:\n", timestamp)
 	fmt.Printf("`%s`\n", testCommand)
 	fmt.Println()
 
@@ -168,7 +169,7 @@ func (o *Orchestrator) Run() error {
 	reportPath := filepath.Join(o.runDir, "test-run.md")
 	fmt.Printf("Full report: %s\n", reportPath)
 	fmt.Println()
-	fmt.Println("Beginning test execution now...")
+	fmt.Println("Beginning test execution now, there will be no output until test results come in.")
 	fmt.Println()
 
 	// Detect test runner
@@ -608,9 +609,10 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Format results summary
-	// For cargo test, show test case counts; for others, show group counts
-	if strings.HasPrefix(o.detectedRunner, "cargo") && o.totalTests > 0 {
-		// Show test case counts for cargo
+	// Show test case counts when we have actual test counts with skipped tests
+	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
+	if o.totalTests > 0 && (o.skippedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+		// Show test case counts
 		if o.skippedTests > 0 {
 			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
 				o.passedTests, o.failedTests, o.skippedTests, o.totalTests)
@@ -621,7 +623,7 @@ func (o *Orchestrator) Run() error {
 			fmt.Printf("Results:     %d passed, %d total\n", o.passedTests, o.totalTests)
 		}
 	} else {
-		// Show group counts for other runners
+		// Show group counts for other runners or when no test-level detail available
 		if o.skippedGroups > 0 {
 			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
 				o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
@@ -816,8 +818,8 @@ func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []strin
 	}
 
 	// Normalize the path for consistent display
-	normalizedGroupName := o.makeRelativePath(groupName)
-	fmt.Printf("%-8s %s\n", "RUNNING", normalizedGroupName)
+	// normalizedGroupName := o.makeRelativePath(groupName)
+	// No longer printing RUNNING status to console
 }
 
 // displayGroupResult displays the result of a completed group
@@ -873,33 +875,55 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	o.logger.Debug("displayGroupHierarchy: group=%s, hasTestCases=%v, testCases=%d, subgroups=%d",
 		group.Name, group.HasTestCases(), len(group.TestCases), len(group.Subgroups))
 
-	// For groups without test cases, show their actual status (SKIP or FAIL)
+	// For groups without test cases, only show if they failed
 	if !group.HasTestCases() {
-		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+		// Only display if the group failed (e.g., setup failure) or has no tests
+		if group.Status == report.TestStatusFail || o.noTestGroups[group.Name] {
+			statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
 
-		// Check if this is a package with no test files
-		if o.noTestGroups[group.Name] {
-			statusStr = "NO_TESTS"
-		}
+			// Check if this is a package with no test files
+			if o.noTestGroups[group.Name] {
+				statusStr = "NO_TESTS"
+			}
 
-		o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
+			o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
 
-		// Get duration for groups with no tests (cargo reports duration even for 0 tests)
-		durationStr := ""
-		if eventDuration >= 0 {
-			durationSec := eventDuration / 1000.0 // Convert ms to seconds
-			durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
-		}
+			// Get duration for groups with no tests (cargo reports duration even for 0 tests)
+			durationStr := ""
+			if eventDuration >= 0 {
+				durationSec := eventDuration / 1000.0 // Convert ms to seconds
+				durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
+			}
 
-		// Only show if not pending (pending means it never really ran)
-		if group.Status != report.TestStatusPending {
-			fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
+			// Only show if not pending (pending means it never really ran)
+			if group.Status != report.TestStatusPending {
+				elapsedTime := o.formatElapsedTime()
+				fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+			}
 		}
 		return
 	}
 
-	// Display group status using raw groupName
-	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+	// Build status string with counts: PASS(N) FAIL(M) SKIP(O)
+	var statusParts []string
+	if group.Stats.FailedTests > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTests))
+	}
+	if group.Stats.PassedTests > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTests))
+	}
+	if group.Stats.SkippedTests > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTests))
+	}
+
+	// If no tests at all, just show the status
+	statusStr := ""
+	if len(statusParts) > 0 {
+		statusStr = strings.Join(statusParts, " ")
+	} else {
+		statusStr = getGroupStatusString(convertReportStatusToIPC(group.Status))
+	}
+
 	o.logger.Debug("displayGroupHierarchy: displaying status=%s (group.Status=%s) for %s",
 		statusStr, group.Status, group.Name)
 
@@ -923,11 +947,14 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		}
 	}
 
-	// Display the file result using raw groupName
-	fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
+	// Only display group line if there are failures
+	if group.Stats.FailedTests > 0 {
+		// Display the file result using raw groupName
+		elapsedTime := o.formatElapsedTime()
+		// Print without fixed-width padding for status
+		fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
 
-	// If the file failed, show details
-	if group.Status == report.TestStatusFail {
+		// Show failure details
 		// Collect all failed test names from the group hierarchy
 		failedTests := o.collectFailedTests(group)
 
@@ -970,6 +997,25 @@ func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 	}
 
 	return failedTests
+}
+
+// formatElapsedTime formats the elapsed time from start in a progressive display
+func (o *Orchestrator) formatElapsedTime() string {
+	elapsed := time.Since(o.startTime)
+	totalSeconds := int(elapsed.Seconds())
+
+	if totalSeconds < 60 {
+		return fmt.Sprintf("[T+ %ds]", totalSeconds)
+	} else if totalSeconds < 3600 {
+		minutes := totalSeconds / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("[T+ %dm%ds]", minutes, seconds)
+	} else {
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("[T+ %dh%dm%ds]", hours, minutes, seconds)
+	}
 }
 
 // getGroupStatusString returns a status string for groups in console output

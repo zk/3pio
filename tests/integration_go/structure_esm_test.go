@@ -34,9 +34,9 @@ func TestESModuleJestCompatibility(t *testing.T) {
 		t.Error("Should not have ES module compatibility errors")
 	}
 
-	// Should have proper test execution
-	if !strings.Contains(output, "PASS") {
-		t.Error("Should show passing tests")
+	// Should have proper test execution - check for passed in results line
+	if !strings.Contains(output, "passed") {
+		t.Error("Should show passing tests in results")
 	}
 
 	// Check the generated report
