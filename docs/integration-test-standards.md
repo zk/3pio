@@ -5,71 +5,71 @@ This document defines the standard integration test suite that should be impleme
 ## Core Test Categories
 
 ### 1. Basic Functionality
-- **Full test run** - Execute all tests with no arguments, verify complete execution
-- **Specific file execution** - Run tests from specific file(s), verify targeted execution
-- **Pattern matching** - Run tests matching a pattern/filter, verify correct test selection
-- **Exit code mirroring** - Verify exit codes match underlying test runner (0 for pass, non-zero for fail)
+- Full test run - Execute all tests with no arguments, verify complete execution
+- Specific file execution - Run tests from specific file(s), verify targeted execution
+- Pattern matching - Run tests matching a pattern/filter, verify correct test selection
+- Exit code mirroring - Verify exit codes match underlying test runner (0 for pass, non-zero for fail)
 
 ### 2. Report Generation
-- **Main report creation** - Verify `test-run.md` is generated with correct structure and content
-- **Output log creation** - Verify `output.log` captures all stdout/stderr from test run
-- **Hierarchical reports** - Verify group/file-based report structure in `reports/` directory
-- **YAML frontmatter** - Verify correct metadata (status, counts, timing, command)
-- **Report content accuracy** - Test names, statuses, error messages, and durations properly captured
+- Main report creation - Verify `test-run.md` is generated with correct structure and content
+- Output log creation - Verify `output.log` captures all stdout/stderr from test run
+- Hierarchical reports - Verify group/file-based report structure in `reports/` directory
+- YAML frontmatter - Verify correct metadata (status, counts, timing, command)
+- Report content accuracy - Test names, statuses, error messages, and durations properly captured
 
 ### 3. Error Handling
-- **Configuration errors** - Handle missing dependencies, invalid config files gracefully
-- **Test failures** - Proper reporting of failing tests with error details and stack traces
-- **Syntax errors** - Handle test files with syntax errors without crashing
-- **Missing test files** - Gracefully handle non-existent test files with appropriate error messages
-- **Empty test suites** - Handle projects with no tests, still create basic structure
+- Configuration errors - Handle missing dependencies, invalid config files gracefully
+- Test failures - Proper reporting of failing tests with error details and stack traces
+- Syntax errors - Handle test files with syntax errors without crashing
+- Missing test files - Gracefully handle non-existent test files with appropriate error messages
+- Empty test suites - Handle projects with no tests, still create basic structure
 
 ### 4. Process Management
-- **SIGINT handling** - Graceful shutdown on Ctrl+C with partial results preserved
-- **SIGTERM handling** - Clean termination on kill signal with state saved
-- **Quick termination** - Handle immediate process kill without hanging
-- **Partial results** - Verify reports exist and are valid even when interrupted
+- SIGINT handling - Graceful shutdown on Ctrl+C with partial results preserved
+- SIGTERM handling - Clean termination on kill signal with state saved
+- Quick termination - Handle immediate process kill without hanging
+- Partial results - Verify reports exist and are valid even when interrupted
 
 ### 5. Command Variations
-- **Package manager variants** - Support `npm test`, `yarn test`, `pnpm test` commands
-- **Separator handling** - Correctly parse `npm test -- file.test.js` format
-- **Watch mode rejection** - Properly detect and reject watch/interactive modes
-- **Verbose/quiet modes** - Handle different verbosity flags without breaking parsing
-- **Coverage mode** - Detect and reject coverage flags (coverage mode is unsupported)
+- Package manager variants - Support `npm test`, `yarn test`, `pnpm test` commands
+- Separator handling - Correctly parse `npm test -- file.test.js` format
+- Watch mode rejection - Properly detect and reject watch/interactive modes
+- Verbose/quiet modes - Handle different verbosity flags without breaking parsing
+- Coverage mode - Detect and reject coverage flags (coverage mode is unsupported)
 
 ### 6. Complex Project Structures
-- **Monorepo support** - Multiple packages with shared config, single IPC path
-- **Nested test directories** - Deep directory structures with proper path resolution
-- **Long file/test names** - Handle filesystem limits gracefully with truncation
-- **Special characters** - Unicode, spaces, and special chars in paths/names
+- Monorepo support - Multiple packages with shared config, single IPC path
+- Nested test directories - Deep directory structures with proper path resolution
+- Long file/test names - Handle filesystem limits gracefully with truncation
+- Special characters - Unicode, spaces, and special chars in paths/names
 
 ### 7. IPC & Adapter Management
-- **IPC file creation** - Verify JSONL event stream with correct format
-- **Adapter injection** - Proper reporter/plugin injection into test command
-- **Adapter cleanup** - Temporary adapter files removed after run
-- **Event completeness** - All test discovery, execution, and result events captured
-- **Event ordering** - Events maintain logical order (discovery → start → result)
+- IPC file creation - Verify JSONL event stream with correct format
+- Adapter injection - Proper reporter/plugin injection into test command
+- Adapter cleanup - Temporary adapter files removed after run
+- Event completeness - All test discovery, execution, and result events captured
+- Event ordering - Events maintain logical order (discovery → start → result)
 
 ### 8. Console Output Capture
-- **Stdout capture** - Test console.log output captured and associated with tests
-- **Stderr capture** - Error output properly captured and preserved
-- **ANSI color handling** - Color codes preserved in output.log
-- **Progress indicators** - Handle progress bars/spinners without corruption
-- **Buffering behavior** - Large output volumes handled without loss
+- Stdout capture - Test console.log output captured and associated with tests
+- Stderr capture - Error output properly captured and preserved
+- ANSI color handling - Color codes preserved in output.log
+- Progress indicators - Handle progress bars/spinners without corruption
+- Buffering behavior - Large output volumes handled without loss
 
 ### 9. Performance & Scale
-- **Large test suites** - Handle 100+ test files without degradation
-- **Long-running tests** - Tests with extended execution times handled properly
-- **Parallel execution** - Concurrent test execution with proper event correlation
-- **Memory management** - Handle memory-intensive tests without OOM
-- **File handle limits** - Respect system limits for open files
+- Large test suites - Handle 100+ test files without degradation
+- Long-running tests - Tests with extended execution times handled properly
+- Parallel execution - Concurrent test execution with proper event correlation
+- Memory management - Handle memory-intensive tests without OOM
+- File handle limits - Respect system limits for open files
 
 ### 10. State Management
-- **Run directory creation** - Unique timestamped directories for each run
-- **Memorable names** - Human-readable run directory names
-- **State persistence** - Reports incrementally written during execution
-- **Cleanup on failure** - Proper cleanup when initialization fails
-- **Concurrent runs** - Multiple 3pio instances can run simultaneously
+- Run directory creation - Unique timestamped directories for each run
+- Memorable names - Human-readable run directory names
+- State persistence - Reports incrementally written during execution
+- Cleanup on failure - Proper cleanup when initialization fails
+- Concurrent runs - Multiple 3pio instances can run simultaneously
 
 ## Test Implementation Guidelines
 
