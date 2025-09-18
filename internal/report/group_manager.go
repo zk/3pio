@@ -898,6 +898,8 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 
 		for _, subgroup := range group.Subgroups {
 			relPath := GetRelativeReportPath(subgroup, gm.runDir)
+			// Normalize to forward slashes so markdown links are portable (Windows/Linux/macOS)
+			relPath = NormalizeFilePath(relPath)
 
 			// Status column
 			statusStr := string(subgroup.Status)

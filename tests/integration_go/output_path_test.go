@@ -45,7 +45,8 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 	outputStr := string(output)
 
 	// Extract run dir from preamble
-	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio/runs/[^\s]+)`)
+	// Support both forward and backslashes on Windows/macOS/Linux
+	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio[\\/]runs[\\/][^\s]+)`)
 	trunMatch := trunRegex.FindStringSubmatch(outputStr)
 	if len(trunMatch) < 2 {
 		t.Fatalf("Could not find trun_dir in output. Output:\n%s", outputStr)
@@ -53,7 +54,7 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 	trunDir := trunMatch[1]
 
 	// Extract the report path printed on result line. Accept either with or without 'See '
-	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio/runs/[^/]+)/reports/([^/]+)/index\.md`)
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^/\\]+)[\\/]index\.md`)
 	matches := seeRegex.FindStringSubmatch(outputStr)
 	if len(matches) < 3 {
 		t.Fatalf("Could not find report path in output. Output:\n%s", outputStr)

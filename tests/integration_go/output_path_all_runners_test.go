@@ -12,13 +12,14 @@ import (
 func verifyConsoleReportPath(t *testing.T, fixtureDir string, output []byte) {
 	t.Helper()
 	out := string(output)
-	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio/runs/[^\s]+)`)
+	// Support both forward and backslashes in paths on different OSes
+	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio[\\/]runs[\\/][^\s]+)`)
 	trunMatch := trunRegex.FindStringSubmatch(out)
 	if len(trunMatch) < 2 {
 		t.Fatalf("Could not find trun_dir in output. Output:\n%s", out)
 	}
 	trunDir := trunMatch[1]
-	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio/runs/[^/]+)/reports/([^/]+)/index\.md`)
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^/\\]+)[\\/]index\.md`)
 	matches := seeRegex.FindStringSubmatch(out)
 	if len(matches) < 3 {
 		t.Fatalf("Could not find report path in output. Output:\n%s", out)
@@ -108,9 +109,9 @@ func TestConsoleOutputPath_Pytest(t *testing.T) {
 	cmd.Dir = fixtureDir
 	output, _ := cmd.CombinedOutput()
 	out := string(output)
-	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio/runs/[^\s]+)`)
+	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio[\\/]runs[\\/][^\s]+)`)
 	trunMatch := trunRegex.FindStringSubmatch(out)
-	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio/runs/[^/]+)/reports/([^/]+)/index\.md`)
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^/\\]+)[\\/]index\.md`)
 	seeMatch := seeRegex.FindStringSubmatch(out)
 	if len(trunMatch) >= 2 && len(seeMatch) >= 3 {
 		trunDir := trunMatch[1]
@@ -164,21 +165,22 @@ func TestConsoleOutputPath_Cargo(t *testing.T) {
 	bin, _ := filepath.Abs(threePioBinary)
 	cmd := exec.Command(bin, "cargo", "test")
 	cmd.Dir = fixtureDir
-    output, _ := cmd.CombinedOutput()
-    out := string(output)
-    // Try strict verification first; if no path printed (e.g., early cargo error),
-    // fall back to checking Results and test-run.md existence.
-    trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio/runs/[^\s]+)`) 
-    seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio/runs/[^/]+)/reports/([^/]+)/index\.md`)
-    if trunRegex.MatchString(out) && seeRegex.MatchString(out) {
-        verifyConsoleReportPath(t, fixtureDir, output)
-        return
-    }
-    if !strings.Contains(out, "Results:") {
-        t.Fatalf("cargo output missing final Results line. Output:\n%s", out)
-    }
-    runDir := getLatestRunDir(t, fixtureDir)
-    if _, err := os.Stat(filepath.Join(runDir, "test-run.md")); os.IsNotExist(err) {
-        t.Fatalf("cargo run missing test-run.md at %s", runDir)
-    }
+	output, _ := cmd.CombinedOutput()
+	out := string(output)
+	// Try strict verification first; if no path printed (e.g., early cargo error),
+	// fall back to checking Results and test-run.md existence.
+	// Support both forward and backslashes in paths on different OSes
+	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio[\\/]runs[\\/][^\s]+)`)
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/ ]([^/\\]+)[\\/ ]index\.md`)
+	if trunRegex.MatchString(out) && seeRegex.MatchString(out) {
+		verifyConsoleReportPath(t, fixtureDir, output)
+		return
+	}
+	if !strings.Contains(out, "Results:") {
+		t.Fatalf("cargo output missing final Results line. Output:\n%s", out)
+	}
+	runDir := getLatestRunDir(t, fixtureDir)
+	if _, err := os.Stat(filepath.Join(runDir, "test-run.md")); os.IsNotExist(err) {
+		t.Fatalf("cargo run missing test-run.md at %s", runDir)
+	}
 }
