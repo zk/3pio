@@ -2,41 +2,19 @@
 
 3pio is a context-friendly test runner for frameworks like Jest, Vitest, Mocha, Cypress, and pytest — and native runners like Go test and Rust (cargo test/nextest). It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
 
+## Project Goals
+
+- Make running tests context-efficient for agents, existing test runners' output ergronomics are for humans.
+- First class DX for devs and agents. Since 3pio is a tool for agents, dev DX is mainly around installation and maintenence.
+  - Easy to install with your preferred package manager. This means we support many package managers, but they all install the same artifcats.
+  - Easy to use for agents: simple invocation (prefix existing test command with `3pio`). This means supporting and testing against a wide range of cli invocations.
+
 ## Key Features
 
 - **Persistent Test Sessions**: Results saved to filesystem, surviving across development sessions
 - **Context-Efficient Output**: Structured Markdown reports with individual test case tracking
 - **Zero-Config Experience**: Wraps existing test runners without requiring test file changes
 - **Agent-Optimized**: Machine-readable logs searchable with standard shell tools (grep, cat, sed)
-
-## Quick Start
-
-### Installation
-
-```bash
-# Install via npm (JavaScript projects)
-npm install -g @heyzk/3pio
-
-# Install via pip (Python projects)
-pip install threepio_test_runner
-```
-
-### Usage
-
-```bash
-# Run with your existing test commands
-3pio npm test
-3pio npx jest
-3pio npx vitest run
-3pio npx mocha
-3pio pytest
-3pio go test ./...
-3pio cargo test
-3pio cargo nextest run
-
-# Find your reports in .3pio/runs/
-cat .3pio/runs/*/test-run.md
-```
 
 ## Architecture
 
