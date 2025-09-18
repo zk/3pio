@@ -23,8 +23,9 @@ type Manager struct {
 	closeOnce sync.Once
 	logger    Logger
 	file      *os.File
-	reader    *bufio.Reader
-	readerMu  sync.Mutex // Protects concurrent access to reader
+    reader    *bufio.Reader
+    readerMu  sync.Mutex // Protects concurrent access to reader
+    partialBuffer []byte
 }
 
 // Logger interface for debug logging
@@ -64,7 +65,10 @@ func NewManager(ipcPath string, logger Logger) (*Manager, error) {
 
 // WatchEvents starts watching the IPC file for new events
 func (m *Manager) WatchEvents() error {
-	watcher, err := fsnotify.NewWatcher()
+    if m.watcher != nil {
+        return fmt.Errorf("watch already started")
+    }
+    watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
@@ -90,18 +94,26 @@ func (m *Manager) readEvents() {
 	defer m.readerMu.Unlock()
 
 	for {
-		line, err := m.reader.ReadBytes('\n')
-		if err != nil {
-			if err != io.EOF {
-				m.logger.Error("Error reading events: %v", err)
-			}
-			break
-		}
+        line, err := m.reader.ReadBytes('\n')
+        if err != nil {
+            if err == io.EOF {
+                if len(line) > 0 {
+                    m.partialBuffer = append(m.partialBuffer, line...)
+                }
+                break
+            }
+            m.logger.Error("Error reading events: %v", err)
+            break
+        }
 
-		if len(line) > 0 {
-			m.parseAndSendEvent(line)
-		}
-	}
+        if len(line) > 0 {
+            if len(m.partialBuffer) > 0 {
+                line = append(append([]byte(nil), m.partialBuffer...), line...)
+                m.partialBuffer = nil
+            }
+            m.parseAndSendEvent(line)
+        }
+    }
 }
 
 // watchLoop watches for file changes and triggers reads
