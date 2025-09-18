@@ -11,12 +11,12 @@ This document defines the standard integration test suite that should be impleme
 - Exit code mirroring - Verify exit codes match underlying test runner (0 for pass, non-zero for fail)
 
 ### 2. Console Output
-- Minimal per-group summary lines after group completion, including FAIL/PASS/SKIP counts and a report path using `$trun_dir/reports/<sanitized>/index.md`.
-- Do not list individual failed test names inline in the console; details live in report files.
-- Always print a final `Results:` summary line reflecting overall counts.
-- Outcome messages: "Splendid! All tests passed successfully", "Tests completed with some skipped", "All tests were skipped", or "Test failures! <exclamation>".
-- Preamble includes: `current_time`, `cwd`, `test_command`, `trun_dir`, and `full_report`.
-- Path expectations: console report directory names end with a sanitized suffix (e.g., `string_test_js`); `$trun_dir` maps to the actual run directory on disk.
+- Verify per-group summary lines are printed when a group completes, showing FAIL/PASS/SKIP counts and a report path in the form `$trun_dir/reports/<sanitized>/index.md`.
+- Verify individual failed test names are not printed inline in the console; detailed failures appear only in the corresponding report files.
+- Verify a final `Results:` summary line is printed and that its counts match the run’s aggregate outcomes.
+- Verify the outcome message is one of: "Splendid! All tests passed successfully", "Tests completed with some skipped", "All tests were skipped", or "Test failures! <exclamation>".
+- Verify the preamble includes: `current_time`, `cwd`, `test_command`, `trun_dir`, and `full_report`.
+- Verify the console report path uses a sanitized directory name (e.g., ends with `string_test_js`) and that `$trun_dir` maps to the actual run directory on disk.
 
 ### 3. Report Generation
 - Main report creation - Verify `test-run.md` is generated with correct structure and content
