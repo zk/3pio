@@ -61,6 +61,7 @@ Tell your agent to prefix any test command with `3pio`, works with any flags or 
 ```bash
 $ 3pio npm test
 $ 3pio npx vitest -- ./path/to/test/file.test.js
+$ 3pio npx cypress run --headless --spec cypress/e2e/sample.cy.js
 
 $ 3pio go test ./...
 Greetings! I will now execute the test command:
@@ -290,7 +291,7 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 
 - Pytest
 - JS/TS
-  - Jest, Vitest (3.0+)
+  - Jest, Vitest (3.0+), Cypress
   - NPM, PNPM
 - Go test (go 1.10+)
 
@@ -302,6 +303,11 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 2. **Watch Mode**: 3pio doesn't support watch mode for test runners. When it detects commands that would normally run in watch mode (e.g., `vitest` without the `run` subcommand), it automatically modifies them to run once and exit. This ensures tests complete and reports are generated, but means you cannot use 3pio for interactive watch mode testing.
 
 3. **Dev tool, not CI tool**: 3pio is designed to be used at dev time by your agent. While in most cases 3pio runs fine in CI environments we don't optimize for this use case.
+
+4. **Cypress notes**
+   - Prefer `--headless` for automation. 3pio injects a silent Mocha reporter; it won’t print Cypress UI logs.
+   - First-time `npx cypress run` may trigger a one-time Cypress binary verification/download.
+   - Multi-spec runs emit one concise summary line per spec; full details live under `$trun_dir/reports/`.
 
 
 ## Future work

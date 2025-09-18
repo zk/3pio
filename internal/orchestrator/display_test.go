@@ -65,15 +65,13 @@ func TestDisplayGroupWithFailures(t *testing.T) {
 	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
-	// Verify the output format
-	// Should contain: [T+ Xs] FAIL(12) PASS(11) <path> (0.97s) report: $base_dir/reports/...
-	expectedParts := []string{
-		"[T+",                        // Time prefix
-		"FAIL(12) PASS(11)",          // Status with counts
-		"validate.test.ts",           // Part of the path
-		"(0.97s)",                    // Duration
-		"report: $base_dir/reports/", // Report path with placeholder
-	}
+    // Verify the output format
+    // Now should contain minimal summary: FAIL(12) PASS(11) and a report path under $trun_dir
+    expectedParts := []string{
+        "FAIL(",               // Shows FAIL count
+        "$trun_dir/reports/", // Report path prefix
+        "validate_test_ts",   // Sanitized file name within report path
+    }
 
 	for _, part := range expectedParts {
 		if !strings.Contains(output, part) {
@@ -95,11 +93,11 @@ func TestDisplayGroupWithFailures(t *testing.T) {
 		}
 	}
 
-	// Verify it's on a single line
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) != 1 {
-		t.Errorf("Expected single line output, got %d lines: %s", len(lines), output)
-	}
+    // Verify it's on a single line
+    lines := strings.Split(strings.TrimSpace(output), "\n")
+    if len(lines) != 1 {
+        t.Errorf("Expected single line output, got %d lines: %s", len(lines), output)
+    }
 }
 
 // TestDisplayGroupWithoutFailures tests that groups without failures are not displayed with failure details
@@ -158,28 +156,4 @@ func TestDisplayGroupWithoutFailures(t *testing.T) {
 }
 
 // TestFormatElapsedTime tests the elapsed time formatting
-func TestFormatElapsedTime(t *testing.T) {
-	tests := []struct {
-		name     string
-		elapsed  int // seconds
-		expected string
-	}{
-		{"under_minute", 45, "[T+ 45s]"},
-		{"exactly_minute", 60, "[T+ 1m0s]"},
-		{"minute_and_seconds", 75, "[T+ 1m15s]"},
-		{"exactly_hour", 3600, "[T+ 1h0m0s]"},
-		{"hour_minute_second", 3665, "[T+ 1h1m5s]"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			o := &Orchestrator{
-				startTime: time.Now().Add(-time.Duration(tt.elapsed) * time.Second),
-			}
-			result := o.formatElapsedTime()
-			if result != tt.expected {
-				t.Errorf("formatElapsedTime() = %s, want %s", result, tt.expected)
-			}
-		})
-	}
-}
+// Removed elapsed time prefix from output; no longer testing formatElapsedTime

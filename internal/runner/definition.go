@@ -287,7 +287,7 @@ func (j *JestDefinition) isJestInPackageJSON() bool {
 
 // VitestDefinition implements Definition for Vitest
 type VitestDefinition struct {
-	BaseDefinition
+    BaseDefinition
 }
 
 // NewVitestDefinition creates a new Vitest definition
@@ -499,7 +499,7 @@ func (v *VitestDefinition) isVitestInPackageJSON() bool {
 
 // PytestDefinition implements Definition for pytest
 type PytestDefinition struct {
-	BaseDefinition
+    BaseDefinition
 }
 
 // NewPytestDefinition creates a new pytest definition
@@ -568,4 +568,124 @@ func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []str
 	}
 
 	return result
+}
+
+// CypressDefinition implements Definition for Cypress
+type CypressDefinition struct {
+    BaseDefinition
+}
+
+// NewCypressDefinition creates a new Cypress definition
+func NewCypressDefinition() *CypressDefinition {
+    return &CypressDefinition{
+        BaseDefinition: BaseDefinition{
+            name:        "cypress",
+            adapterFile: "cypress.js",
+        },
+    }
+}
+
+// Matches checks if the command is for Cypress
+func (c *CypressDefinition) Matches(command []string) bool {
+    return containsTestRunner(command, "cypress") || c.isCypressInPackageJSON()
+}
+
+// GetTestFiles gets test files for Cypress (dynamic by default)
+func (c *CypressDefinition) GetTestFiles(args []string) ([]string, error) {
+    // Cypress discovers specs dynamically; we return empty to indicate that.
+    return []string{}, nil
+}
+
+// BuildCommand builds Cypress command with reporter injection
+func (c *CypressDefinition) BuildCommand(args []string, adapterPath string) []string {
+    // Strategy similar to Vitest/Jest:
+    // - If package manager script (npm/yarn/pnpm/bun), add reporter flags after '--' for npm/yarn/bun; pnpm passes directly.
+    // - If direct invocation (cypress ...), ensure 'run' subcommand is present, and inject '--reporter <adapterPath>'.
+
+    result := make([]string, 0, len(args)+4)
+
+    isPackageManagerCommand := false
+    if len(args) > 0 {
+        cmd := args[0]
+        isPackageManagerCommand = (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+            (cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+            (cmd == "pnpm" || strings.HasPrefix(cmd, "pnpm ")) ||
+            (cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+    }
+
+    // Handle package manager scripts like `npm test` when script runs cypress
+    if isPackageManagerCommand {
+        // Check for script forms that need separator
+        cmd := args[0]
+        needsSeparator := (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+            (cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+            (cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+
+        // If args already contain '--', just append reporter flags
+        hasSeparator := false
+        for _, a := range args {
+            if a == "--" { hasSeparator = true; break }
+        }
+
+        result = append(result, args...)
+        if hasSeparator || !needsSeparator {
+            result = append(result, "--reporter", adapterPath)
+        } else {
+            result = append(result, "--", "--reporter", adapterPath)
+        }
+        return result
+    }
+
+    // Direct invocations (cypress run ... or npx/bunx cypress run ...)
+    // Build by preserving arg order and appending reporter at the end.
+    // Ensure 'run' is present after the cypress token.
+    hasCypress := false
+    hasRun := false
+    for _, a := range args {
+        if a == "cypress" || strings.HasSuffix(a, "/cypress") || strings.HasSuffix(a, ".bin/cypress") {
+            hasCypress = true
+        } else if hasCypress && a == "run" {
+            hasRun = true
+        }
+    }
+
+    result = append(result, args...)
+    if hasCypress && !hasRun {
+        result = append(result, "run")
+    }
+    result = append(result, "--reporter", adapterPath)
+    return result
+}
+
+// isCypressInPackageJSON checks if Cypress is configured in package.json
+func (c *CypressDefinition) isCypressInPackageJSON() bool {
+    data, err := os.ReadFile("package.json")
+    if err != nil {
+        return false
+    }
+
+    var pkg map[string]interface{}
+    if err := json.Unmarshal(data, &pkg); err != nil {
+        return false
+    }
+
+    // Check test script
+    if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
+        if test, ok := scripts["test"].(string); ok {
+            if strings.Contains(test, "cypress") {
+                return true
+            }
+        }
+    }
+
+    // Check dependencies
+    for _, depKey := range []string{"dependencies", "devDependencies"} {
+        if deps, ok := pkg[depKey].(map[string]interface{}); ok {
+            if _, has := deps["cypress"]; has {
+                return true
+            }
+        }
+    }
+
+    return false
 }

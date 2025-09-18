@@ -211,6 +211,8 @@ func (o *Orchestrator) Run() error {
 		detectedRunner = "vitest"
 	case "pytest_adapter.py":
 		detectedRunner = "pytest"
+	case "cypress.js":
+		detectedRunner = "cypress"
 	case "":
 		// Native runner - determine which one based on the underlying definition
 		if nativeRunner, ok := runnerDef.(runner.NativeRunner); ok {
@@ -1026,6 +1028,21 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		// Print all on one line
 		fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
 	}
+}
+
+// formatElapsedTime returns a human-friendly elapsed time since startTime
+func (o *Orchestrator) formatElapsedTime() string {
+    // Handle zero start time defensively
+    if o.startTime.IsZero() {
+        return "[T+ 0s]"
+    }
+    elapsed := time.Since(o.startTime)
+    if elapsed < 0 {
+        elapsed = 0
+    }
+    // Truncate to whole seconds to match tests
+    elapsed = elapsed.Truncate(time.Second)
+    return fmt.Sprintf("[T+ %s]", elapsed.String())
 }
 
 // collectFailedTests recursively collects all failed test names from a group hierarchy

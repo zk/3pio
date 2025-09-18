@@ -34,10 +34,11 @@ func TestESModuleJestCompatibility(t *testing.T) {
 		t.Error("Should not have ES module compatibility errors")
 	}
 
-	// Should have proper test execution
-	if !strings.Contains(output, "PASS") {
-		t.Error("Should show passing tests")
-	}
+    // Should have proper test execution
+    // Console output no longer lists individual PASS lines per file; assert success message
+    if !strings.Contains(output, "Splendid! All tests passed successfully") {
+        t.Error("Should indicate passing tests in summary output")
+    }
 
 	// Check the generated report
 	runDir := findLatestRunDir(t, fixtureDir)

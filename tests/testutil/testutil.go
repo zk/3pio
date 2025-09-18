@@ -114,20 +114,27 @@ func ExtractTestCount(report string) int {
 
 // extractRunID extracts the run ID from 3pio output
 func extractRunID(output string) string {
-	// Look for pattern like "base_dir: .3pio/runs/20240101T120000-happy-name"
-	re := regexp.MustCompile(`base_dir:\s+\.3pio/runs/([^\s]+)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) > 1 {
-		return matches[1]
-	}
+    // Look for pattern like "trun_dir: .3pio/runs/20240101T120000-happy-name"
+    re := regexp.MustCompile(`trun_dir:\s+\.3pio/runs/([^\s]+)`)
+    matches := re.FindStringSubmatch(output)
+    if len(matches) > 1 {
+        return matches[1]
+    }
 
-	// Fallback to old format for compatibility
-	re = regexp.MustCompile(`.3pio/runs/([^/]+)/test-run\.md`)
-	matches = re.FindStringSubmatch(output)
-	if len(matches) > 1 {
-		return matches[1]
-	}
-	return ""
+    // Fallback to old base_dir format for compatibility
+    re = regexp.MustCompile(`base_dir:\s+\.3pio/runs/([^\s]+)`)
+    matches = re.FindStringSubmatch(output)
+    if len(matches) > 1 {
+        return matches[1]
+    }
+
+    // Fallback to old trailing path format
+    re = regexp.MustCompile(`\.3pio/runs/([^/]+)/test-run\.md`)
+    matches = re.FindStringSubmatch(output)
+    if len(matches) > 1 {
+        return matches[1]
+    }
+    return ""
 }
 
 // CleanupTestRuns removes .3pio directory from a test fixture
