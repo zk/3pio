@@ -44,21 +44,36 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 
 	outputStr := string(output)
 
-	// Extract the "See" path from console output
-	seeRegex := regexp.MustCompile(`See (\.3pio/runs/[^/]+/reports/([^/]+)/index\.md)`)
-	matches := seeRegex.FindStringSubmatch(outputStr)
-	if len(matches) < 3 {
-		t.Fatalf("Could not find 'See' path in output. Output:\n%s", outputStr)
-	}
+    // Extract run dir from preamble
+    trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio/runs/[^\s]+)`) 
+    trunMatch := trunRegex.FindStringSubmatch(outputStr)
+    if len(trunMatch) < 2 {
+        t.Fatalf("Could not find trun_dir in output. Output:\n%s", outputStr)
+    }
+    trunDir := trunMatch[1]
 
-	seePath := matches[1]
-	consoleReportDir := matches[2] // The directory name from console output
+    // Extract the report path printed on result line. Accept either with or without 'See '
+    seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio/runs/[^/]+)/reports/([^/]+)/index\.md`)
+    matches := seeRegex.FindStringSubmatch(outputStr)
+    if len(matches) < 3 {
+        t.Fatalf("Could not find report path in output. Output:\n%s", outputStr)
+    }
+
+    prefix := matches[1]
+    consoleReportDir := matches[2] // The directory name from console output
+    // Build full path, substituting $trun_dir with actual trun_dir
+    var seePath string
+    if prefix == "$trun_dir" {
+        seePath = filepath.Join(trunDir, "reports", consoleReportDir, "index.md")
+    } else {
+        seePath = filepath.Join(prefix, "reports", consoleReportDir, "index.md")
+    }
 
 	t.Logf("Console output shows path: %s", seePath)
 	t.Logf("Console report directory: %s", consoleReportDir)
 
 	// Verify the actual directory exists and matches
-	reportPath := filepath.Join(fixtureDir, seePath)
+    reportPath := filepath.Join(fixtureDir, seePath)
 	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
 		t.Fatalf("Report directory does not exist: %s", reportPath)
 	}

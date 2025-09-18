@@ -62,39 +62,24 @@ func TestFailureDisplayFormat(t *testing.T) {
 
 	output := stdout.String()
 
-	// Verify the failure display format
-	t.Run("shows_up_to_3_failures", func(t *testing.T) {
-		// Check that we show exactly 3 test names (with indentation)
-		// Using simple 'x' for cross-platform compatibility
-		if !strings.Contains(output, "  x TestFail1") {
-			t.Errorf("Expected to see '  x TestFail1' in output")
-		}
-		if !strings.Contains(output, "  x TestFail2") {
-			t.Errorf("Expected to see '  x TestFail2' in output")
-		}
-		if !strings.Contains(output, "  x TestFail3") {
-			t.Errorf("Expected to see '  x TestFail3' in output")
-		}
-	})
+    // Verify the failure display format (new minimal format)
+    t.Run("shows_minimal_summary_with_report_path", func(t *testing.T) {
+        if !strings.Contains(output, "FAIL(") {
+            t.Errorf("Expected to see FAIL count in output")
+        }
+        // Look for sanitized report path segment for the many-failures fixture
+        if !strings.Contains(output, "$trun_dir/reports/") && !strings.Contains(output, ".3pio/runs/") {
+            t.Errorf("Expected to see report path in output")
+        }
+    })
 
-	t.Run("shows_more_count", func(t *testing.T) {
-		// Check that we show "+2 more" for the remaining failures
-		if !strings.Contains(output, "  +2 more") {
-			t.Errorf("Expected to see '+2 more' in output, got:\n%s", output)
-		}
-	})
-
-	t.Run("shows_report_path", func(t *testing.T) {
-		// Check that report path is shown after failures
-		if !strings.Contains(output, "  See .3pio") && !strings.Contains(output, "  See .3pio\\runs\\") {
-			t.Errorf("Expected to see report path in output")
-		}
-		// On Windows, paths use backslashes
-		if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
-			!strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
-			t.Errorf("Expected to see correct report path format, got: %s", output)
-		}
-	})
+    t.Run("shows_report_path", func(t *testing.T) {
+        // Check that report path is shown after failures (no "See" prefix anymore)
+        if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
+            !strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
+            t.Errorf("Expected to see correct report path format, got: %s", output)
+        }
+    })
 
 	t.Run("does_not_show_fourth_failure", func(t *testing.T) {
 		// Verify we don't show the 4th failure name (TestFail4)
@@ -161,12 +146,11 @@ func TestSingleFailureDisplay(t *testing.T) {
 
 	output := stdout.String()
 
-	// Should show the single failure without "+N more"
-	// Check for the failure marker with indentation (using 'x' for cross-platform compatibility)
-	if !strings.Contains(output, "  x TestSingleFailure") {
-		t.Errorf("Expected to see single failure in output, got:\n%s", output)
-	}
-	if strings.Contains(output, "more") {
-		t.Errorf("Should not show '+N more' for single failure")
-	}
+    // New minimal format: show a FAIL count and report path
+    if !strings.Contains(output, "FAIL(") {
+        t.Errorf("Expected to see single failure count in output, got:\n%s", output)
+    }
+    if !strings.Contains(output, "/reports/") {
+        t.Errorf("Expected to see report path in output, got:\n%s", output)
+    }
 }

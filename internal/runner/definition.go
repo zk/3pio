@@ -689,3 +689,99 @@ func (c *CypressDefinition) isCypressInPackageJSON() bool {
 
     return false
 }
+
+// MochaDefinition implements Definition for Mocha
+type MochaDefinition struct {
+    BaseDefinition
+}
+
+// NewMochaDefinition creates a new Mocha definition
+func NewMochaDefinition() *MochaDefinition {
+    return &MochaDefinition{
+        BaseDefinition: BaseDefinition{
+            name:        "mocha",
+            adapterFile: "mocha.js",
+        },
+    }
+}
+
+// Matches checks if the command is for Mocha
+func (m *MochaDefinition) Matches(command []string) bool {
+    return containsTestRunner(command, "mocha") || m.isMochaInPackageJSON()
+}
+
+// GetTestFiles gets test files for Mocha (dynamic by default; CLI often passes globs)
+func (m *MochaDefinition) GetTestFiles(args []string) ([]string, error) {
+    // Mocha usually accepts globs; rely on dynamic discovery
+    return []string{}, nil
+}
+
+// BuildCommand builds Mocha command with reporter injection
+func (m *MochaDefinition) BuildCommand(args []string, adapterPath string) []string {
+    result := make([]string, 0, len(args)+4)
+
+    isPackageManagerCommand := false
+    if len(args) > 0 {
+        cmd := args[0]
+        isPackageManagerCommand = (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+            (cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+            (cmd == "pnpm" || strings.HasPrefix(cmd, "pnpm ")) ||
+            (cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+    }
+
+    if isPackageManagerCommand {
+        // Similar strategy to Cypress: npm/yarn/bun need '--' for script flags; pnpm passes directly
+        cmd := args[0]
+        needsSeparator := (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+            (cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+            (cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+
+        hasSeparator := false
+        for _, a := range args {
+            if a == "--" { hasSeparator = true; break }
+        }
+
+        result = append(result, args...)
+        if hasSeparator || !needsSeparator {
+            result = append(result, "--reporter", adapterPath)
+        } else {
+            result = append(result, "--", "--reporter", adapterPath)
+        }
+        return result
+    }
+
+    // Direct mocha invocation or via npx/bunx
+    result = append(result, args...)
+    result = append(result, "--reporter", adapterPath)
+    return result
+}
+
+// isMochaInPackageJSON checks if Mocha is configured in package.json
+func (m *MochaDefinition) isMochaInPackageJSON() bool {
+    data, err := os.ReadFile("package.json")
+    if err != nil {
+        return false
+    }
+
+    var pkg map[string]interface{}
+    if err := json.Unmarshal(data, &pkg); err != nil {
+        return false
+    }
+
+    if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
+        if test, ok := scripts["test"].(string); ok {
+            if strings.Contains(test, "mocha") {
+                return true
+            }
+        }
+    }
+
+    for _, depKey := range []string{"dependencies", "devDependencies"} {
+        if deps, ok := pkg[depKey].(map[string]interface{}); ok {
+            if _, has := deps["mocha"]; has {
+                return true
+            }
+        }
+    }
+    return false
+}

@@ -23,6 +23,9 @@ var (
 
     //go:embed cypress.js
     cypressAdapter []byte
+
+    //go:embed mocha.js
+    mochaAdapter []byte
 )
 
 // GetAdapterPath returns the path to an extracted adapter with IPC path and log level injected
@@ -60,6 +63,11 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 		// Cypress reporter is CommonJS
 		filename = "cypress.js"
 		isESM = false
+	case "mocha.js":
+		content = mochaAdapter
+		// Mocha reporter is CommonJS
+		filename = "mocha.js"
+		isESM = false
 	default:
 		return "", fmt.Errorf("unknown adapter: %s", name)
 	}
@@ -68,7 +76,7 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 	contentStr := string(content)
 
     // For JavaScript adapters, inject as single-quoted strings for ESLint consistency
-    if name == "vitest.js" || name == "jest.js" || name == "cypress.js" {
+    if name == "vitest.js" || name == "jest.js" || name == "cypress.js" || name == "mocha.js" {
         // Quote using JSON, then convert to single-quoted JS literal
         jsonQuoted := strconv.Quote(ipcPath)
         if len(jsonQuoted) >= 2 {
@@ -95,7 +103,7 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 
 	// Inject log level into all adapters
     // For JavaScript adapters, inject log level as single-quoted strings
-    if name == "vitest.js" || name == "jest.js" || name == "cypress.js" {
+    if name == "vitest.js" || name == "jest.js" || name == "cypress.js" || name == "mocha.js" {
         jsonQuoted := strconv.Quote(logLevel)
         if len(jsonQuoted) >= 2 {
             jsonQuoted = jsonQuoted[1:len(jsonQuoted)-1]

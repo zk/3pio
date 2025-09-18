@@ -213,6 +213,8 @@ func (o *Orchestrator) Run() error {
 		detectedRunner = "pytest"
 	case "cypress.js":
 		detectedRunner = "cypress"
+	case "mocha.js":
+		detectedRunner = "mocha"
 	case "":
 		// Native runner - determine which one based on the underlying definition
 		if nativeRunner, ok := runnerDef.(runner.NativeRunner); ok {

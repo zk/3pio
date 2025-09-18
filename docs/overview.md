@@ -1,6 +1,6 @@
 # 3pio Documentation Overview
 
-3pio is a context-friendly test runner for frameworks like Jest, Vitest, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+3pio is a context-friendly test runner for frameworks like Jest, Vitest, Mocha, Cypress, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
 
 ## Key Features
 
@@ -28,6 +28,7 @@ pip install threepio_test_runner
 3pio npm test
 3pio npx jest
 3pio npx vitest run
+3pio npx mocha
 3pio pytest
 
 # Find your reports in .3pio/runs/

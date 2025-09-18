@@ -72,7 +72,8 @@ Test runners typically:
 The different reporter configurations are intentional:
 - **Jest**: Excludes default reporter for clean, deduplicated output
 - **Vitest**: Includes default reporter for familiar user experience
-- Both approaches are optimized for their respective frameworks' architectures
+- **Mocha/Cypress**: Use a minimal custom Mocha reporter that emits IPC only
+Both approaches are optimized for their respective frameworks' architectures
 
 ### pytest Output Handling
 
@@ -186,7 +187,7 @@ The console displays different messages based on outcomes:
 #### Group Names in Console Output
 
 The console output displays raw group names as provided by each test runner:
-- **Jest/Vitest**: Full file paths as discovered (e.g., `/path/to/project/math.test.js`)
+- **Jest/Vitest/Mocha/Cypress**: Full file paths as discovered (e.g., `/path/to/project/math.test.js`)
 - **Go**: Package import paths (e.g., `github.com/zk/3pio/cmd/3pio`)
 - **pytest**: File paths relative to test root (e.g., `test_math.py`, `tests/unit/test_string.py`)
 
@@ -231,7 +232,7 @@ status: PENDING | RUNNING | COMPLETED | ERRORED
 ```
 
 **Notes:**
-- `detected_runner` examples: `vitest`, `jest`, `go test`, `pytest`, `cargo test`
+- `detected_runner` examples: `vitest`, `jest`, `mocha`, `cypress`, `go test`, `pytest`, `cargo test`
 - `modified_command`: The modified command used to create the runner process. Helps debug issues with positional arguments in the field.
 
 ### Individual Test File Reports

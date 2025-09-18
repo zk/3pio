@@ -33,7 +33,8 @@ func NewManager(fileLogger *logger.FileLogger) *Manager {
 	m.Register("jest", NewJestDefinition())
     m.Register("vitest", NewVitestDefinition())
     m.Register("cypress", NewCypressDefinition())
-	m.Register("pytest", NewPytestDefinition())
+    m.Register("mocha", NewMochaDefinition())
+    m.Register("pytest", NewPytestDefinition())
 
 	// Register Go test runner (native, no adapter)
 	m.Register("go", definitions.NewGoTestWrapper(fileLogger))
@@ -280,6 +281,9 @@ func (m *Manager) GetParser(runnerName string) OutputParser {
     case "pytest", "pytest_adapter.py":
         return NewPytestOutputParser()
     case "cypress", "cypress.js":
+        return NewCypressOutputParser()
+    case "mocha", "mocha.js":
+        // Mocha output is similar enough for fallback parsing
         return NewCypressOutputParser()
     default:
         return &BaseOutputParser{}

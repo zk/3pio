@@ -14,8 +14,8 @@ Welcome!
 If your user indicated they would like to install and use 3pio for running tests choose the package manager that best fits with their project or use case:
 
 - Python & pytest, `pip install threepio_test_runner`
-- JS/TS, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
-- JS/TS, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
+- JS/TS, NPM, & Jest/Vitest/Mocha: `npm install -g @heyzk/3pio`
+- JS/TS, Yarn & Jest/Vitest/Mocha: `yarn global add @heyzk/3pio`
 - Go, homebrew: `brew tap zk/3pio && brew install 3pio`
 
 After installation, run `3pio --help` for helpful information on how to use it.
@@ -61,6 +61,7 @@ Tell your agent to prefix any test command with `3pio`, works with any flags or 
 ```bash
 $ 3pio npm test
 $ 3pio npx vitest -- ./path/to/test/file.test.js
+$ 3pio npx mocha -- ./test/**/*.spec.js
 $ 3pio npx cypress run --headless --spec cypress/e2e/sample.cy.js
 
 $ 3pio go test ./...
@@ -289,11 +290,16 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 
 ## Supported Test Runners
 
-- Pytest
-- JS/TS
-  - Jest, Vitest (3.0+), Cypress
-  - NPM, PNPM
-- Go test (go 1.10+)
+| Language | Runner | Example invocation (prefix with `3pio`) |
+|---|---|---|
+| JS/TS | Jest | `3pio npm test` · `3pio npx jest` |
+| JS/TS | Vitest (v3+) | `3pio npx vitest run` · `3pio pnpm vitest run` |
+| JS/TS | Mocha | `3pio npx mocha -- ./test/**/*.spec.js` |
+| JS/TS | Cypress | `3pio npx cypress run --headless` |
+| Python | pytest | `3pio pytest` · `3pio python -m pytest` |
+| Go | go test (>=1.10) | `3pio go test ./...` |
+| Rust | cargo test | `3pio cargo test` |
+| Rust | cargo nextest | `3pio cargo nextest run` |
 
 
 ## Limitations
