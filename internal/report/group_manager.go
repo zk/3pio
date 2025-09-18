@@ -75,25 +75,24 @@ func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
 	}
 
 	// Convert to absolute path
-	if absPath, err := filepath.Abs(name); err == nil {
-		// Only try to resolve symlinks if the path actually exists
-		// This prevents errors in tests and handles cases where the file doesn't exist yet
-		if _, statErr := os.Stat(absPath); statErr == nil {
-			if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
-				return resolved
-			}
-			// File exists but symlink resolution failed, return absolute path
-			return absPath
-		}
-		// File doesn't exist - this might be a test group name, not a real file path
-		// Only return absolute path if it looks like a real file path
-		if strings.HasPrefix(name, "/") || strings.HasPrefix(name, "./") {
-			return absPath
-		}
+	absPath, err := filepath.Abs(name)
+	if err != nil {
+		// If we can't get absolute path, return original
+		return name
 	}
 
-	// Fallback to original name if conversion fails or if it's not a real file path
-	return name
+	// Always attempt to resolve symlinks for absolute paths
+	// This is crucial for macOS where /tmp is a symlink to /private/tmp
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		return resolved
+	}
+
+	// If symlink resolution fails, it might be because:
+	// 1. The file doesn't exist yet (which is ok for test group names)
+	// 2. There's no symlink to resolve
+	// In either case, return the absolute path
+	return absPath
 }
 
 // makeRelativePath converts absolute paths to relative for display purposes only
@@ -238,7 +237,20 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 
 	group, exists := gm.groups[groupID]
 	if !exists {
-		return fmt.Errorf("group not found: %s", groupID)
+		// Auto-discover the group if not already known
+		gm.mu.Unlock()
+		err := gm.ProcessGroupDiscovered(ipc.GroupDiscoveredEvent{
+			EventType: string(ipc.EventTypeGroupDiscovered),
+			Payload: ipc.GroupDiscoveredPayload{
+				GroupName:   groupName,
+				ParentNames: parentNames,
+			},
+		})
+		gm.mu.Lock()
+		if err != nil {
+			return err
+		}
+		group = gm.groups[groupID]
 	}
 
 	// Update group status
@@ -467,7 +479,14 @@ func (gm *GroupManager) ProcessStdoutChunk(groupName string, parentNames []strin
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
-	groupID := GenerateGroupID(groupName, parentNames)
+	// Normalize paths to absolute for consistent storage
+	normalizedGroupName := gm.normalizeToAbsolutePath(groupName)
+	normalizedParentNames := make([]string, len(parentNames))
+	for i, name := range parentNames {
+		normalizedParentNames[i] = gm.normalizeToAbsolutePath(name)
+	}
+
+	groupID := GenerateGroupID(normalizedGroupName, normalizedParentNames)
 	group, exists := gm.groups[groupID]
 	if !exists {
 		// Ignore output for unknown groups
@@ -488,7 +507,14 @@ func (gm *GroupManager) ProcessStderrChunk(groupName string, parentNames []strin
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
-	groupID := GenerateGroupID(groupName, parentNames)
+	// Normalize paths to absolute for consistent storage
+	normalizedGroupName := gm.normalizeToAbsolutePath(groupName)
+	normalizedParentNames := make([]string, len(parentNames))
+	for i, name := range parentNames {
+		normalizedParentNames[i] = gm.normalizeToAbsolutePath(name)
+	}
+
+	groupID := GenerateGroupID(normalizedGroupName, normalizedParentNames)
 	group, exists := gm.groups[groupID]
 	if !exists {
 		// Ignore output for unknown groups
@@ -561,9 +587,15 @@ func (gm *GroupManager) ensureGroupHierarchy(path []string) error {
 		return nil
 	}
 
+	// Normalize the entire path first
+	normalizedPath := make([]string, len(path))
+	for j, p := range path {
+		normalizedPath[j] = gm.normalizeToAbsolutePath(p)
+	}
+
 	// Create each level of the hierarchy
-	for i := 1; i <= len(path); i++ {
-		currentPath := path[:i]
+	for i := 1; i <= len(normalizedPath); i++ {
+		currentPath := normalizedPath[:i]
 		groupName := currentPath[len(currentPath)-1]
 		var parentNames []string
 		if len(currentPath) > 1 {

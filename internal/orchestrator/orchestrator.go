@@ -157,18 +157,20 @@ func (o *Orchestrator) Run() error {
 	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
 	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
 
-	// Print greeting and command
+	// Print test run header with metadata
 	testCommand := strings.Join(o.command, " ")
-	fmt.Println()
-	fmt.Println("Greetings! I will now execute the test command:")
-	fmt.Printf("`%s`\n", testCommand)
-	fmt.Println()
+	currentTime := time.Now().Format(time.RFC3339)
+	baseDir := o.runDir
+	fullReport := "$base_dir/test-run.md"
 
-	// Print report path
-	reportPath := filepath.Join(o.runDir, "test-run.md")
-	fmt.Printf("Full report: %s\n", reportPath)
+	fmt.Println("---")
+	fmt.Printf("current_time: %s\n", currentTime)
+	fmt.Printf("test_command: `%s`\n", testCommand)
+	fmt.Printf("base_dir: %s\n", baseDir)
+	fmt.Printf("full_report: %s\n", fullReport)
+	fmt.Println("---")
 	fmt.Println()
-	fmt.Println("Beginning test execution now...")
+	fmt.Println("Test execution starting, no output until test results.")
 	fmt.Println()
 
 	// Detect test runner
@@ -696,20 +698,14 @@ func (o *Orchestrator) makeRelativePath(name string) string {
 func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	switch e := event.(type) {
 	case ipc.CollectionStartEvent:
-		// Skip collection message for cargo test (it sends too many)
-		if !strings.HasPrefix(o.detectedRunner, "cargo") {
-			// Display collection start message
-			fmt.Println("Collecting tests...")
-		}
+		// Skip collection messages - we now show "Test execution starting" instead
+		// This reduces console noise and provides cleaner output
 
 	case ipc.CollectionFinishEvent:
-		// Skip collection complete message for cargo test (not meaningful)
-		if !strings.HasPrefix(o.detectedRunner, "cargo") {
-			// Display collection complete message with file count (avoid duplicates)
-			if e.Payload.Collected > 0 && e.Payload.Collected != o.lastCollected {
-				fmt.Printf("Found %d test files\n\n", e.Payload.Collected)
-				o.lastCollected = e.Payload.Collected
-			}
+		// Skip collection complete messages - we now show minimal output
+		// Track the collected count internally but don't display it
+		if e.Payload.Collected > 0 {
+			o.lastCollected = e.Payload.Collected
 		}
 
 	case ipc.GroupStartEvent:
@@ -717,8 +713,8 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		groupID := report.GenerateGroupID(e.Payload.GroupName, e.Payload.ParentNames)
 		o.groupStartTimes[groupID] = time.Now()
 
-		// Display RUNNING status for the group
-		o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
+		// Display RUNNING status for the group - disabled to reduce console noise
+		// o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
 
 	case ipc.GroupResultEvent:
 		// Check if this is a NOTESTS status (Go packages with no test files)
