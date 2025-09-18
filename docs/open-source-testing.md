@@ -12,7 +12,7 @@ Open source testing serves as a critical debugging and quality assurance tool:
 - **Performance Problems**: Identifies bottlenecks under realistic workloads
 
 ## Supported Test Runners and Projects
-- Jest, Vitest, pytest, go test, cargo test, cargo nextest
+- Jest, Vitest, Mocha, Cypress, pytest, go test, cargo test, cargo nextest
 
 ## Testing Workflow
 

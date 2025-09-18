@@ -2,13 +2,13 @@
 
 ## Overview
 
-Test runner adapters are specialized reporters that 3pio injects into test runners (Jest, Vitest, pytest) to capture test events and output. These adapters are embedded in the Go binary and extracted at runtime.
+Test runner adapters are specialized reporters that 3pio injects into test runners (Jest, Vitest, Mocha, Cypress, pytest) to capture test events and output. These adapters are embedded in the Go binary and extracted at runtime.
 
 ## Adapter Architecture
 
 ### Embedding and Extraction
 
-1. **Development**: Adapters written in JavaScript (Jest/Vitest) or Python (pytest)
+1. **Development**: Adapters written in JavaScript (Jest/Vitest/Mocha/Cypress) or Python (pytest)
 2. **Build Time**: Go's embed directive includes adapters in the binary
 3. **Runtime**: Adapters extracted to temporary directory with IPC path injection
 4. **Injection**: Test runner commands modified to include the adapter
@@ -402,3 +402,28 @@ tail -f .3pio/debug.log
 - **Missing output**: Verify capture patches
 - **Wrong group hierarchy**: Check parentNames tracking
 - **Adapter not found**: Ensure extraction succeeded
+### Mocha Adapter
+
+**Implementation**: Custom Mocha reporter using the Mocha runner API
+- Listens to `start`, `suite`, `test`, `pass`, `fail`, `pending`, `end`
+- Emits group discovery, start, testCase, and groupResult events
+- Hierarchy: `[filePath] -> describe(...) -> it(...)`
+- Minimal reporter: no stdout/stderr output, IPC events only
+
+**Special Considerations**:
+- Adapter injected via `--reporter <adapterPath>`
+- Works with `npx mocha`, direct `mocha`, and package scripts
+- Globs and patterns supported by Mocha CLI
+
+### Cypress Adapter
+
+**Implementation**: Custom Mocha reporter used by Cypress
+- Cypress uses Mocha under the hood; reporter API is compatible
+- Listens to the same events as Mocha and emits IPC events
+- Supports `--spec` pattern selection
+- Run in headless mode for automation (`--headless` recommended)
+
+**Special Considerations**:
+- Adapter injected via `--reporter <adapterPath>`
+- Works with `npx cypress run` and package scripts
+- First-time `npx cypress run` may trigger a binary verification/download

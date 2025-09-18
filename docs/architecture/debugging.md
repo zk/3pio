@@ -8,12 +8,12 @@
 
 All debug logs are written to `.3pio/debug.log` in your project directory. This includes:
 - CLI orchestrator logs (process management, runner detection, IPC events)
-- Adapter logs (Jest, Vitest, pytest lifecycle events)
+- Adapter logs (Jest, Vitest, Mocha/Cypress, pytest lifecycle events)
 - Error messages and stack traces
 
 ### What Gets Logged
 
-The debug log captures the complete lifecycle of test execution across all components. The CLI orchestrator logs session boundaries, test runner detection, process management, and IPC event processing. Each test adapter (Jest, Vitest, pytest) logs its lifecycle events including initialization, test file discovery, execution progress, and completion status. Any errors, missing environment variables, or IPC communication issues are also logged with full context to aid in troubleshooting.
+The debug log captures the complete lifecycle of test execution across all components. The CLI orchestrator logs session boundaries, test runner detection, process management, and IPC event processing. Each test adapter (Jest, Vitest, Mocha/Cypress, pytest) logs its lifecycle events including initialization, test file discovery, execution progress, and completion status. Any errors, missing environment variables, or IPC communication issues are also logged with full context to aid in troubleshooting.
 
 ### Logging Policy
 
@@ -45,6 +45,8 @@ Working directory: /Users/project/path
 [2025-09-11 13:40:56.865] [INFO] Test runner detected: vitest
 [vitest-adapter] Lifecycle: Test run initializing
 [jest-adapter] onRunStart called
+[mocha-adapter] start
+[cypress-adapter] start
 [pytest-adapter] Session started
 
 --- Session ended: 2025-09-11T13:40:57-10:00 ---

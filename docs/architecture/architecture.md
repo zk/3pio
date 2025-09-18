@@ -2,7 +2,7 @@
 
 ## Overview
 
-3pio is a context-friendly test runner for frameworks like Jest, Vitest, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
+3pio is a context-friendly test runner for frameworks like Jest, Vitest, Mocha, Cypress, and pytest. It translates traditional test runner output into structured, persistent, file-based records optimized for AI agents.
 
 It uses a project's existing test runner to run tests via a main process, and depending on the specific test runner it inject adapters or capture output from the test process to write a heirarchy of test results on the filesystem in a way that is easy for coding agents to understand and work with.
 
@@ -32,7 +32,7 @@ The central controller managing the entire test execution lifecycle:
 
 ### 3. Runner Manager (`internal/runner/`)
 Manages test runner detection and configuration:
-- Registry of supported test runners (Jest, Vitest, pytest)
+- Registry of supported test runners (Jest, Vitest, Mocha, Cypress, pytest, Go test, Cargo, Nextest)
 - Detects runner from command arguments
 - Parses package.json for npm/yarn/pnpm commands
 - Builds modified commands with adapter injection
@@ -90,6 +90,8 @@ The system uses different file watching approaches based on the writer/reader re
 JavaScript and Python reporters embedded in the Go binary:
 - `jest.js`: Jest reporter implementation
 - `vitest.js`: Vitest reporter implementation
+- `mocha.js`: Mocha reporter implementation
+- `cypress.js`: Cypress Mocha-reporter implementation
 - `pytest_adapter.py`: pytest plugin implementation
 - Embedded at compile time using `//go:embed`
 - Extracted to temporary directory at runtime
@@ -231,6 +233,8 @@ Note: Collection events provide immediate feedback during test discovery phase
 │       ├── adapters/                           # Extracted test adapters
 │       │   ├── jest.js                        # Jest reporter (if applicable)
 │       │   ├── vitest.js                      # Vitest reporter (if applicable)
+│       │   ├── mocha.js                       # Mocha reporter (if applicable)
+│       │   ├── cypress.js                     # Cypress reporter (if applicable)
 │       │   └── pytest_adapter.py              # pytest plugin (if applicable)
 │       └── reports/                            # Hierarchical group reports
 │           ├── src_components_button_test_js/  # File group directory
