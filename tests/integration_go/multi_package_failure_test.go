@@ -63,26 +63,26 @@ func TestMultiPackageFailureReportPath(t *testing.T) {
 	output := stdout.String()
 
 	// Test that the summary section exists with inline display
-    t.Run("summary_section_exists", func(t *testing.T) {
-        // The summary section exists in the new console format
-        if !strings.Contains(output, "Test failures!") {
-            t.Errorf("Expected 'Test failures!' summary section to exist")
-        }
-    })
+	t.Run("summary_section_exists", func(t *testing.T) {
+		// The summary section exists in the new console format
+		if !strings.Contains(output, "Test failures!") {
+			t.Errorf("Expected 'Test failures!' summary section to exist")
+		}
+	})
 
 	// Verify that failures are shown inline after FAIL message
-    t.Run("minimal_summary_displayed_for_zebra", func(t *testing.T) {
-        if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
-            t.Errorf("Expected minimal summary with report path for pkg_zebra")
-        }
-    })
+	t.Run("minimal_summary_displayed_for_zebra", func(t *testing.T) {
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for pkg_zebra")
+		}
+	})
 
 	// Verify the failed tests are shown inline (not in summary)
-    t.Run("shows_alpha_passes", func(t *testing.T) {
-        // In the new format, passing groups are not listed individually; check summary reflects passes
-        if !strings.Contains(output, "Results:") || !strings.Contains(output, "passed") {
-            t.Errorf("Expected final results summary to include passed count")
-        }
-    })
-    // Note: Inline listing of individual failures is no longer displayed
+	t.Run("shows_alpha_passes", func(t *testing.T) {
+		// In the new format, passing groups are not listed individually; check summary reflects passes
+		if !strings.Contains(output, "Results:") || !strings.Contains(output, "passed") {
+			t.Errorf("Expected final results summary to include passed count")
+		}
+	})
+	// Note: Inline listing of individual failures is no longer displayed
 }

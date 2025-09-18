@@ -31,10 +31,10 @@ func NewManager(fileLogger *logger.FileLogger) *Manager {
 
 	// Register built-in runners
 	m.Register("jest", NewJestDefinition())
-    m.Register("vitest", NewVitestDefinition())
-    m.Register("cypress", NewCypressDefinition())
-    m.Register("mocha", NewMochaDefinition())
-    m.Register("pytest", NewPytestDefinition())
+	m.Register("vitest", NewVitestDefinition())
+	m.Register("cypress", NewCypressDefinition())
+	m.Register("mocha", NewMochaDefinition())
+	m.Register("pytest", NewPytestDefinition())
 
 	// Register Go test runner (native, no adapter)
 	m.Register("go", definitions.NewGoTestWrapper(fileLogger))
@@ -273,56 +273,56 @@ func (p *PytestOutputParser) ParseTestOutput(output string) map[string][]string 
 
 // GetParser returns the appropriate output parser for a runner
 func (m *Manager) GetParser(runnerName string) OutputParser {
-    switch runnerName {
-    case "jest", "jest.js":
-        return NewJestOutputParser()
-    case "vitest", "vitest.js":
-        return NewVitestOutputParser()
-    case "pytest", "pytest_adapter.py":
-        return NewPytestOutputParser()
-    case "cypress", "cypress.js":
-        return NewCypressOutputParser()
-    case "mocha", "mocha.js":
-        // Mocha output is similar enough for fallback parsing
-        return NewCypressOutputParser()
-    default:
-        return &BaseOutputParser{}
-    }
+	switch runnerName {
+	case "jest", "jest.js":
+		return NewJestOutputParser()
+	case "vitest", "vitest.js":
+		return NewVitestOutputParser()
+	case "pytest", "pytest_adapter.py":
+		return NewPytestOutputParser()
+	case "cypress", "cypress.js":
+		return NewCypressOutputParser()
+	case "mocha", "mocha.js":
+		// Mocha output is similar enough for fallback parsing
+		return NewCypressOutputParser()
+	default:
+		return &BaseOutputParser{}
+	}
 }
 
 // CypressOutputParser parses Cypress (Mocha-style) output
 type CypressOutputParser struct {
-    BaseOutputParser
+	BaseOutputParser
 }
 
 // NewCypressOutputParser creates a new Cypress output parser
 func NewCypressOutputParser() *CypressOutputParser {
-    return &CypressOutputParser{}
+	return &CypressOutputParser{}
 }
 
 // ParseTestOutput parses Cypress/Mocha-style output. This is best-effort only
 // since Cypress output can vary; the adapter is the primary source of truth.
 func (c *CypressOutputParser) ParseTestOutput(output string) map[string][]string {
-    result := make(map[string][]string)
-    lines := strings.Split(output, "\n")
+	result := make(map[string][]string)
+	lines := strings.Split(output, "\n")
 
-    currentFile := ""
-    for _, line := range lines {
-        // Heuristics: look for spec file paths and test result markers
-        if strings.Contains(line, ".cy.") || strings.Contains(line, ".spec.") {
-            // naive token search for a file-like segment
-            parts := strings.Fields(line)
-            for _, part := range parts {
-                if strings.Contains(part, ".cy.") || strings.Contains(part, ".spec.") {
-                    currentFile = strings.TrimPrefix(part, "./")
-                    break
-                }
-            }
-        }
+	currentFile := ""
+	for _, line := range lines {
+		// Heuristics: look for spec file paths and test result markers
+		if strings.Contains(line, ".cy.") || strings.Contains(line, ".spec.") {
+			// naive token search for a file-like segment
+			parts := strings.Fields(line)
+			for _, part := range parts {
+				if strings.Contains(part, ".cy.") || strings.Contains(part, ".spec.") {
+					currentFile = strings.TrimPrefix(part, "./")
+					break
+				}
+			}
+		}
 
-        if currentFile != "" {
-            result[currentFile] = append(result[currentFile], line)
-        }
-    }
-    return result
+		if currentFile != "" {
+			result[currentFile] = append(result[currentFile], line)
+		}
+	}
+	return result
 }

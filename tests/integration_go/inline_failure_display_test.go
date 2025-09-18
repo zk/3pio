@@ -33,7 +33,7 @@ func TestInlineFailureDisplay(t *testing.T) {
 		t.Fatalf("Failed to get absolute binary path: %v", err)
 	}
 
-    t.Run("go_test_shows_minimal_summary", func(t *testing.T) {
+	t.Run("go_test_shows_minimal_summary", func(t *testing.T) {
 		// Test with multi-package-failure fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "multi-package-failure")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -61,18 +61,18 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-        // New format prints a minimal summary with counts and a report path
-        if !strings.Contains(output, "FAIL(") {
-            t.Errorf("Expected to see FAIL count in output")
-        }
-        if !strings.Contains(output, "/reports/") {
-            t.Errorf("Expected to see report path in output")
-        }
+		// New format prints a minimal summary with counts and a report path
+		if !strings.Contains(output, "FAIL(") {
+			t.Errorf("Expected to see FAIL count in output")
+		}
+		if !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected to see report path in output")
+		}
 
 		// The "Test failures!" summary section can still exist alongside inline display
 	})
 
-    t.Run("jest_shows_minimal_summary", func(t *testing.T) {
+	t.Run("jest_shows_minimal_summary", func(t *testing.T) {
 		// Test with jest-fail fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "jest-fail")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -108,13 +108,13 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-        // Minimal summary with counts and report path is expected
-        if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
-            t.Errorf("Expected minimal summary with report path for Jest")
-        }
-    })
+		// Minimal summary with counts and report path is expected
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for Jest")
+		}
+	})
 
-    t.Run("vitest_shows_minimal_summary", func(t *testing.T) {
+	t.Run("vitest_shows_minimal_summary", func(t *testing.T) {
 		// Test with vitest-fail fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "vitest-fail")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -150,12 +150,12 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-        if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
-            t.Errorf("Expected minimal summary with report path for Vitest")
-        }
-    })
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for Vitest")
+		}
+	})
 
-    t.Run("pytest_shows_minimal_summary", func(t *testing.T) {
+	t.Run("pytest_shows_minimal_summary", func(t *testing.T) {
 		// Test with pytest-fail fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "pytest-fail")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -181,8 +181,8 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-        if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
-            t.Errorf("Expected minimal summary with report path for pytest")
-        }
-    })
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for pytest")
+		}
+	})
 }

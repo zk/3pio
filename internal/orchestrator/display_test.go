@@ -65,13 +65,13 @@ func TestDisplayGroupWithFailures(t *testing.T) {
 	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
-    // Verify the output format
-    // Now should contain minimal summary: FAIL(12) PASS(11) and a report path under $trun_dir
-    expectedParts := []string{
-        "FAIL(",               // Shows FAIL count
-        "$trun_dir/reports/", // Report path prefix
-        "validate_test_ts",   // Sanitized file name within report path
-    }
+	// Verify the output format
+	// Now should contain minimal summary: FAIL(12) PASS(11) and a report path under $trun_dir
+	expectedParts := []string{
+		"FAIL(",              // Shows FAIL count
+		"$trun_dir/reports/", // Report path prefix
+		"validate_test_ts",   // Sanitized file name within report path
+	}
 
 	for _, part := range expectedParts {
 		if !strings.Contains(output, part) {
@@ -93,11 +93,11 @@ func TestDisplayGroupWithFailures(t *testing.T) {
 		}
 	}
 
-    // Verify it's on a single line
-    lines := strings.Split(strings.TrimSpace(output), "\n")
-    if len(lines) != 1 {
-        t.Errorf("Expected single line output, got %d lines: %s", len(lines), output)
-    }
+	// Verify it's on a single line
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 {
+		t.Errorf("Expected single line output, got %d lines: %s", len(lines), output)
+	}
 }
 
 // TestDisplayGroupWithoutFailures tests that groups without failures are not displayed with failure details

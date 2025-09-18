@@ -29,11 +29,11 @@ func TestVitestFailedTestsReporting(t *testing.T) {
 		t.Error("Expected non-zero exit code for failing tests")
 	}
 
-    // Console output now shows a concise summary line per failing file.
-    if !strings.Contains(output, "FAIL(") {
-        t.Error("Should show a FAIL summary line")
-    }
-    if !strings.Contains(output, "$trun_dir/reports/") {
-        t.Error("Should include report path for the failing file")
-    }
+	// Console output now shows a concise summary line per failing file.
+	if !strings.Contains(output, "FAIL(") {
+		t.Error("Should show a FAIL summary line")
+	}
+	if !strings.Contains(output, "$trun_dir/reports/") {
+		t.Error("Should include report path for the failing file")
+	}
 }

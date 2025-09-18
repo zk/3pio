@@ -62,24 +62,24 @@ func TestFailureDisplayFormat(t *testing.T) {
 
 	output := stdout.String()
 
-    // Verify the failure display format (new minimal format)
-    t.Run("shows_minimal_summary_with_report_path", func(t *testing.T) {
-        if !strings.Contains(output, "FAIL(") {
-            t.Errorf("Expected to see FAIL count in output")
-        }
-        // Look for sanitized report path segment for the many-failures fixture
-        if !strings.Contains(output, "$trun_dir/reports/") && !strings.Contains(output, ".3pio/runs/") {
-            t.Errorf("Expected to see report path in output")
-        }
-    })
+	// Verify the failure display format (new minimal format)
+	t.Run("shows_minimal_summary_with_report_path", func(t *testing.T) {
+		if !strings.Contains(output, "FAIL(") {
+			t.Errorf("Expected to see FAIL count in output")
+		}
+		// Look for sanitized report path segment for the many-failures fixture
+		if !strings.Contains(output, "$trun_dir/reports/") && !strings.Contains(output, ".3pio/runs/") {
+			t.Errorf("Expected to see report path in output")
+		}
+	})
 
-    t.Run("shows_report_path", func(t *testing.T) {
-        // Check that report path is shown after failures (no "See" prefix anymore)
-        if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
-            !strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
-            t.Errorf("Expected to see correct report path format, got: %s", output)
-        }
-    })
+	t.Run("shows_report_path", func(t *testing.T) {
+		// Check that report path is shown after failures (no "See" prefix anymore)
+		if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
+			!strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
+			t.Errorf("Expected to see correct report path format, got: %s", output)
+		}
+	})
 
 	t.Run("does_not_show_fourth_failure", func(t *testing.T) {
 		// Verify we don't show the 4th failure name (TestFail4)
@@ -146,11 +146,11 @@ func TestSingleFailureDisplay(t *testing.T) {
 
 	output := stdout.String()
 
-    // New minimal format: show a FAIL count and report path
-    if !strings.Contains(output, "FAIL(") {
-        t.Errorf("Expected to see single failure count in output, got:\n%s", output)
-    }
-    if !strings.Contains(output, "/reports/") {
-        t.Errorf("Expected to see report path in output, got:\n%s", output)
-    }
+	// New minimal format: show a FAIL count and report path
+	if !strings.Contains(output, "FAIL(") {
+		t.Errorf("Expected to see single failure count in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "/reports/") {
+		t.Errorf("Expected to see report path in output, got:\n%s", output)
+	}
 }

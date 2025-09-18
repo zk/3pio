@@ -1034,17 +1034,17 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 // formatElapsedTime returns a human-friendly elapsed time since startTime
 func (o *Orchestrator) formatElapsedTime() string {
-    // Handle zero start time defensively
-    if o.startTime.IsZero() {
-        return "[T+ 0s]"
-    }
-    elapsed := time.Since(o.startTime)
-    if elapsed < 0 {
-        elapsed = 0
-    }
-    // Truncate to whole seconds to match tests
-    elapsed = elapsed.Truncate(time.Second)
-    return fmt.Sprintf("[T+ %s]", elapsed.String())
+	// Handle zero start time defensively
+	if o.startTime.IsZero() {
+		return "[T+ 0s]"
+	}
+	elapsed := time.Since(o.startTime)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	// Truncate to whole seconds to match tests
+	elapsed = elapsed.Truncate(time.Second)
+	return fmt.Sprintf("[T+ %s]", elapsed.String())
 }
 
 // collectFailedTests recursively collects all failed test names from a group hierarchy
