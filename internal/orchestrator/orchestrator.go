@@ -929,7 +929,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 			// Make the path relative before sanitizing for report path
 			groupName := group.Name
-			if strings.HasPrefix(groupName, "/") {
+			// On all OSes, if this is an absolute path, try to make it relative to the test execution dir
+			if filepath.IsAbs(groupName) {
 				// Derive the test execution directory from runDir
 				if absRunDir, err := filepath.Abs(o.runDir); err == nil {
 					// Go up from runDir to find the project root (parent of .3pio)
@@ -1003,7 +1004,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 		// Make the path relative before sanitizing for report path
 		groupName := group.Name
-		if strings.HasPrefix(groupName, "/") {
+		// On all OSes, if this is an absolute path, try to make it relative to the test execution dir
+		if filepath.IsAbs(groupName) {
 			// Derive the test execution directory from runDir
 			if absRunDir, err := filepath.Abs(o.runDir); err == nil {
 				// Go up from runDir to find the project root (parent of .3pio)
