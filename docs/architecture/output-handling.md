@@ -227,7 +227,7 @@ status: PENDING | RUNNING | COMPLETED | ERRORED
 |--------|------|-------|----------|--------|
 | PASS | math.test.js | 5 passed | 12.3s | ./reports/math_test_js/index.md |
 | FAIL | string.test.js | 3 passed, 1 failed | 2.3s | ./reports/string_test_js/index.md |
-| SKIP | tests/unit/utilities.test.js | 0 tests | 0.53s | ./reports/tests_unit_utilities_test_js/index.md |
+| SKIP | tests/unit/utilities.test.js | 2 skipped | 0.53s | ./reports/tests_unit_utilities_test_js/index.md |
 ```
 
 **Notes:**

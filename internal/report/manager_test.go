@@ -349,3 +349,206 @@ func TestManager_ReportFormat(t *testing.T) {
 		t.Errorf("Expected table row for math.test.js, but not found")
 	}
 }
+
+func TestManager_RecursiveTestCountsInTable(t *testing.T) {
+	// This test verifies that the summary table shows recursive test counts
+	// instead of "0 tests" for groups with only nested test cases
+	tempDir := t.TempDir()
+	logger := &mockLogger{}
+	parser := runner.NewJestOutputParser()
+
+	manager, err := NewManager(tempDir, parser, logger, "jest", "npx jest")
+	if err != nil {
+		t.Fatalf("Failed to create manager: %v", err)
+	}
+
+	if err := manager.Initialize("npx jest"); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Create a test file with nested describe blocks but no direct tests
+	// Structure:
+	//   nested.test.js (file group - no direct tests)
+	//   └── Calculator (describe group - no direct tests)
+	//       └── addition (nested describe group - has tests)
+	//           ├── should add positive numbers (test)
+	//           └── should add negative numbers (test)
+
+	// 1. Discover the file group
+	discoverEvent := ipc.GroupDiscoveredEvent{
+		EventType: "testGroupDiscovered",
+		Payload: ipc.GroupDiscoveredPayload{
+			GroupName:   "nested.test.js",
+			ParentNames: []string{},
+		},
+	}
+	_ = manager.groupManager.ProcessGroupDiscovered(discoverEvent)
+
+	// 2. Discover the Calculator describe group
+	discoverCalculator := ipc.GroupDiscoveredEvent{
+		EventType: "testGroupDiscovered",
+		Payload: ipc.GroupDiscoveredPayload{
+			GroupName:   "Calculator",
+			ParentNames: []string{"nested.test.js"},
+		},
+	}
+	_ = manager.groupManager.ProcessGroupDiscovered(discoverCalculator)
+
+	// 3. Discover the addition nested describe group
+	discoverAddition := ipc.GroupDiscoveredEvent{
+		EventType: "testGroupDiscovered",
+		Payload: ipc.GroupDiscoveredPayload{
+			GroupName:   "addition",
+			ParentNames: []string{"nested.test.js", "Calculator"},
+		},
+	}
+	_ = manager.groupManager.ProcessGroupDiscovered(discoverAddition)
+
+	// 4. Start all groups
+	_ = manager.groupManager.ProcessGroupStart(ipc.GroupStartEvent{
+		EventType: "testGroupStart",
+		Payload: ipc.GroupStartPayload{
+			GroupName:   "nested.test.js",
+			ParentNames: []string{},
+		},
+	})
+
+	_ = manager.groupManager.ProcessGroupStart(ipc.GroupStartEvent{
+		EventType: "testGroupStart",
+		Payload: ipc.GroupStartPayload{
+			GroupName:   "Calculator",
+			ParentNames: []string{"nested.test.js"},
+		},
+	})
+
+	_ = manager.groupManager.ProcessGroupStart(ipc.GroupStartEvent{
+		EventType: "testGroupStart",
+		Payload: ipc.GroupStartPayload{
+			GroupName:   "addition",
+			ParentNames: []string{"nested.test.js", "Calculator"},
+		},
+	})
+
+	// 5. Add test cases to the deepest nested group only
+	testCase1 := ipc.GroupTestCaseEvent{
+		EventType: "testCase",
+		Payload: ipc.TestCasePayload{
+			TestName:    "should add positive numbers",
+			ParentNames: []string{"nested.test.js", "Calculator", "addition"},
+			Status:      "PASS",
+			Duration:    100,
+		},
+	}
+	_ = manager.groupManager.ProcessTestCase(testCase1)
+
+	testCase2 := ipc.GroupTestCaseEvent{
+		EventType: "testCase",
+		Payload: ipc.TestCasePayload{
+			TestName:    "should add negative numbers",
+			ParentNames: []string{"nested.test.js", "Calculator", "addition"},
+			Status:      "PASS",
+			Duration:    150,
+		},
+	}
+	_ = manager.groupManager.ProcessTestCase(testCase2)
+
+	testCase3 := ipc.GroupTestCaseEvent{
+		EventType: "testCase",
+		Payload: ipc.TestCasePayload{
+			TestName:    "should handle edge cases",
+			ParentNames: []string{"nested.test.js", "Calculator", "addition"},
+			Status:      "FAIL",
+			Duration:    200,
+		},
+	}
+	_ = manager.groupManager.ProcessTestCase(testCase3)
+
+	// 6. Complete groups from deepest to shallowest
+	_ = manager.groupManager.ProcessGroupResult(ipc.GroupResultEvent{
+		EventType: "testGroupResult",
+		Payload: ipc.GroupResultPayload{
+			GroupName:   "addition",
+			ParentNames: []string{"nested.test.js", "Calculator"},
+			Status:      "FAIL",
+			Duration:    450,
+			Totals: ipc.GroupTotals{
+				Total:   3,
+				Passed:  2,
+				Failed:  1,
+				Skipped: 0,
+			},
+		},
+	})
+
+	_ = manager.groupManager.ProcessGroupResult(ipc.GroupResultEvent{
+		EventType: "testGroupResult",
+		Payload: ipc.GroupResultPayload{
+			GroupName:   "Calculator",
+			ParentNames: []string{"nested.test.js"},
+			Status:      "FAIL",
+			Duration:    500,
+			// NOTE: Calculator has no direct tests, so totals are 0
+			// This is the key scenario that caused the original bug
+			Totals: ipc.GroupTotals{
+				Total:   0,
+				Passed:  0,
+				Failed:  0,
+				Skipped: 0,
+			},
+		},
+	})
+
+	_ = manager.groupManager.ProcessGroupResult(ipc.GroupResultEvent{
+		EventType: "testGroupResult",
+		Payload: ipc.GroupResultPayload{
+			GroupName:   "nested.test.js",
+			ParentNames: []string{},
+			Status:      "FAIL",
+			Duration:    550,
+			// NOTE: File also has no direct tests
+			// This is what would cause "0 tests" in the original bug
+			Totals: ipc.GroupTotals{
+				Total:   0,
+				Passed:  0,
+				Failed:  0,
+				Skipped: 0,
+			},
+		},
+	})
+
+	// 7. Generate the final report
+	_ = manager.Finalize(1)
+
+	// 8. Read and verify the report content
+	reportPath := filepath.Join(tempDir, "test-run.md")
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("Failed to read report: %v", err)
+	}
+
+	reportContent := string(content)
+
+	// 9. Verify the table shows recursive counts, not "0 tests"
+	// The file should show "2 passed, 1 failed" because of recursive counting
+	if strings.Contains(reportContent, "| FAIL | nested.test.js | 0 tests |") {
+		t.Errorf("FAILURE: Table still shows '0 tests' for nested.test.js - recursive counting bug not fixed!\nReport content:\n%s", reportContent)
+	}
+
+	// Should show the actual recursive counts
+	if !strings.Contains(reportContent, "| FAIL | nested.test.js | 2 passed, 1 failed |") {
+		t.Errorf("Expected table to show '2 passed, 1 failed' for nested.test.js with recursive counting.\nReport content:\n%s", reportContent)
+	}
+
+	// 10. Verify summary totals are also correct
+	if !strings.Contains(reportContent, "- Total test cases: 3") {
+		t.Errorf("Expected summary to show 3 total test cases")
+	}
+
+	if !strings.Contains(reportContent, "- Test cases passed: 2") {
+		t.Errorf("Expected summary to show 2 passed test cases")
+	}
+
+	if !strings.Contains(reportContent, "- Test cases failed: 1") {
+		t.Errorf("Expected summary to show 1 failed test case")
+	}
+}
