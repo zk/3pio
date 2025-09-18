@@ -621,9 +621,10 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Format results summary
-	// For cargo test, show test case counts; for others, show group counts
-	if strings.HasPrefix(o.detectedRunner, "cargo") && o.totalTests > 0 {
-		// Show test case counts for cargo
+	// Show test case counts when we have actual test counts with skipped tests
+	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
+	if o.totalTests > 0 && (o.skippedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+		// Show test case counts
 		if o.skippedTests > 0 {
 			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
 				o.passedTests, o.failedTests, o.skippedTests, o.totalTests)
@@ -634,7 +635,7 @@ func (o *Orchestrator) Run() error {
 			fmt.Printf("Results:     %d passed, %d total\n", o.passedTests, o.totalTests)
 		}
 	} else {
-		// Show group counts for other runners
+		// Show group counts for other runners or when no test-level detail available
 		if o.skippedGroups > 0 {
 			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
 				o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
@@ -848,8 +849,8 @@ func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []strin
 	}
 
 	// Normalize the path for consistent display
-	normalizedGroupName := o.makeRelativePath(groupName)
-	fmt.Printf("%-8s %s\n", "RUNNING", normalizedGroupName)
+	// normalizedGroupName := o.makeRelativePath(groupName)
+	// No longer printing RUNNING status to console
 }
 
 // displayGroupResult displays the result of a completed group
@@ -905,7 +906,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	o.logger.Debug("displayGroupHierarchy: group=%s, hasTestCases=%v, testCases=%d, subgroups=%d",
 		group.Name, group.HasTestCases(), len(group.TestCases), len(group.Subgroups))
 
-	// For groups without test cases, show their actual status (SKIP or FAIL)
+	// For groups without test cases, only show if they failed
 	if !group.HasTestCases() {
 		// Check if this is a package with no test files or failed group
 		isNoTests := o.noTestGroups[group.Name]
@@ -1065,6 +1066,25 @@ func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 	}
 
 	return failedTests
+}
+
+// formatElapsedTime formats the elapsed time from start in a progressive display
+func (o *Orchestrator) formatElapsedTime() string {
+	elapsed := time.Since(o.startTime)
+	totalSeconds := int(elapsed.Seconds())
+
+	if totalSeconds < 60 {
+		return fmt.Sprintf("[T+ %ds]", totalSeconds)
+	} else if totalSeconds < 3600 {
+		minutes := totalSeconds / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("[T+ %dm%ds]", minutes, seconds)
+	} else {
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("[T+ %dh%dm%ds]", hours, minutes, seconds)
+	}
 }
 
 // getGroupStatusString returns a status string for groups in console output

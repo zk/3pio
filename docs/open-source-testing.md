@@ -4,12 +4,7 @@ We run 3pio against open source projects to ensure correct operation on a divers
 
 ## Overview
 
-Open source testing serves as a critical debugging and quality assurance tool:
-- **Bug Discovery**: Identifies issues that don't surface in controlled test fixtures
-- **Edge Case Detection**: Uncovers problems with unusual project configurations
-- **Real-World Stress Testing**: Tests handling of large, complex codebases
-- **Compatibility Issues**: Reveals incompatibilities with specific frameworks or versions
-- **Performance Problems**: Identifies bottlenecks under realistic workloads
+General guidlines:
 
 ## Supported Test Runners and Projects
 - Jest, Vitest, Mocha, Cypress, pytest, go test, cargo test, cargo nextest
