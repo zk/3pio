@@ -160,8 +160,8 @@ func (o *Orchestrator) Run() error {
 	// Print test run header with metadata
 	testCommand := strings.Join(o.command, " ")
 	currentTime := time.Now().Format(time.RFC3339)
-	baseDir := o.runDir
-	fullReport := "$base_dir/test-run.md"
+	trunDir := o.runDir
+	fullReport := "$trun_dir/test-run.md"
 
 	// Get current working directory
 	cwd, err := os.Getwd()
@@ -173,7 +173,7 @@ func (o *Orchestrator) Run() error {
 	fmt.Printf("current_time: %s\n", currentTime)
 	fmt.Printf("cwd: %s\n", cwd)
 	fmt.Printf("test_command: `%s`\n", testCommand)
-	fmt.Printf("base_dir: %s\n", baseDir)
+	fmt.Printf("trun_dir: %s\n", trunDir)
 	fmt.Printf("full_report: %s\n", fullReport)
 	fmt.Println("---")
 	fmt.Println()
@@ -946,8 +946,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 				}
 			}
 
-			// Build report path using $base_dir placeholder
-			reportPath := fmt.Sprintf("$base_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
+			// Build report path using $trun_dir placeholder
+			reportPath := fmt.Sprintf("$trun_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
 
 			// Print all on one line
 			fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
@@ -1020,8 +1020,8 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 			}
 		}
 
-		// Build report path using $base_dir placeholder
-		reportPath := fmt.Sprintf("$base_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
+		// Build report path using $trun_dir placeholder
+		reportPath := fmt.Sprintf("$trun_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
 
 		// Print all on one line
 		fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
