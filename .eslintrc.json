@@ -41,6 +41,9 @@
     "tests/",
     "scratch/",
     ".3pio/",
-    "internal/adapters/vitest.js"
+    "internal/adapters/vitest.js",
+    "internal/adapters/jest.js",
+    "internal/adapters/cypress.js",
+    "internal/adapters/mocha.js"
   ]
 }

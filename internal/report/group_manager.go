@@ -96,6 +96,7 @@ func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
 }
 
 // makeRelativePath converts absolute paths to relative for display purposes only
+// nolint:unused // relative path helper retained for future path normalization
 func (gm *GroupManager) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
 	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") {

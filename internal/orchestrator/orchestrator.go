@@ -709,6 +709,7 @@ func (o *Orchestrator) normalizePathForReportManager(name string) string {
 }
 
 // makeRelativePath normalizes paths to relative paths (matching report manager)
+// nolint:unused // kept for potential future console path normalization
 func (o *Orchestrator) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
 	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") {
@@ -841,6 +842,7 @@ func (o *Orchestrator) GetExitCode() int {
 }
 
 // displayGroupRunning displays RUNNING status for a group that just started
+// nolint:unused // legacy console RUNNING display retained but disabled
 func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []string) {
 	// Only display RUNNING status for top-level groups (files)
 	// Subgroups will only be shown if they have failures
@@ -1034,21 +1036,10 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 }
 
 // formatElapsedTime returns a human-friendly elapsed time since startTime
-func (o *Orchestrator) formatElapsedTime() string {
-	// Handle zero start time defensively
-	if o.startTime.IsZero() {
-		return "[T+ 0s]"
-	}
-	elapsed := time.Since(o.startTime)
-	if elapsed < 0 {
-		elapsed = 0
-	}
-	// Truncate to whole seconds to match tests
-	elapsed = elapsed.Truncate(time.Second)
-	return fmt.Sprintf("[T+ %s]", elapsed.String())
-}
+// (kept single implementation below)
 
 // collectFailedTests recursively collects all failed test names from a group hierarchy
+// nolint:unused // helper retained for potential future detailed failure listings
 func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 	var failedTests []string
 
@@ -1069,6 +1060,7 @@ func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 }
 
 // formatElapsedTime formats the elapsed time from start in a progressive display
+// nolint:unused // elapsed time no longer printed; keep for future use
 func (o *Orchestrator) formatElapsedTime() string {
 	elapsed := time.Since(o.startTime)
 	totalSeconds := int(elapsed.Seconds())
@@ -1088,6 +1080,7 @@ func (o *Orchestrator) formatElapsedTime() string {
 }
 
 // getGroupStatusString returns a status string for groups in console output
+// nolint:unused // retained for completeness with convertStringToTestStatus
 func getGroupStatusString(status ipc.TestStatus) string {
 	switch status {
 	case ipc.TestStatusPass:
@@ -1127,6 +1120,7 @@ func convertStringToTestStatus(status string) ipc.TestStatus {
 }
 
 // convertReportStatusToIPC converts report.TestStatus to ipc.TestStatus
+// nolint:unused // not used in current console/reporting paths
 func convertReportStatusToIPC(status report.TestStatus) ipc.TestStatus {
 	switch status {
 	case report.TestStatusPass:

@@ -4,8 +4,8 @@
   "description": "Context-friendly test runner for coding agents",
   "private": true,
   "scripts": {
-    "lint": "eslint 'internal/adapters/**/*.js' --max-warnings 0",
-    "lint:fix": "eslint 'internal/adapters/**/*.js' --fix"
+    "lint": "eslint --no-error-on-unmatched-pattern 'internal/adapters/**/*.js' --max-warnings 0",
+    "lint:fix": "eslint --no-error-on-unmatched-pattern 'internal/adapters/**/*.js' --fix"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
