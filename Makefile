@@ -72,13 +72,30 @@ fmt:
 	go fmt ./...
 	go mod tidy
 
-# Run linter
+# Run linter for both Go and JavaScript
 lint:
-	@echo "Running linter..."
+	@echo "Running Go linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
 	else \
 		go vet ./...; \
+	fi
+	@echo "Running JavaScript linter..."
+	@if [ -f package.json ]; then \
+		npm run lint; \
+	else \
+		echo "No package.json found, skipping JavaScript lint"; \
+	fi
+
+# Run linter and fix issues
+lint-fix:
+	@echo "Running Go formatter..."
+	@go fmt ./...
+	@echo "Fixing JavaScript lint issues..."
+	@if [ -f package.json ]; then \
+		npm run lint:fix; \
+	else \
+		echo "No package.json found, skipping JavaScript lint fix"; \
 	fi
 
 # Clean build artifacts

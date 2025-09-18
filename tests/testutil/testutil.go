@@ -114,9 +114,16 @@ func ExtractTestCount(report string) int {
 
 // extractRunID extracts the run ID from 3pio output
 func extractRunID(output string) string {
-	// Look for pattern like "Full report: .3pio/runs/20240101T120000-happy-name/test-run.md"
-	re := regexp.MustCompile(`.3pio/runs/([^/]+)/test-run\.md`)
+	// Look for pattern like "base_dir: .3pio/runs/20240101T120000-happy-name"
+	re := regexp.MustCompile(`base_dir:\s+\.3pio/runs/([^\s]+)`)
 	matches := re.FindStringSubmatch(output)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Fallback to old format for compatibility
+	re = regexp.MustCompile(`.3pio/runs/([^/]+)/test-run\.md`)
+	matches = re.FindStringSubmatch(output)
 	if len(matches) > 1 {
 		return matches[1]
 	}

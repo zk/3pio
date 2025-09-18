@@ -891,64 +891,54 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 			durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
 		}
 
-		// Only show if not pending (pending means it never really ran)
-		if group.Status != report.TestStatusPending {
-			fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
+		// Only show if failed or has no tests (don't show successful groups)
+		if group.Status == report.TestStatusFail || statusStr == "NO_TESTS" {
+			displayPath := o.makeRelativePath(group.Name)
+			fmt.Printf("%s %s%s\n", statusStr, displayPath, durationStr)
 		}
 		return
 	}
 
 	// Display group status using raw groupName
-	statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
-	o.logger.Debug("displayGroupHierarchy: displaying status=%s (group.Status=%s) for %s",
-		statusStr, group.Status, group.Name)
+	o.logger.Debug("displayGroupHierarchy: group.Status=%s for %s",
+		group.Status, group.Name)
 
-	// Get duration for this group
-	durationStr := ""
+	// Only display groups that have failures
+	if group.Stats.FailedTests > 0 {
+		// Build status string with fail/pass counts
+		statusStrWithCounts := fmt.Sprintf("FAIL(%d) PASS(%d)", group.Stats.FailedTests, group.Stats.PassedTests)
 
-	// Check if duration was provided from the event (-1 means no duration available)
-	if eventDuration >= 0 {
-		durationSec := eventDuration / 1000.0 // Convert ms to seconds
-		// Always show duration if provided by the test runner (including 0)
-		durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
-	} else if eventDuration < 0 {
-		// Negative duration means not available, try to calculate from start time
-		groupID := group.ID
-		if startTime, ok := o.groupStartTimes[groupID]; ok {
-			duration := time.Since(startTime).Seconds()
-			if duration > 0.01 { // Only show if > 10ms
-				durationStr = fmt.Sprintf(" (%.2fs)", duration)
+		// Make the path relative before sanitizing for report path
+		groupName := group.Name
+		if strings.HasPrefix(groupName, "/") {
+			// Derive the test execution directory from runDir
+			if absRunDir, err := filepath.Abs(o.runDir); err == nil {
+				// Go up from runDir to find the project root (parent of .3pio)
+				testExecDir := filepath.Dir(filepath.Dir(absRunDir)) // Go up twice: [id] -> runs -> .3pio
+				testExecDir = filepath.Dir(testExecDir)              // Go up once more: .3pio -> project root
+
+				// Resolve symlinks for consistent comparison
+				if resolved, err := filepath.EvalSymlinks(testExecDir); err == nil {
+					testExecDir = resolved
+				}
+				if resolvedGroup, err := filepath.EvalSymlinks(groupName); err == nil {
+					groupName = resolvedGroup
+				}
+
+				// Try to make the path relative
+				if relPath, err := filepath.Rel(testExecDir, groupName); err == nil {
+					if !strings.HasPrefix(relPath, "..") {
+						groupName = relPath
+					}
+				}
 			}
-			delete(o.groupStartTimes, groupID) // Clean up
-		}
-	}
-
-	// Display the file result using raw groupName
-	fmt.Printf("%-8s %s%s\n", statusStr, group.Name, durationStr)
-
-	// If the file failed, show details
-	if group.Status == report.TestStatusFail {
-		// Collect all failed test names from the group hierarchy
-		failedTests := o.collectFailedTests(group)
-
-		// Display up to 3 failed test names
-		displayCount := 3
-		if len(failedTests) < displayCount {
-			displayCount = len(failedTests)
 		}
 
-		for i := 0; i < displayCount; i++ {
-			fmt.Printf("  x %s\n", failedTests[i])
-		}
+		// Build report path using $base_dir placeholder
+		reportPath := fmt.Sprintf("$base_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
 
-		// Show "+N more" if there are additional failures
-		if len(failedTests) > 3 {
-			fmt.Printf("  +%d more\n", len(failedTests)-3)
-		}
-
-		// Show report path using raw groupName
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, report.SanitizeGroupName(group.Name))
-		fmt.Printf("  See %s\n", reportPath)
+		// Print all on one line
+		fmt.Printf("%s %s\n", statusStrWithCounts, reportPath)
 	}
 }
 

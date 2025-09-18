@@ -197,12 +197,22 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 			}
 		}
 
+		// Yarn (v1.x) doesn't need -- separator for script commands (yarn test, yarn run test, etc.)
+		// It automatically forwards flags to the script. Using -- with yarn can cause issues
+		// where arguments are incorrectly concatenated with pipe characters.
+		isYarnScript := len(args) >= 2 && args[0] == "yarn" &&
+			(args[1] == "test" || args[1] == "run" || !strings.Contains(args[1], "jest"))
+
 		if hasSeparator {
 			// Append reporter flags at the end (after all other Jest flags)
 			result = append(result, args...)
 			result = append(result, "--reporters", adapterPath)
+		} else if isYarnScript {
+			// For yarn scripts, don't use -- separator
+			result = append(result, args...)
+			result = append(result, "--reporters", adapterPath)
 		} else {
-			// Add all args, then -- separator, then reporter flags
+			// Add all args, then -- separator, then reporter flags (for npm, pnpm, bun)
 			result = append(result, args...)
 			result = append(result, "--", "--reporters", adapterPath)
 		}

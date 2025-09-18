@@ -15,7 +15,7 @@ const (
 	MaxWindowsPathLength = 260
 
 	// MaxComponentLength is the maximum length for a single path component
-	MaxComponentLength = 100
+	MaxComponentLength = 252
 
 	// MaxDepth is the maximum nesting depth to prevent excessive directory nesting
 	MaxDepth = 20
@@ -48,13 +48,10 @@ func SanitizeGroupName(name string) string {
 		return "_empty_"
 	}
 
-	// Step 1: Convert to lowercase (as per migration plan)
-	name = strings.ToLower(name)
-
-	// Step 2: Remove leading/trailing dots and spaces FIRST
+	// Step 1: Remove leading/trailing dots and spaces FIRST
 	name = trimPattern.ReplaceAllString(name, "")
 
-	// Step 3: Replace path separators with underscores
+	// Step 2: Replace path separators with underscores
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
 
@@ -64,26 +61,26 @@ func SanitizeGroupName(name string) string {
 	// Replace dashes with underscores
 	name = strings.ReplaceAll(name, "-", "_")
 
-	// Step 4: Replace invalid filesystem characters
+	// Step 3: Replace invalid filesystem characters
 	name = invalidCharsPattern.ReplaceAllString(name, "_")
 
-	// Step 5: Collapse multiple spaces/underscores to single underscore
+	// Step 4: Collapse multiple spaces/underscores to single underscore
 	name = multiSpacePattern.ReplaceAllString(name, "_")
 
-	// Step 6: Handle Windows reserved names
+	// Step 5: Handle Windows reserved names
 	upperName := strings.ToUpper(name)
 	if windowsReservedNames[upperName] {
 		name = "_" + name + "_"
 	}
 
-	// Step 7: Ensure name is not empty after sanitization
+	// Step 6: Ensure name is not empty after sanitization
 	if name == "" {
 		name = "_empty_"
 	}
 
-	// Step 8: Truncate if too long
+	// Step 7: Truncate if too long
 	if len(name) > MaxComponentLength {
-		// Keep first 90 chars and add hash suffix
+		// Keep first part and add hash suffix
 		hash := sha256.Sum256([]byte(name))
 		hashStr := hex.EncodeToString(hash[:4]) // 8 chars
 		name = name[:MaxComponentLength-9] + "_" + hashStr
@@ -111,7 +108,39 @@ func GenerateGroupPath(group *TestGroup, runDir string) string {
 	components := make([]string, 0, len(hierarchy)+2)
 	components = append(components, runDir, "reports")
 
+	// Derive the test execution directory from runDir
+	// runDir is something like "/tmp/3pio-open-source/jest/.3pio/runs/[id]"
+	// We need to get "/tmp/3pio-open-source/jest"
+	var testExecDir string
+	if absRunDir, err := filepath.Abs(runDir); err == nil {
+		// Go up from runDir to find the project root (parent of .3pio)
+		testExecDir = filepath.Dir(filepath.Dir(absRunDir)) // Go up twice: [id] -> runs -> .3pio
+		testExecDir = filepath.Dir(testExecDir)             // Go up once more: .3pio -> project root
+
+		// Resolve symlinks for consistent comparison
+		if resolved, err := filepath.EvalSymlinks(testExecDir); err == nil {
+			testExecDir = resolved
+		}
+	}
+
 	for _, part := range hierarchy {
+		// For absolute paths, make them relative to the test execution directory
+		if strings.HasPrefix(part, "/") && testExecDir != "" {
+			// Resolve symlinks in the file path for consistent comparison
+			resolvedPart := part
+			if resolved, err := filepath.EvalSymlinks(part); err == nil {
+				resolvedPart = resolved
+			}
+
+			// Try to make the path relative to the test execution directory
+			if relPath, err := filepath.Rel(testExecDir, resolvedPart); err == nil {
+				// Only use relative path if it doesn't go outside the project (no ../..)
+				if !strings.HasPrefix(relPath, "..") {
+					part = relPath
+				}
+			}
+		}
+
 		// Always sanitize the entire group name as a single unit
 		// This ensures Go package names like "github.com/zk/3pio" become "github_com_zk_3pio"
 		// and file paths like "./src/test.js" become "_src_test_js"
@@ -147,7 +176,39 @@ func GenerateGroupPathFromHierarchy(hierarchy []string, runDir string) string {
 	components := make([]string, 0, len(hierarchy)+2)
 	components = append(components, runDir, "reports")
 
+	// Derive the test execution directory from runDir
+	// runDir is something like "/tmp/3pio-open-source/jest/.3pio/runs/[id]"
+	// We need to get "/tmp/3pio-open-source/jest"
+	var testExecDir string
+	if absRunDir, err := filepath.Abs(runDir); err == nil {
+		// Go up from runDir to find the project root (parent of .3pio)
+		testExecDir = filepath.Dir(filepath.Dir(absRunDir)) // Go up twice: [id] -> runs -> .3pio
+		testExecDir = filepath.Dir(testExecDir)             // Go up once more: .3pio -> project root
+
+		// Resolve symlinks for consistent comparison
+		if resolved, err := filepath.EvalSymlinks(testExecDir); err == nil {
+			testExecDir = resolved
+		}
+	}
+
 	for _, part := range hierarchy {
+		// For absolute paths, make them relative to the test execution directory
+		if strings.HasPrefix(part, "/") && testExecDir != "" {
+			// Resolve symlinks in the file path for consistent comparison
+			resolvedPart := part
+			if resolved, err := filepath.EvalSymlinks(part); err == nil {
+				resolvedPart = resolved
+			}
+
+			// Try to make the path relative to the test execution directory
+			if relPath, err := filepath.Rel(testExecDir, resolvedPart); err == nil {
+				// Only use relative path if it doesn't go outside the project (no ../..)
+				if !strings.HasPrefix(relPath, "..") {
+					part = relPath
+				}
+			}
+		}
+
 		// Always sanitize the entire group name as a single unit
 		// This ensures Go package names like "github.com/zk/3pio" become "github_com_zk_3pio"
 		// and file paths like "./src/test.js" become "_src_test_js"

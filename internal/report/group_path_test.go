@@ -44,19 +44,19 @@ func TestSanitizeGroupName(t *testing.T) {
 			expected: "test",
 		},
 		{
-			name:     "Windows reserved name",
+			name:     "Windows reserved name uppercase",
 			input:    "CON",
-			expected: "_con_",
+			expected: "_CON_",
 		},
 		{
-			name:     "Windows reserved case insensitive",
+			name:     "Windows reserved name lowercase",
 			input:    "con",
 			expected: "_con_",
 		},
 		{
 			name:     "Very long name",
-			input:    strings.Repeat("a", 150),
-			expected: strings.Repeat("a", 91) + "_" + "7595af82", // Hash suffix
+			input:    strings.Repeat("a", 260),
+			expected: strings.Repeat("a", 243) + "_" + "861aee7b", // Hash suffix for 252 char limit
 		},
 		{
 			name:     "Control characters",
@@ -112,7 +112,7 @@ func TestGenerateGroupPath(t *testing.T) {
 				Name:        "should add",
 				ParentNames: []string{"math.test.js", "Calculator"},
 			},
-			contains: []string{"reports", "math_test_js", "calculator", "should_add"},
+			contains: []string{"reports", "math_test_js", "Calculator", "should_add"},
 		},
 		{
 			name: "Group with invalid chars",

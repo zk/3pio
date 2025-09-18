@@ -67,7 +67,36 @@ func (gm *GroupManager) logError(format string, args ...interface{}) {
 	}
 }
 
-// makeRelativePath converts an absolute path to a relative path if it's a file path
+// normalizeToAbsolutePath converts any path to an absolute path for consistent storage
+func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
+	// If it's not a file path (e.g., test names, suite names), return as-is
+	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") && !strings.Contains(name, "/") {
+		return name
+	}
+
+	// Convert to absolute path
+	if absPath, err := filepath.Abs(name); err == nil {
+		// Only try to resolve symlinks if the path actually exists
+		// This prevents errors in tests and handles cases where the file doesn't exist yet
+		if _, statErr := os.Stat(absPath); statErr == nil {
+			if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+				return resolved
+			}
+			// File exists but symlink resolution failed, return absolute path
+			return absPath
+		}
+		// File doesn't exist - this might be a test group name, not a real file path
+		// Only return absolute path if it looks like a real file path
+		if strings.HasPrefix(name, "/") || strings.HasPrefix(name, "./") {
+			return absPath
+		}
+	}
+
+	// Fallback to original name if conversion fails or if it's not a real file path
+	return name
+}
+
+// makeRelativePath converts absolute paths to relative for display purposes only
 func (gm *GroupManager) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
 	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") {
@@ -97,11 +126,11 @@ func (gm *GroupManager) ProcessGroupDiscovered(event ipc.GroupDiscoveredEvent) e
 
 	payload := event.Payload
 
-	// Convert absolute paths to relative paths for file groups
-	groupName := gm.makeRelativePath(payload.GroupName)
+	// Normalize paths to absolute for consistent storage
+	groupName := gm.normalizeToAbsolutePath(payload.GroupName)
 	parentNames := make([]string, len(payload.ParentNames))
 	for i, name := range payload.ParentNames {
-		parentNames[i] = gm.makeRelativePath(name)
+		parentNames[i] = gm.normalizeToAbsolutePath(name)
 	}
 
 	groupID := GenerateGroupID(groupName, parentNames)
@@ -152,11 +181,11 @@ func (gm *GroupManager) ProcessGroupStart(event ipc.GroupStartEvent) error {
 
 	payload := event.Payload
 
-	// Convert absolute paths to relative paths
-	groupName := gm.makeRelativePath(payload.GroupName)
+	// Normalize paths to absolute for consistent storage
+	groupName := gm.normalizeToAbsolutePath(payload.GroupName)
 	parentNames := make([]string, len(payload.ParentNames))
 	for i, name := range payload.ParentNames {
-		parentNames[i] = gm.makeRelativePath(name)
+		parentNames[i] = gm.normalizeToAbsolutePath(name)
 	}
 
 	groupID := GenerateGroupID(groupName, parentNames)
@@ -198,11 +227,11 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 
 	payload := event.Payload
 
-	// Convert absolute paths to relative paths
-	groupName := gm.makeRelativePath(payload.GroupName)
+	// Normalize paths to absolute for consistent storage
+	groupName := gm.normalizeToAbsolutePath(payload.GroupName)
 	parentNames := make([]string, len(payload.ParentNames))
 	for i, name := range payload.ParentNames {
-		parentNames[i] = gm.makeRelativePath(name)
+		parentNames[i] = gm.normalizeToAbsolutePath(name)
 	}
 
 	groupID := GenerateGroupID(groupName, parentNames)
@@ -266,11 +295,11 @@ func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
 
 	payload := event.Payload
 
-	// Convert absolute paths to relative paths
-	groupName := gm.makeRelativePath(payload.GroupName)
+	// Normalize paths to absolute for consistent storage
+	groupName := gm.normalizeToAbsolutePath(payload.GroupName)
 	parentNames := make([]string, len(payload.ParentNames))
 	for i, name := range payload.ParentNames {
-		parentNames[i] = gm.makeRelativePath(name)
+		parentNames[i] = gm.normalizeToAbsolutePath(name)
 	}
 
 	groupID := GenerateGroupID(groupName, parentNames)
@@ -331,10 +360,10 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 
 	payload := event.Payload
 
-	// Convert absolute paths to relative paths
+	// Normalize paths to absolute for consistent storage
 	parentNames := make([]string, len(payload.ParentNames))
 	for i, name := range payload.ParentNames {
-		parentNames[i] = gm.makeRelativePath(name)
+		parentNames[i] = gm.normalizeToAbsolutePath(name)
 	}
 
 	// The test's parent is the full parent hierarchy

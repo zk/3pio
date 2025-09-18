@@ -148,7 +148,7 @@ func TestErrorReportingToConsole(t *testing.T) {
 	}
 
 	// Verify that we still get the standard 3pio output
-	if !strings.Contains(output, "Full report:") {
+	if !strings.Contains(output, "full_report:") {
 		t.Error("Missing standard 3pio output")
 	}
 }

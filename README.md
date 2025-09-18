@@ -283,7 +283,7 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 
 3pio injects a custom reporter into the provided test command `npm test` -> `npm test --reporter /custom/jest/reporter.js`. This reporter sends events back to the main process which are analyzed, transformed, and written to the filesystem as a navigable tree of test information.
 
-**Note:** 3pio writes it's files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
+**Note:** 3pio writes its files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
 
 
 ## Supported Test Runners
