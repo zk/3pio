@@ -50,7 +50,7 @@ Open source testing serves as a critical debugging and quality assurance tool:
   - Run tests in background and check periodically. Some test suites take many minutes to complete.
   - Update Baseline Run section of report
     - Record pass / fail / skipped / notest, duration, and exit code.
-  - Note any anomolies
+- Note any anomalies
 - Run 3pio test
   - Run project tests with identified test command prefixed with `3pio`. ex. `3pio npm test`.
   - Write console output to a file called `3pio.out` in report directory for later analysis

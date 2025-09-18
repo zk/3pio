@@ -77,7 +77,7 @@ IPC paths are injected directly into adapter code at runtime:
 - Automatically adds `-json` flag if not present
 - Package information derived dynamically from test events
 - Tracks test state for parallel test attribution
-- Handles cached test results with CACH status
+- Handles cached test results with CACHED status
 
 **Special Considerations**:
 - Uses Go's built-in JSON output format (available since Go 1.10)

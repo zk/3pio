@@ -23,11 +23,11 @@ After installation, run `3pio --help` for helpful information on how to use it.
 
 ## Why?
 
-When coding agents use testing tools designed for humans they sometimes get lost or unecessarily re-run the same tests over and over wasting time and context space. In some cases this can prevent the agent from moving forward altogether.
+When coding agents use testing tools designed for humans they sometimes get lost or unnecessarily re-run the same tests over and over wasting time and context space. In some cases this can prevent the agent from moving forward altogether.
 
 3pio creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
 
-Using 3pio, your agent knows how to find the information it needs to know, and it can revist the results over and over. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
+Using 3pio, your agent knows how to find the information it needs to know, and it can revisit the results over and over. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
 
 
 ## Features
@@ -56,7 +56,7 @@ You may want to add that to your CLAUDE.md / AGENTS.md / GEMINI.md. Another opti
 
 ## Usage
 
-Tell your agent to prefix any test command with `3pio`, works with any flags or arugments.
+Tell your agent to prefix any test command with `3pio`, works with any flags or arguments.
 
 ```bash
 $ 3pio npm test

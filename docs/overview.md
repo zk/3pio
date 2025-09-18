@@ -4,9 +4,9 @@
 
 ## Project Goals
 
-- Make running tests context-efficient for agents, existing test runners' output ergronomics are for humans.
-- First class DX for devs and agents. Since 3pio is a tool for agents, dev DX is mainly around installation and maintenence.
-  - Easy to install with your preferred package manager. This means we support many package managers, but they all install the same artifcats.
+- Make running tests context-efficient for agents, existing test runners' output ergonomics are for humans.
+- First class DX for devs and agents. Since 3pio is a tool for agents, dev DX is mainly around installation and maintenance.
+  - Easy to install with your preferred package manager. This means we support many package managers, but they all install the same artifacts.
   - Easy to use for agents: simple invocation (prefix existing test command with `3pio`). This means supporting and testing against a wide range of cli invocations.
 
 ## Key Features
