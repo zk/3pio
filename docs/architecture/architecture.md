@@ -86,6 +86,8 @@ The system uses different file watching approaches based on the writer/reader re
 - Files are explicitly synced (`file.Sync()`) before closing for Windows compatibility
 - Relies on `processExited` channel for termination
 
+See also: [IPC Communication](./ipc-communication.md) for runner-specific IPC flows and SIGINT context.
+
 ### 6. Embedded Adapters (`internal/adapters/`)
 JavaScript and Python reporters embedded in the Go binary:
 - `jest.js`: Jest reporter implementation

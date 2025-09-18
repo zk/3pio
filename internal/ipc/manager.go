@@ -23,8 +23,10 @@ type Manager struct {
 	closeOnce sync.Once
 	logger    Logger
 	file      *os.File
-	reader    *bufio.Reader
-	readerMu  sync.Mutex // Protects concurrent access to reader
+    reader    *bufio.Reader
+    readerMu  sync.Mutex // Protects concurrent access to reader
+    // partialBuffer holds an incomplete JSON line between fsnotify events
+    partialBuffer []byte
 }
 
 // Logger interface for debug logging
@@ -64,11 +66,15 @@ func NewManager(ipcPath string, logger Logger) (*Manager, error) {
 
 // WatchEvents starts watching the IPC file for new events
 func (m *Manager) WatchEvents() error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("failed to create file watcher: %w", err)
-	}
-	m.watcher = watcher
+    // Prevent multiple concurrent watchers on the same Manager
+    if m.watcher != nil {
+        return fmt.Errorf("watch already started")
+    }
+    watcher, err := fsnotify.NewWatcher()
+    if err != nil {
+        return fmt.Errorf("failed to create file watcher: %w", err)
+    }
+    m.watcher = watcher
 
 	// Add the IPC file to the watcher
 	if err := watcher.Add(m.IPCPath); err != nil {
@@ -86,22 +92,32 @@ func (m *Manager) WatchEvents() error {
 
 // readEvents reads events from the current position in the file
 func (m *Manager) readEvents() {
-	m.readerMu.Lock()
-	defer m.readerMu.Unlock()
+    m.readerMu.Lock()
+    defer m.readerMu.Unlock()
 
-	for {
-		line, err := m.reader.ReadBytes('\n')
-		if err != nil {
-			if err != io.EOF {
-				m.logger.Error("Error reading events: %v", err)
-			}
-			break
-		}
+    for {
+        line, err := m.reader.ReadBytes('\n')
+        if err != nil {
+            if err == io.EOF {
+                // Cache partial data (no newline yet) for next write
+                if len(line) > 0 {
+                    m.partialBuffer = append(m.partialBuffer, line...)
+                }
+                break
+            }
+            m.logger.Error("Error reading events: %v", err)
+            break
+        }
 
-		if len(line) > 0 {
-			m.parseAndSendEvent(line)
-		}
-	}
+        if len(line) > 0 {
+            // Prepend any previously buffered partial data
+            if len(m.partialBuffer) > 0 {
+                line = append(append([]byte(nil), m.partialBuffer...), line...)
+                m.partialBuffer = nil
+            }
+            m.parseAndSendEvent(line)
+        }
+    }
 }
 
 // watchLoop watches for file changes and triggers reads
