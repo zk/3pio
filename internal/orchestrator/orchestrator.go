@@ -163,8 +163,15 @@ func (o *Orchestrator) Run() error {
 	baseDir := o.runDir
 	fullReport := "$base_dir/test-run.md"
 
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "unknown"
+	}
+
 	fmt.Println("---")
 	fmt.Printf("current_time: %s\n", currentTime)
+	fmt.Printf("cwd: %s\n", cwd)
 	fmt.Printf("test_command: `%s`\n", testCommand)
 	fmt.Printf("base_dir: %s\n", baseDir)
 	fmt.Printf("full_report: %s\n", fullReport)
