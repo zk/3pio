@@ -671,6 +671,31 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 	return absPath
 }
 
+// normalizePathForReportManager normalizes paths the same way the report manager's GroupManager does
+func (o *Orchestrator) normalizePathForReportManager(name string) string {
+	// If it's not a file path (e.g., test names, suite names), return as-is
+	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") && !strings.Contains(name, "/") {
+		return name
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(name)
+	if err != nil {
+		// If we can't get absolute path, return original
+		return name
+	}
+
+	// Always attempt to resolve symlinks for absolute paths
+	// This is crucial for macOS where /tmp is a symlink to /private/tmp
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		return resolved
+	}
+
+	// If symlink resolution fails, return the absolute path
+	return absPath
+}
+
 // makeRelativePath normalizes paths to relative paths (matching report manager)
 func (o *Orchestrator) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
@@ -821,11 +846,11 @@ func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string
 	o.logger.Debug("displayGroupResult called: group=%s, parentNames=%v, status=%s, duration=%f",
 		groupName, parentNames, status, duration)
 
-	// Normalize paths to match how they're stored in the report manager
-	normalizedGroupName := o.makeRelativePath(groupName)
+	// Normalize paths the same way the report manager does - absolute paths with symlink resolution
+	normalizedGroupName := o.normalizePathForReportManager(groupName)
 	normalizedParentNames := make([]string, len(parentNames))
 	for i, name := range parentNames {
-		normalizedParentNames[i] = o.makeRelativePath(name)
+		normalizedParentNames[i] = o.normalizePathForReportManager(name)
 	}
 
 	groupID := report.GenerateGroupID(normalizedGroupName, normalizedParentNames)
@@ -871,26 +896,54 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// For groups without test cases, show their actual status (SKIP or FAIL)
 	if !group.HasTestCases() {
-		statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+		// Check if this is a package with no test files or failed group
+		isNoTests := o.noTestGroups[group.Name]
+		isFailed := group.Status == report.TestStatusFail
 
-		// Check if this is a package with no test files
-		if o.noTestGroups[group.Name] {
-			statusStr = "NO_TESTS"
-		}
-
-		o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
-
-		// Get duration for groups with no tests (cargo reports duration even for 0 tests)
-		durationStr := ""
-		if eventDuration >= 0 {
-			durationSec := eventDuration / 1000.0 // Convert ms to seconds
-			durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
-		}
+		o.logger.Debug("Group %s has no test cases, isNoTests=%v, isFailed=%v", group.Name, isNoTests, isFailed)
 
 		// Only show if failed or has no tests (don't show successful groups)
-		if group.Status == report.TestStatusFail || statusStr == "NO_TESTS" {
-			displayPath := o.makeRelativePath(group.Name)
-			fmt.Printf("%s %s%s\n", statusStr, displayPath, durationStr)
+		if isFailed || isNoTests {
+			// Build status string
+			var statusParts []string
+			if isFailed {
+				statusParts = append(statusParts, "FAIL")
+			}
+			if isNoTests {
+				statusParts = append(statusParts, "NO_TESTS")
+			}
+
+			// Make the path relative before sanitizing for report path
+			groupName := group.Name
+			if strings.HasPrefix(groupName, "/") {
+				// Derive the test execution directory from runDir
+				if absRunDir, err := filepath.Abs(o.runDir); err == nil {
+					// Go up from runDir to find the project root (parent of .3pio)
+					testExecDir := filepath.Dir(filepath.Dir(absRunDir)) // Go up twice: [id] -> runs -> .3pio
+					testExecDir = filepath.Dir(testExecDir)              // Go up once more: .3pio -> project root
+
+					// Resolve symlinks for consistent comparison
+					if resolved, err := filepath.EvalSymlinks(testExecDir); err == nil {
+						testExecDir = resolved
+					}
+					if resolvedGroup, err := filepath.EvalSymlinks(groupName); err == nil {
+						groupName = resolvedGroup
+					}
+
+					// Try to make the path relative
+					if relPath, err := filepath.Rel(testExecDir, groupName); err == nil {
+						if !strings.HasPrefix(relPath, "..") {
+							groupName = relPath
+						}
+					}
+				}
+			}
+
+			// Build report path using $base_dir placeholder
+			reportPath := fmt.Sprintf("$base_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
+
+			// Print all on one line
+			fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
 		}
 		return
 	}
@@ -899,10 +952,40 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 	o.logger.Debug("displayGroupHierarchy: group.Status=%s for %s",
 		group.Status, group.Name)
 
-	// Only display groups that have failures
-	if group.Stats.FailedTests > 0 {
-		// Build status string with fail/pass counts
-		statusStrWithCounts := fmt.Sprintf("FAIL(%d) PASS(%d)", group.Stats.FailedTests, group.Stats.PassedTests)
+	// Update stats to ensure they're current
+	group.UpdateStats()
+
+	// Only display groups that have failures or no tests
+	// Use recursive stats to include subgroups
+	hasNoTestsAtAll := group.Stats.TotalTestsRecursive == 0 && group.Stats.SkippedTestsRecursive == 0
+
+	o.logger.Debug("Group %s: FailedTestsRecursive=%d, TotalTestsRecursive=%d, PassedTestsRecursive=%d, SkippedTestsRecursive=%d",
+		group.Name, group.Stats.FailedTestsRecursive, group.Stats.TotalTestsRecursive, group.Stats.PassedTestsRecursive, group.Stats.SkippedTestsRecursive)
+
+	if group.Stats.FailedTestsRecursive > 0 || hasNoTestsAtAll {
+		// Build status string with fail/pass/skip counts
+		var statusParts []string
+
+		// Check if this is a NO_TESTS case first
+		if hasNoTestsAtAll && o.noTestGroups[group.Name] {
+			// For NO_TESTS groups, just show NO_TESTS without counts
+			statusParts = append(statusParts, "NO_TESTS")
+		} else {
+			// Add FAIL count if there are failures
+			if group.Stats.FailedTestsRecursive > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTestsRecursive))
+			}
+
+			// Add PASS count only if > 0
+			if group.Stats.PassedTestsRecursive > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTestsRecursive))
+			}
+
+			// Add SKIP count only if > 0
+			if group.Stats.SkippedTestsRecursive > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTestsRecursive))
+			}
+		}
 
 		// Make the path relative before sanitizing for report path
 		groupName := group.Name
@@ -934,7 +1017,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 		reportPath := fmt.Sprintf("$base_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
 
 		// Print all on one line
-		fmt.Printf("%s %s\n", statusStrWithCounts, reportPath)
+		fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
 	}
 }
 
@@ -1043,10 +1126,8 @@ func (o *Orchestrator) displayFinalResults() {
 	// Get all root groups (files) from the report manager
 	rootGroups := o.reportManager.GetRootGroups()
 	for _, group := range rootGroups {
-		// Only display groups that have test cases
-		if group.HasTestCases() {
-			o.displayGroupHierarchy(group, 0, -1) // No duration available in this context (-1 indicates no duration)
-		}
+		// Display all groups (including those without test cases, which might be NO_TESTS)
+		o.displayGroupHierarchy(group, 0, -1) // No duration available in this context (-1 indicates no duration)
 	}
 }
 
