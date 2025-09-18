@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-3pio is a context friendly test runner. It translates traditional test runner output (Jest, Vitest, Mocha, Cypress, pytest) and native runner output (Go test, Rust cargo test/nextest) into a format optimized for coding agents — providing persistent, structured, file-based records that are context-efficient and searchable.
+3pio is a context friendly test runner. It translates traditional test runner output (Jest, Vitest, pytest) into a format optimized for coding agents - providing persistent, structured, file-based records that are context-efficient and searchable.
 
 ## Key Architecture Components
 
@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **CLI Orchestrator** (`cmd/3pio/main.go`) - Main entry point, manages test lifecycle
 2. **Report Manager** (`internal/report/`) - Handles all report file I/O with incremental writing
 3. **IPC Manager** (`internal/ipc/`) - File-based communication between adapters and CLI
-4. **Test Runner Adapters** (`internal/adapters/`) - JavaScript/Python reporters embedded in the binary (Jest, Vitest, Mocha, Cypress, pytest). Native runners (Go test, cargo test/nextest) do not require adapters.
+4. **Test Runner Adapters** (`internal/adapters/`) - JavaScript/Python reporters embedded in the binary
 5. **Process Manager** (`internal/process/`) - Spawns and monitors test runner processes
 6. **Output Parser** (`internal/output/`) - Parses stdout/stderr streams
 
@@ -29,7 +29,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Console Output Capture Strategy
 - **Jest**: 3pio does NOT use Jest's default reporter to avoid duplicate output
 - **Vitest**: 3pio DOES include Vitest's default reporter for better user experience
-- **Mocha/Cypress**: Custom Mocha reporter emits IPC events; no stdout/stderr
 - **pytest**: Uses custom plugin that integrates with pytest's hook system
 - All console output from tests is captured at the CLI process level by monitoring stdout/stderr streams
 - The captured output is stored in `.3pio/runs/*/output.log` as a complete record
@@ -145,7 +144,7 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 - Process management and signal handling
 
 ### End-to-End Tests Required For
-- Complete runs against fixture projects (Jest/Vitest/Mocha/Cypress/pytest, Go, Cargo)
+- Complete runs against fixture projects (Jest/Vitest/pytest)
 - Correct preamble generation
 - Accurate report file generation
 - Exit code mirroring

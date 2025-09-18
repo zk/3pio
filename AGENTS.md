@@ -34,10 +34,5 @@
 - For releases/packaging, see `.goreleaser.yml`, `packaging/`, and `Makefile` targets.
 
 ## Agent-Specific Notes
-- When running tests in this repo or downstream projects, prefer `3pio <your test command>`.
-- Supported runners include:
-  - JavaScript: Jest, Vitest, Mocha, Cypress
-  - Python: pytest
-  - Go: go test (native)
-  - Rust: cargo test and cargo nextest (native)
-- Consult `README.md` and `docs/` for runner-specific notes.
+- When running tests in this repo or downstream projects, prefer `3pio <your test command>` and consult `README.md` for adapter details.
+

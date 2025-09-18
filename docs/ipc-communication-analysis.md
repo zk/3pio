@@ -171,4 +171,3 @@ The complete picture:
    - Then IPC Manager tails `ipc.jsonl` → sends events to report manager
 
 So yes, ALL runners involve tailing the `ipc.jsonl` file, but only native runners also tail `output.log`. The SIGINT bug only affected the `output.log` tailing (TailReader), not the `ipc.jsonl` watching.
-
