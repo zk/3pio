@@ -419,8 +419,17 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 		testCase.Status = TestStatusFail
 	case "SKIP":
 		testCase.Status = TestStatusSkip
+	case "XFAIL":
+		testCase.Status = TestStatusXFail
+	case "XPASS":
+		testCase.Status = TestStatusXPass
 	default:
 		testCase.Status = TestStatusPending
+	}
+
+	// Set xfail reason if present
+	if payload.XFailReason != "" {
+		testCase.XFailReason = payload.XFailReason
 	}
 
 	// Set duration
@@ -800,6 +809,12 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 		if group.Stats.SkippedTests > 0 {
 			content += fmt.Sprintf("- Group tests skipped: %d\n", group.Stats.SkippedTests)
 		}
+		if group.Stats.XFailedTests > 0 {
+			content += fmt.Sprintf("- Group tests xfailed: %d\n", group.Stats.XFailedTests)
+		}
+		if group.Stats.XPassedTests > 0 {
+			content += fmt.Sprintf("- Group tests xpassed: %d\n", group.Stats.XPassedTests)
+		}
 
 		// Also show subgroup counts if we have both direct tests and subgroups
 		if len(group.Subgroups) > 0 {
@@ -867,6 +882,10 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 				icon = "✕"
 			case TestStatusSkip:
 				icon = "○"
+			case TestStatusXFail:
+				icon = "⊗" // Expected failure
+			case TestStatusXPass:
+				icon = "⊕" // Unexpected pass
 			default:
 				icon = "✓"
 			}
@@ -876,6 +895,11 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 				content += fmt.Sprintf(" (%.2fs)", tc.Duration.Seconds())
 			}
 			content += "\n"
+
+			// XFail reason if available
+			if tc.Status == TestStatusXFail && tc.XFailReason != "" {
+				content += fmt.Sprintf("  > *Expected failure: %s*\n", tc.XFailReason)
+			}
 
 			// Error details indented under the test
 			if tc.Error != nil && tc.Status == TestStatusFail {
@@ -1058,6 +1082,10 @@ func (gm *GroupManager) generateSummaryReport() string {
 			icon = "✕"
 		case TestStatusSkip:
 			icon = "○"
+		case TestStatusXFail:
+			icon = "⊗" // Expected failure
+		case TestStatusXPass:
+			icon = "⊕" // Unexpected pass
 		case TestStatusRunning:
 			icon = "⚡"
 		case TestStatusPending:
@@ -1069,11 +1097,28 @@ func (gm *GroupManager) generateSummaryReport() string {
 		relPath := GetRelativeReportPath(group, gm.runDir)
 		content += fmt.Sprintf("- %s [%s](%s)", icon, group.Name, relPath)
 		if group.Stats.TotalTestsRecursive > 0 {
-			content += fmt.Sprintf(" (%d tests: %d passed, %d failed, %d skipped)",
-				group.Stats.TotalTestsRecursive,
-				group.Stats.PassedTestsRecursive,
-				group.Stats.FailedTestsRecursive,
-				group.Stats.SkippedTestsRecursive)
+			// Build statistics string dynamically to only include non-zero counts
+			var statParts []string
+			if group.Stats.PassedTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d passed", group.Stats.PassedTestsRecursive))
+			}
+			if group.Stats.FailedTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d failed", group.Stats.FailedTestsRecursive))
+			}
+			if group.Stats.SkippedTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d skipped", group.Stats.SkippedTestsRecursive))
+			}
+			if group.Stats.XFailedTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d xfailed", group.Stats.XFailedTestsRecursive))
+			}
+			if group.Stats.XPassedTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d xpassed", group.Stats.XPassedTestsRecursive))
+			}
+			if len(statParts) > 0 {
+				content += fmt.Sprintf(" (%d tests: %s)", group.Stats.TotalTestsRecursive, strings.Join(statParts, ", "))
+			} else {
+				content += fmt.Sprintf(" (%d tests)", group.Stats.TotalTestsRecursive)
+			}
 		}
 		content += "\n"
 	}

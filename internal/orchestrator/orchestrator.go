@@ -40,10 +40,14 @@ type Orchestrator struct {
 	passedGroups     int
 	failedGroups     int
 	skippedGroups    int
+	xfailedGroups    int // Track groups with xfailed tests
+	xpassedGroups    int // Track groups with xpassed tests
 	totalGroups      int
 	passedTests      int                  // Track actual test cases
 	failedTests      int                  // Track actual test cases
 	skippedTests     int                  // Track actual test cases
+	xfailedTests     int                  // Track expected failures (xfail)
+	xpassedTests     int                  // Track unexpected passes (xpass)
 	totalTests       int                  // Track actual test cases
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
@@ -623,28 +627,43 @@ func (o *Orchestrator) Run() error {
 	// Format results summary
 	// Show test case counts when we have actual test counts with skipped tests
 	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
-	if o.totalTests > 0 && (o.skippedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+	if o.totalTests > 0 && (o.skippedTests > 0 || o.xfailedTests > 0 || o.xpassedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
 		// Show test case counts
-		if o.skippedTests > 0 {
-			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
-				o.passedTests, o.failedTests, o.skippedTests, o.totalTests)
-		} else if o.failedTests > 0 {
-			fmt.Printf("Results:     %d passed, %d failed, %d total\n",
-				o.passedTests, o.failedTests, o.totalTests)
-		} else {
-			fmt.Printf("Results:     %d passed, %d total\n", o.passedTests, o.totalTests)
+		// Build the results string dynamically to only include non-zero counts
+		var parts []string
+		parts = append(parts, fmt.Sprintf("%d passed", o.passedTests))
+		if o.failedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d failed", o.failedTests))
 		}
+		if o.skippedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d skipped", o.skippedTests))
+		}
+		if o.xfailedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d xfailed", o.xfailedTests))
+		}
+		if o.xpassedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d xpassed", o.xpassedTests))
+		}
+		parts = append(parts, fmt.Sprintf("%d total", o.totalTests))
+		fmt.Printf("Results:     %s\n", strings.Join(parts, ", "))
 	} else {
 		// Show group counts for other runners or when no test-level detail available
-		if o.skippedGroups > 0 {
-			fmt.Printf("Results:     %d passed, %d failed, %d skipped, %d total\n",
-				o.passedGroups, o.failedGroups, o.skippedGroups, o.totalGroups)
-		} else if o.failedGroups > 0 {
-			fmt.Printf("Results:     %d passed, %d failed, %d total\n",
-				o.passedGroups, o.failedGroups, o.totalGroups)
-		} else {
-			fmt.Printf("Results:     %d passed, %d total\n", o.passedGroups, o.totalGroups)
+		var parts []string
+		parts = append(parts, fmt.Sprintf("%d passed", o.passedGroups))
+		if o.failedGroups > 0 {
+			parts = append(parts, fmt.Sprintf("%d failed", o.failedGroups))
 		}
+		if o.skippedGroups > 0 {
+			parts = append(parts, fmt.Sprintf("%d skipped", o.skippedGroups))
+		}
+		if o.xfailedGroups > 0 {
+			parts = append(parts, fmt.Sprintf("%d xfailed", o.xfailedGroups))
+		}
+		if o.xpassedGroups > 0 {
+			parts = append(parts, fmt.Sprintf("%d xpassed", o.xpassedGroups))
+		}
+		parts = append(parts, fmt.Sprintf("%d total", o.totalGroups))
+		fmt.Printf("Results:     %s\n", strings.Join(parts, ", "))
 	}
 
 	// Calculate and display elapsed time
@@ -797,6 +816,10 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			o.failedTests++
 		case "SKIP":
 			o.skippedTests++
+		case "XFAIL":
+			o.xfailedTests++
+		case "XPASS":
+			o.xpassedTests++
 		}
 
 		// Track failed tests for hierarchical display
@@ -1107,6 +1130,10 @@ func convertStringToTestStatus(status string) ipc.TestStatus {
 		return ipc.TestStatusFail
 	case "SKIP":
 		return ipc.TestStatusSkip
+	case "XFAIL":
+		return ipc.TestStatusXFail
+	case "XPASS":
+		return ipc.TestStatusXPass
 	case "NOTESTS", "NO_TESTS":
 		// Special status for packages with no test files
 		return ipc.TestStatusNoTests

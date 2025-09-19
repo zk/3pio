@@ -63,6 +63,8 @@ type GroupTotals struct {
 	Passed      int  `json:"passed"`
 	Failed      int  `json:"failed"`
 	Skipped     int  `json:"skipped"`
+	XFailed     int  `json:"xfailed,omitempty"`
+	XPassed     int  `json:"xpassed,omitempty"`
 	Total       int  `json:"total,omitempty"`
 	SetupFailed bool `json:"setupFailed,omitempty"`
 }
@@ -78,11 +80,12 @@ func (e GroupTestCaseEvent) Type() EventType { return EventTypeGroupTestCase }
 type TestCasePayload struct {
 	TestName    string                 `json:"testName"`
 	ParentNames []string               `json:"parentNames,omitempty"` // Full hierarchy including file and describe blocks
-	Status      string                 `json:"status"`                // "PASS", "FAIL", "SKIP", "PENDING"
+	Status      string                 `json:"status"`                // "PASS", "FAIL", "SKIP", "PENDING", "XFAIL", "XPASS"
 	Duration    float64                `json:"duration,omitempty"`    // Duration in milliseconds
 	Error       *TestError             `json:"error,omitempty"`
 	Stdout      string                 `json:"stdout,omitempty"`
 	Stderr      string                 `json:"stderr,omitempty"`
+	XFailReason string                 `json:"xfailReason,omitempty"` // Reason for expected failure (xfail marker)
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	Timestamp   int64                  `json:"timestamp,omitempty"`
 }

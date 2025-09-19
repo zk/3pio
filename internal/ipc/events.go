@@ -23,6 +23,8 @@ const (
 	TestStatusPending TestStatus = "PENDING"
 	TestStatusRunning TestStatus = "RUNNING"
 	TestStatusNoTests TestStatus = "NO_TESTS"
+	TestStatusXFail   TestStatus = "XFAIL" // Test failed as expected
+	TestStatusXPass   TestStatus = "XPASS" // Test passed unexpectedly
 )
 
 // Event is the base interface for all IPC events

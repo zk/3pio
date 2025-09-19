@@ -15,6 +15,8 @@ const (
 	TestStatusSkip    TestStatus = "SKIP"
 	TestStatusNoTests TestStatus = "NO_TESTS"
 	TestStatusError   TestStatus = "ERROR"
+	TestStatusXFail   TestStatus = "XFAIL" // Test failed as expected
+	TestStatusXPass   TestStatus = "XPASS" // Test passed unexpectedly
 )
 
 // TestGroup represents a hierarchical group of tests (file, describe block, class, etc.)
@@ -55,6 +57,8 @@ type TestGroupStats struct {
 	PassedTests  int
 	FailedTests  int
 	SkippedTests int
+	XFailedTests int  // Tests that failed as expected
+	XPassedTests int  // Tests that passed unexpectedly
 	SetupFailed  bool // Indicates this group failed during setup/initialization
 
 	// Recursive counts (includes subgroups)
@@ -62,6 +66,8 @@ type TestGroupStats struct {
 	PassedTestsRecursive  int
 	FailedTestsRecursive  int
 	SkippedTestsRecursive int
+	XFailedTestsRecursive int
+	XPassedTestsRecursive int
 }
 
 // TestCase represents an individual test
@@ -72,10 +78,11 @@ type TestCase struct {
 	Name    string // Test name (e.g., "should add two numbers")
 
 	// Status and timing
-	Status    TestStatus
-	Duration  time.Duration
-	StartTime time.Time
-	EndTime   time.Time
+	Status      TestStatus
+	Duration    time.Duration
+	StartTime   time.Time
+	EndTime     time.Time
+	XFailReason string // Reason for expected failure (xfail marker)
 
 	// Error information
 	Error *TestError
@@ -100,7 +107,9 @@ func (g *TestGroup) IsComplete() bool {
 	return g.Status == TestStatusPass ||
 		g.Status == TestStatusFail ||
 		g.Status == TestStatusSkip ||
-		g.Status == TestStatusError
+		g.Status == TestStatusError ||
+		g.Status == TestStatusXFail ||
+		g.Status == TestStatusXPass
 }
 
 // HasFailures returns true if the group or any of its children have failures
@@ -144,6 +153,12 @@ func (g *TestGroup) UpdateStats() {
 		case TestStatusSkip:
 			g.Stats.SkippedTests++
 			g.Stats.SkippedTestsRecursive++
+		case TestStatusXFail:
+			g.Stats.XFailedTests++
+			g.Stats.XFailedTestsRecursive++
+		case TestStatusXPass:
+			g.Stats.XPassedTests++
+			g.Stats.XPassedTestsRecursive++
 		}
 	}
 
@@ -154,6 +169,8 @@ func (g *TestGroup) UpdateStats() {
 		g.Stats.PassedTestsRecursive += sg.Stats.PassedTestsRecursive
 		g.Stats.FailedTestsRecursive += sg.Stats.FailedTestsRecursive
 		g.Stats.SkippedTestsRecursive += sg.Stats.SkippedTestsRecursive
+		g.Stats.XFailedTestsRecursive += sg.Stats.XFailedTestsRecursive
+		g.Stats.XPassedTestsRecursive += sg.Stats.XPassedTestsRecursive
 	}
 
 	// Update group status based on children
