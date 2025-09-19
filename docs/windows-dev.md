@@ -71,3 +71,15 @@ Troubleshooting
 - `LongPathsEnabled`: If tools still fail on long paths, reboot the VM after bootstrap.
 - SMB share slow: Clone the repo locally inside the VM instead.
 
+Enable SSH for Host Automation (optional but recommended)
+- Install and enable OpenSSH Server on Windows to allow the macOS host to start tests remotely and fetch results.
+- PowerShell (Admin):
+  - Install: `Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0`
+  - Start now: `Start-Service sshd`
+  - Auto-start: `Set-Service -Name sshd -StartupType Automatic`
+  - Firewall: `New-NetFirewallRule -Name sshd -DisplayName "OpenSSH Server" -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22`
+  - Find Windows username: `whoami`
+
+Run Windows tests from macOS
+- Use `scripts/macos/run-windows-tests.sh` to start the UTM VM (by bundle path or name), wait for SSH, run Go unit/integration tests inside Windows via PowerShell, and copy results back to `.3pio/windows-run/` on your Mac.
+- See script `--help` for required flags (Windows host/IP, username, repo path in Windows).

@@ -947,9 +947,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 					// Try to make the path relative
 					if relPath, err := filepath.Rel(testExecDir, groupName); err == nil {
-						if !strings.HasPrefix(relPath, "..") {
-							groupName = relPath
-						}
+						_ = relPath // no-op; kept for clarity, actual path comes from report manager below
 					}
 				}
 			}
@@ -1023,9 +1021,7 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 				// Try to make the path relative
 				if relPath, err := filepath.Rel(testExecDir, groupName); err == nil {
-					if !strings.HasPrefix(relPath, "..") {
-						groupName = relPath
-					}
+					_ = relPath // no-op; kept for clarity, actual path comes from report manager below
 				}
 			}
 		}
