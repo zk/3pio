@@ -2,33 +2,28 @@
     <img src="./assets/3pio_logo_wide.jpg" width="1024" height="240" />
 </p>
 
-# 3pio - A context-optimized test runner for coding agents
+# 3pio - A context-optimized test runner runner for coding agents
 
-3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
+3pio is a test runner runner (a thing that runs test runners) that translates traditional test output into a format optimized for coding agents.
 
-3pio is not a new test framework, it works with your existing tests and test runners. Usage is simple, just have your agent prefix your existing test commands with `3pio`.
+3pio provides context-efficient console output and file-based logs that play well with your agent's tools, especially on brownfield projects.
 
+3pio is not:
+- A test runner, it uses your test runner (vitest, pytest, cargo nextest, etc)
+- A test framework, it uses your existing tests.
 
-## Why?
-
-Testing tools designed for humans add noise to your agent's context. Often multiple test runs are required to complete tasks, compounding the issue, wasting valuable time and context space.
-
-3pio generates focused console output and creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
-
-Using 3pio, your agent can target the information it needs to know. It can revisit results preventing unecessary test reruns altogether. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
-
+No code changes and no config, it's that simple.
 
 ## Features
 
-- Zero-config, prefix your test command with `3pio` to use, e.g. `3pio go test`
-- Supports large test suites. Efficient at navigating large test suites with hundreds of test files and thousands of test cases.
-
+- Zero-config, prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
+- Supports large test suites, 3pio has been tested on projects with many hundreds of test files containing thousands of test cases.
 
 ## Installation
 
 Copy-paste this to your agent:
 
-```
+```markdown
 Hi! Your dev would like you to install and use `3pio`, a test runner designed for you.
 
 Install 3pio via the package manager that best fits with their project or use case:
@@ -42,10 +37,18 @@ Install 3pio via the package manager that best fits with their project or use ca
 After installation, run `3pio --help` for context and usage.
 ```
 
-Consider adding the following to your CLAUDE.md / AGENTS.md / GEMINI.md, etc.
+Copy-paste this at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
 ```bash
 When running tests use `3pio` by prefixing your test commands with `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
 ```
+
+## Why?
+
+Testing tools designed for humans add noise to your agent's context. Often multiple test runs are required to complete tasks, compounding the issue, wasting valuable time and context space.
+
+3pio generates focused console output and creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
+
+Using 3pio, your agent can target the information it needs to know. It can revisit results preventing unecessary test reruns altogether. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
 
 
 ## Usage

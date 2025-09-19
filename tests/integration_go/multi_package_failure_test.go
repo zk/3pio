@@ -62,14 +62,14 @@ func TestMultiPackageFailureReportPath(t *testing.T) {
 	t.Run("summary_section_exists", func(t *testing.T) {
 		// The summary section exists in the new console format
 		if !strings.Contains(output, "Test failures!") {
-			t.Errorf("Expected 'Test failures!' summary section to exist")
+			t.Errorf("Expected 'Test failures!' summary section to exist\nActual output:\n%s", output)
 		}
 	})
 
 	// Verify that failures are shown inline after FAIL message
 	t.Run("minimal_summary_displayed_for_zebra", func(t *testing.T) {
 		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
-			t.Errorf("Expected minimal summary with report path for pkg_zebra")
+			t.Errorf("Expected minimal summary with report path for pkg_zebra\nActual output:\n%s", output)
 		}
 	})
 
