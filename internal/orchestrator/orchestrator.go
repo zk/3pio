@@ -954,8 +954,9 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 				}
 			}
 
-			// Build report path using $trun_dir placeholder
-			reportPath := fmt.Sprintf("$trun_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
+			// Build report path that matches actual report file layout
+			relPath := report.GetRelativeReportPath(group, o.runDir)
+			reportPath := fmt.Sprintf("$trun_dir/%s", filepath.ToSlash(relPath))
 
 			// Print all on one line
 			fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
@@ -1029,8 +1030,9 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 			}
 		}
 
-		// Build report path using $trun_dir placeholder
-		reportPath := fmt.Sprintf("$trun_dir/reports/%s/index.md", report.SanitizeGroupName(groupName))
+		// Build report path that matches actual report file layout
+		relPath := report.GetRelativeReportPath(group, o.runDir)
+		reportPath := fmt.Sprintf("$trun_dir/%s", filepath.ToSlash(relPath))
 
 		// Print all on one line
 		fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)

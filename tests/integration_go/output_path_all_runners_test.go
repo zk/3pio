@@ -19,18 +19,19 @@ func verifyConsoleReportPath(t *testing.T, fixtureDir string, output []byte) {
 		t.Fatalf("Could not find trun_dir in output. Output:\n%s", out)
 	}
 	trunDir := trunMatch[1]
-	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^/\\]+)[\\/]index\.md`)
+	// Allow nested path between reports/ and /index.md to match actual report layout
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^\r\n]+?)[\\/]index\.md`)
 	matches := seeRegex.FindStringSubmatch(out)
 	if len(matches) < 3 {
 		t.Fatalf("Could not find report path in output. Output:\n%s", out)
 	}
 	prefix := matches[1]
-	consoleReportDir := matches[2]
+	consoleReportRel := matches[2]
 	var seePath string
 	if prefix == "$trun_dir" {
-		seePath = filepath.Join(trunDir, "reports", consoleReportDir, "index.md")
+		seePath = filepath.Join(trunDir, "reports", consoleReportRel, "index.md")
 	} else {
-		seePath = filepath.Join(prefix, "reports", consoleReportDir, "index.md")
+		seePath = filepath.Join(prefix, "reports", consoleReportRel, "index.md")
 	}
 	reportPath := filepath.Join(fixtureDir, seePath)
 	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
@@ -111,17 +112,17 @@ func TestConsoleOutputPath_Pytest(t *testing.T) {
 	out := string(output)
 	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio[\\/]runs[\\/][^\s]+)`)
 	trunMatch := trunRegex.FindStringSubmatch(out)
-	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^/\\]+)[\\/]index\.md`)
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^\r\n]+?)[\\/]index\.md`)
 	seeMatch := seeRegex.FindStringSubmatch(out)
 	if len(trunMatch) >= 2 && len(seeMatch) >= 3 {
 		trunDir := trunMatch[1]
 		prefix := seeMatch[1]
-		consoleReportDir := seeMatch[2]
+		consoleReportRel := seeMatch[2]
 		var seePath string
 		if prefix == "$trun_dir" {
-			seePath = filepath.Join(trunDir, "reports", consoleReportDir, "index.md")
+			seePath = filepath.Join(trunDir, "reports", consoleReportRel, "index.md")
 		} else {
-			seePath = filepath.Join(prefix, "reports", consoleReportDir, "index.md")
+			seePath = filepath.Join(prefix, "reports", consoleReportRel, "index.md")
 		}
 		reportPath := filepath.Join(fixtureDir, seePath)
 		if _, err := os.Stat(reportPath); err == nil {
