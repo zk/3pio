@@ -50,7 +50,7 @@ jobs:
           for dir in tests/fixtures/*/; do
             if [ -f "$dir/package.json" ]; then
               echo "Installing dependencies in $dir"
-              (cd "$dir" && npm ci)
+              (cd "$dir" && npm install --no-package-lock)
             fi
           done
 
