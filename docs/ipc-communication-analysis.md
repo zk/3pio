@@ -5,7 +5,7 @@
 3pio supports multiple test runners with two distinct approaches to IPC communication:
 
 1. **Native Runners** (Go, Cargo) - Use file tailing to read output.log, then write to IPC file
-2. **Adapter-Based Runners** (Jest, Vitest, pytest) - Use embedded adapters that write IPC events directly
+2. **Adapter-Based Runners** (Jest, Vitest, Mocha, Cypress, pytest) - Use embedded adapters that write IPC events directly
 
 **IMPORTANT**: ALL runners have their IPC events read through the SAME mechanism - the IPC Manager watches and tails the `ipc.jsonl` file using fsnotify for ALL runner types.
 
@@ -50,6 +50,22 @@ Adapter-based runners DO NOT use file tailing. They use embedded JavaScript/Pyth
 - **Process**:
   1. Vitest loads the custom reporter
   2. Reporter hooks into Vitest's event system
+  3. Reporter writes IPC events directly to the IPC file
+  4. No file tailing involved - direct event streaming
+
+#### Mocha Runner
+- **Adapter**: `internal/adapters/mocha.js` (embedded in binary)
+- **Process**:
+  1. Mocha loads the custom reporter
+  2. Reporter hooks into Mocha runner events
+  3. Reporter writes IPC events directly to the IPC file
+  4. No file tailing involved - direct event streaming
+
+#### Cypress Runner
+- **Adapter**: `internal/adapters/cypress.js` (embedded in binary)
+- **Process**:
+  1. Cypress runs Mocha and loads our custom reporter
+  2. Reporter hooks into Mocha runner events exposed by Cypress
   3. Reporter writes IPC events directly to the IPC file
   4. No file tailing involved - direct event streaming
 
@@ -109,7 +125,7 @@ The SIGINT bug ONLY affected native runners because:
 The `cargoProcessExited` channel (misleadingly named):
 - **Created**: For ALL runners in `orchestrator.go`
 - **Used**: ONLY by native runners (Go, Cargo) via TailReader
-- **Not Used**: By adapter-based runners (Jest, Vitest, pytest)
+- **Not Used**: By adapter-based runners (Jest, Vitest, Mocha, Cypress, pytest)
 - **Bug Impact**: Only affects runners that actually use the channel
 
 ## Verification
@@ -133,7 +149,7 @@ There are TWO types of file tailing happening in 3pio:
 - **Bug impact**: SIGINT bug affected this because goroutine relies on `cargoProcessExited` channel
 
 ### 2. IPC File Watching (ALL Runners)
-- **Who uses it**: ALL runners (Go, Cargo, Jest, Vitest, pytest)
+- **Who uses it**: ALL runners (Go, Cargo, Jest, Vitest, Mocha, Cypress, pytest)
 - **What it does**: Watches and tails `ipc.jsonl` using fsnotify
 - **Where**: In `internal/ipc/manager.go` via `WatchEvents()` and `watchLoop()`
 - **How it works**:

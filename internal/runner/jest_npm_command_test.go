@@ -44,21 +44,21 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 			expected: []string{"npm", "test", "--", "--watch", "--coverage", "--verbose", "--reporters", "/fake/adapter/path"},
 		},
 
-		// Yarn variations
+		// Yarn variations - Yarn doesn't need -- separator for scripts
 		{
-			name:     "yarn test command should use -- separator",
+			name:     "yarn test command should NOT use -- separator",
 			args:     []string{"yarn", "test"},
-			expected: []string{"yarn", "test", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"yarn", "test", "--reporters", "/fake/adapter/path"},
 		},
 		{
 			name:     "yarn run test",
 			args:     []string{"yarn", "run", "test"},
-			expected: []string{"yarn", "run", "test", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"yarn", "run", "test", "--reporters", "/fake/adapter/path"},
 		},
 		{
 			name:     "yarn test:ci custom script",
 			args:     []string{"yarn", "test:ci"},
-			expected: []string{"yarn", "test:ci", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"yarn", "test:ci", "--reporters", "/fake/adapter/path"},
 		},
 		{
 			name:     "yarn jest direct",
@@ -68,7 +68,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 		{
 			name:     "yarn test with watch disabled",
 			args:     []string{"yarn", "test", "--watchAll=false"},
-			expected: []string{"yarn", "test", "--watchAll=false", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"yarn", "test", "--watchAll=false", "--reporters", "/fake/adapter/path"},
 		},
 
 		// PNPM variations
@@ -225,7 +225,7 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 		{
 			name:     "yarn with workspace",
 			args:     []string{"yarn", "workspace", "@myapp/client", "test"},
-			expected: []string{"yarn", "workspace", "@myapp/client", "test", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"yarn", "workspace", "@myapp/client", "test", "--reporters", "/fake/adapter/path"},
 		},
 		{
 			name:     "npm with silent flag",
@@ -274,6 +274,11 @@ func TestJestDefinition_BuildCommand_Existing_Args(t *testing.T) {
 			name:     "npm test with jest options after --",
 			args:     []string{"npm", "test", "--", "--watchAll", "false"},
 			expected: []string{"npm", "test", "--", "--watchAll", "false", "--reporters", "/fake/adapter/path"},
+		},
+		{
+			name:     "yarn test (no jest in command) should NOT use -- separator",
+			args:     []string{"yarn", "test"},
+			expected: []string{"yarn", "test", "--reporters", "/fake/adapter/path"},
 		},
 	}
 

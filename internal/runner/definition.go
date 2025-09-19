@@ -197,12 +197,22 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 			}
 		}
 
+		// Yarn (v1.x) doesn't need -- separator for script commands (yarn test, yarn run test, etc.)
+		// It automatically forwards flags to the script. Using -- with yarn can cause issues
+		// where arguments are incorrectly concatenated with pipe characters.
+		isYarnScript := len(args) >= 2 && args[0] == "yarn" &&
+			(args[1] == "test" || args[1] == "run" || !strings.Contains(args[1], "jest"))
+
 		if hasSeparator {
 			// Append reporter flags at the end (after all other Jest flags)
 			result = append(result, args...)
 			result = append(result, "--reporters", adapterPath)
+		} else if isYarnScript {
+			// For yarn scripts, don't use -- separator
+			result = append(result, args...)
+			result = append(result, "--reporters", adapterPath)
 		} else {
-			// Add all args, then -- separator, then reporter flags
+			// Add all args, then -- separator, then reporter flags (for npm, pnpm, bun)
 			result = append(result, args...)
 			result = append(result, "--", "--reporters", adapterPath)
 		}
@@ -558,4 +568,226 @@ func (p *PytestDefinition) BuildCommand(args []string, adapterPath string) []str
 	}
 
 	return result
+}
+
+// CypressDefinition implements Definition for Cypress
+type CypressDefinition struct {
+	BaseDefinition
+}
+
+// NewCypressDefinition creates a new Cypress definition
+func NewCypressDefinition() *CypressDefinition {
+	return &CypressDefinition{
+		BaseDefinition: BaseDefinition{
+			name:        "cypress",
+			adapterFile: "cypress.js",
+		},
+	}
+}
+
+// Matches checks if the command is for Cypress
+func (c *CypressDefinition) Matches(command []string) bool {
+	return containsTestRunner(command, "cypress") || c.isCypressInPackageJSON()
+}
+
+// GetTestFiles gets test files for Cypress (dynamic by default)
+func (c *CypressDefinition) GetTestFiles(args []string) ([]string, error) {
+	// Cypress discovers specs dynamically; we return empty to indicate that.
+	return []string{}, nil
+}
+
+// BuildCommand builds Cypress command with reporter injection
+func (c *CypressDefinition) BuildCommand(args []string, adapterPath string) []string {
+	// Strategy similar to Vitest/Jest:
+	// - If package manager script (npm/yarn/pnpm/bun), add reporter flags after '--' for npm/yarn/bun; pnpm passes directly.
+	// - If direct invocation (cypress ...), ensure 'run' subcommand is present, and inject '--reporter <adapterPath>'.
+
+	result := make([]string, 0, len(args)+4)
+
+	isPackageManagerCommand := false
+	if len(args) > 0 {
+		cmd := args[0]
+		isPackageManagerCommand = (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "pnpm" || strings.HasPrefix(cmd, "pnpm ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+	}
+
+	// Handle package manager scripts like `npm test` when script runs cypress
+	if isPackageManagerCommand {
+		// Check for script forms that need separator
+		cmd := args[0]
+		needsSeparator := (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+
+		// If args already contain '--', just append reporter flags
+		hasSeparator := false
+		for _, a := range args {
+			if a == "--" {
+				hasSeparator = true
+				break
+			}
+		}
+
+		result = append(result, args...)
+		if hasSeparator || !needsSeparator {
+			result = append(result, "--reporter", adapterPath)
+		} else {
+			result = append(result, "--", "--reporter", adapterPath)
+		}
+		return result
+	}
+
+	// Direct invocations (cypress run ... or npx/bunx cypress run ...)
+	// Build by preserving arg order and appending reporter at the end.
+	// Ensure 'run' is present after the cypress token.
+	hasCypress := false
+	hasRun := false
+	for _, a := range args {
+		if a == "cypress" || strings.HasSuffix(a, "/cypress") || strings.HasSuffix(a, ".bin/cypress") {
+			hasCypress = true
+		} else if hasCypress && a == "run" {
+			hasRun = true
+		}
+	}
+
+	result = append(result, args...)
+	if hasCypress && !hasRun {
+		result = append(result, "run")
+	}
+	result = append(result, "--reporter", adapterPath)
+	return result
+}
+
+// isCypressInPackageJSON checks if Cypress is configured in package.json
+func (c *CypressDefinition) isCypressInPackageJSON() bool {
+	data, err := os.ReadFile("package.json")
+	if err != nil {
+		return false
+	}
+
+	var pkg map[string]interface{}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return false
+	}
+
+	// Check test script
+	if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
+		if test, ok := scripts["test"].(string); ok {
+			if strings.Contains(test, "cypress") {
+				return true
+			}
+		}
+	}
+
+	// Check dependencies
+	for _, depKey := range []string{"dependencies", "devDependencies"} {
+		if deps, ok := pkg[depKey].(map[string]interface{}); ok {
+			if _, has := deps["cypress"]; has {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// MochaDefinition implements Definition for Mocha
+type MochaDefinition struct {
+	BaseDefinition
+}
+
+// NewMochaDefinition creates a new Mocha definition
+func NewMochaDefinition() *MochaDefinition {
+	return &MochaDefinition{
+		BaseDefinition: BaseDefinition{
+			name:        "mocha",
+			adapterFile: "mocha.js",
+		},
+	}
+}
+
+// Matches checks if the command is for Mocha
+func (m *MochaDefinition) Matches(command []string) bool {
+	return containsTestRunner(command, "mocha") || m.isMochaInPackageJSON()
+}
+
+// GetTestFiles gets test files for Mocha (dynamic by default; CLI often passes globs)
+func (m *MochaDefinition) GetTestFiles(args []string) ([]string, error) {
+	// Mocha usually accepts globs; rely on dynamic discovery
+	return []string{}, nil
+}
+
+// BuildCommand builds Mocha command with reporter injection
+func (m *MochaDefinition) BuildCommand(args []string, adapterPath string) []string {
+	result := make([]string, 0, len(args)+4)
+
+	isPackageManagerCommand := false
+	if len(args) > 0 {
+		cmd := args[0]
+		isPackageManagerCommand = (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "pnpm" || strings.HasPrefix(cmd, "pnpm ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+	}
+
+	if isPackageManagerCommand {
+		// Similar strategy to Cypress: npm/yarn/bun need '--' for script flags; pnpm passes directly
+		cmd := args[0]
+		needsSeparator := (cmd == "npm" || strings.HasPrefix(cmd, "npm ")) ||
+			(cmd == "yarn" || strings.HasPrefix(cmd, "yarn ")) ||
+			(cmd == "bun" || strings.HasPrefix(cmd, "bun "))
+
+		hasSeparator := false
+		for _, a := range args {
+			if a == "--" {
+				hasSeparator = true
+				break
+			}
+		}
+
+		result = append(result, args...)
+		if hasSeparator || !needsSeparator {
+			result = append(result, "--reporter", adapterPath)
+		} else {
+			result = append(result, "--", "--reporter", adapterPath)
+		}
+		return result
+	}
+
+	// Direct mocha invocation or via npx/bunx
+	result = append(result, args...)
+	result = append(result, "--reporter", adapterPath)
+	return result
+}
+
+// isMochaInPackageJSON checks if Mocha is configured in package.json
+func (m *MochaDefinition) isMochaInPackageJSON() bool {
+	data, err := os.ReadFile("package.json")
+	if err != nil {
+		return false
+	}
+
+	var pkg map[string]interface{}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return false
+	}
+
+	if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
+		if test, ok := scripts["test"].(string); ok {
+			if strings.Contains(test, "mocha") {
+				return true
+			}
+		}
+	}
+
+	for _, depKey := range []string{"dependencies", "devDependencies"} {
+		if deps, ok := pkg[depKey].(map[string]interface{}); ok {
+			if _, has := deps["mocha"]; has {
+				return true
+			}
+		}
+	}
+	return false
 }

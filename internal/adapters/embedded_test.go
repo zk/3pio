@@ -27,8 +27,8 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
-				// Check that the IPC path was injected
-				if !strings.Contains(contentStr, `"/tmp/test.jsonl"`) {
+				// Check that the IPC path was injected (single quotes for ESLint compliance)
+				if !strings.Contains(contentStr, `'/tmp/test.jsonl'`) {
 					t.Errorf("Expected injected IPC path '/tmp/test.jsonl' not found in adapter content")
 				}
 				// Check that template markers were removed
@@ -49,9 +49,9 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
-				// Check that the path was properly escaped
-				if !strings.Contains(contentStr, `"/home/user's files/.3pio/ipc/test.jsonl"`) &&
-					!strings.Contains(contentStr, `"/home/user\'s files/.3pio/ipc/test.jsonl"`) {
+				// Check that the path was properly escaped (single quotes for ESLint compliance)
+				// Note: apostrophe within single quotes is not escaped in JavaScript
+				if !strings.Contains(contentStr, `'/home/user's files/.3pio/ipc/test.jsonl'`) {
 					t.Errorf("Expected escaped IPC path not found in adapter content")
 				}
 				// Check that template markers were removed
@@ -90,8 +90,8 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
-				// Check that backslashes were properly escaped
-				if !strings.Contains(contentStr, `"C:\\Users\\test\\.3pio\\ipc\\test.jsonl"`) {
+				// Check that backslashes were properly escaped (single quotes for ESLint compliance)
+				if !strings.Contains(contentStr, `'C:\\Users\\test\\.3pio\\ipc\\test.jsonl'`) {
 					t.Errorf("Expected escaped Windows path not found in adapter content")
 				}
 			},
@@ -104,9 +104,9 @@ func TestGetAdapterPath_IPCPathInjection(t *testing.T) {
 			wantErr:     false,
 			checkFunc: func(t *testing.T, path string, content []byte) {
 				contentStr := string(content)
-				// Check that Unicode characters are preserved
-				if !strings.Contains(contentStr, `"/home/用户/.3pio/ipc/test.jsonl"`) &&
-					!strings.Contains(contentStr, `"/home/\u7528\u6237/.3pio/ipc/test.jsonl"`) {
+				// Check that Unicode characters are preserved (single quotes for ESLint compliance)
+				if !strings.Contains(contentStr, `'/home/用户/.3pio/ipc/test.jsonl'`) &&
+					!strings.Contains(contentStr, `'/home/\u7528\u6237/.3pio/ipc/test.jsonl'`) {
 					t.Errorf("Expected Unicode path not found in adapter content")
 				}
 			},
@@ -204,12 +204,12 @@ func TestGetAdapterPath_UniqueAdaptersPerRun(t *testing.T) {
 		t.Errorf("Adapter for run2 contains IPC path from run1")
 	}
 
-	// Verify each has correct IPC path
-	if !strings.Contains(string(content1), `"/tmp/run1.jsonl"`) {
+	// Verify each has correct IPC path (single quotes for ESLint compliance)
+	if !strings.Contains(string(content1), `'/tmp/run1.jsonl'`) {
 		t.Errorf("Adapter for run1 does not contain correct IPC path")
 	}
 
-	if !strings.Contains(string(content2), `"/tmp/run2.jsonl"`) {
+	if !strings.Contains(string(content2), `'/tmp/run2.jsonl'`) {
 		t.Errorf("Adapter for run2 does not contain correct IPC path")
 	}
 }
@@ -281,7 +281,7 @@ func TestGetAdapterPath_LogLevelInjection(t *testing.T) {
 			logLevel:    "DEBUG",
 			wantErr:     false,
 			checkLogic: func(t *testing.T, content string, logLevel string) {
-				expected := `const LOG_LEVEL = "DEBUG";`
+				expected := `const LOG_LEVEL = 'DEBUG'`
 				if !strings.Contains(content, expected) {
 					t.Errorf("Expected log level injection %s, but not found in content", expected)
 				}
@@ -297,7 +297,7 @@ func TestGetAdapterPath_LogLevelInjection(t *testing.T) {
 			logLevel:    "INFO",
 			wantErr:     false,
 			checkLogic: func(t *testing.T, content string, logLevel string) {
-				expected := `const LOG_LEVEL = "INFO";`
+				expected := `const LOG_LEVEL = 'INFO'`
 				if !strings.Contains(content, expected) {
 					t.Errorf("Expected log level injection %s, but not found in content", expected)
 				}
@@ -329,7 +329,7 @@ func TestGetAdapterPath_LogLevelInjection(t *testing.T) {
 			logLevel:    "WARN",
 			wantErr:     false,
 			checkLogic: func(t *testing.T, content string, logLevel string) {
-				expected := `const LOG_LEVEL = "WARN";`
+				expected := `const LOG_LEVEL = 'WARN'`
 				if !strings.Contains(content, expected) {
 					t.Errorf("Expected log level injection %s, but not found in content", expected)
 				}

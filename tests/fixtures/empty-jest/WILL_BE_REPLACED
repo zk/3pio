@@ -1,0 +1,10 @@
+{"eventType":"collectionStart","payload":{"phase":"collection"}}
+{"eventType":"testGroupDiscovered","payload":{"groupName":"/Users/edie/code/3pio/tests/fixtures/empty-jest/empty.test.js","parentNames":[]}}
+{"eventType":"testGroupStart","payload":{"groupName":"/Users/edie/code/3pio/tests/fixtures/empty-jest/empty.test.js","parentNames":[]}}
+{"eventType":"testGroupResult","payload":{"groupName":"/Users/edie/code/3pio/tests/fixtures/empty-jest/empty.test.js","parentNames":[],"status":"SKIP","duration":95,"totals":{"total":0,"passed":0,"failed":0,"skipped":0}}}
+{"eventType":"runComplete","payload":{}}
+{"eventType":"collectionStart","payload":{"phase":"collection"}}
+{"eventType":"testGroupDiscovered","payload":{"groupName":"/Users/edie/code/3pio/tests/fixtures/empty-jest/empty.test.js","parentNames":[]}}
+{"eventType":"testGroupStart","payload":{"groupName":"/Users/edie/code/3pio/tests/fixtures/empty-jest/empty.test.js","parentNames":[]}}
+{"eventType":"testGroupResult","payload":{"groupName":"/Users/edie/code/3pio/tests/fixtures/empty-jest/empty.test.js","parentNames":[],"status":"SKIP","duration":93,"totals":{"total":0,"passed":0,"failed":0,"skipped":0}}}
+{"eventType":"runComplete","payload":{}}

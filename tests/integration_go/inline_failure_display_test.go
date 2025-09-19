@@ -33,7 +33,7 @@ func TestInlineFailureDisplay(t *testing.T) {
 		t.Fatalf("Failed to get absolute binary path: %v", err)
 	}
 
-	t.Run("go_test_shows_inline_failures", func(t *testing.T) {
+	t.Run("go_test_shows_minimal_summary", func(t *testing.T) {
 		// Test with multi-package-failure fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "multi-package-failure")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -61,36 +61,18 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-		// Check that failures appear inline after FAIL message
-		lines := strings.Split(output, "\n")
-		foundInlineFailures := false
-		for i, line := range lines {
-			if strings.Contains(line, "FAIL") && strings.Contains(line, "pkg_zebra") {
-				// Check the next few lines for inline failure display
-				for j := i + 1; j < len(lines) && j < i+10; j++ {
-					if strings.Contains(lines[j], "x TestZebraFail") {
-						foundInlineFailures = true
-						// Also verify report path is shown inline
-						for k := j + 1; k < len(lines) && k < j+5; k++ {
-							if strings.Contains(lines[k], "See .3pio") && strings.Contains(lines[k], "pkg_zebra") {
-								// Found inline report path pointing to correct package
-								break
-							}
-						}
-						break
-					}
-				}
-			}
+		// New format prints a minimal summary with counts and a report path
+		if !strings.Contains(output, "FAIL(") {
+			t.Errorf("Expected to see FAIL count in output")
 		}
-
-		if !foundInlineFailures {
-			t.Errorf("Expected to see failures displayed inline after FAIL message, but they were not found")
+		if !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected to see report path in output")
 		}
 
 		// The "Test failures!" summary section can still exist alongside inline display
 	})
 
-	t.Run("jest_shows_inline_failures", func(t *testing.T) {
+	t.Run("jest_shows_minimal_summary", func(t *testing.T) {
 		// Test with jest-fail fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "jest-fail")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -126,33 +108,13 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-		// Check for inline failures after FAIL message
-		if strings.Contains(output, "FAIL") {
-			lines := strings.Split(output, "\n")
-			foundInlineFailures := false
-			for i, line := range lines {
-				if strings.Contains(line, "FAIL") {
-					// Check next lines for failure details
-					for j := i + 1; j < len(lines) && j < i+10; j++ {
-						if strings.Contains(lines[j], "x ") {
-							foundInlineFailures = true
-							break
-						}
-					}
-				}
-			}
-			if !foundInlineFailures {
-				t.Errorf("Expected to see failures displayed inline after FAIL message for Jest")
-			}
-		}
-
-		// Verify NO "Test failures!" summary section
-		if strings.Contains(output, "Test failures!") {
-			t.Errorf("Found 'Test failures!' summary section in Jest output - this should be removed")
+		// Minimal summary with counts and report path is expected
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for Jest")
 		}
 	})
 
-	t.Run("vitest_shows_inline_failures", func(t *testing.T) {
+	t.Run("vitest_shows_minimal_summary", func(t *testing.T) {
 		// Test with vitest-fail fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "vitest-fail")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -188,33 +150,12 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-		// Check for inline failures
-		if strings.Contains(output, "FAIL") {
-			lines := strings.Split(output, "\n")
-			foundInlineFailures := false
-			for i, line := range lines {
-				if strings.Contains(line, "FAIL") {
-					// Check next lines for failure details
-					for j := i + 1; j < len(lines) && j < i+10; j++ {
-						if strings.Contains(lines[j], "x ") {
-							foundInlineFailures = true
-							break
-						}
-					}
-				}
-			}
-			if !foundInlineFailures {
-				t.Errorf("Expected to see failures displayed inline after FAIL message for Vitest")
-			}
-		}
-
-		// Verify NO "Test failures!" summary section
-		if strings.Contains(output, "Test failures!") {
-			t.Errorf("Found 'Test failures!' summary section in Vitest output - this should be removed")
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for Vitest")
 		}
 	})
 
-	t.Run("pytest_shows_inline_failures", func(t *testing.T) {
+	t.Run("pytest_shows_minimal_summary", func(t *testing.T) {
 		// Test with pytest-fail fixture
 		fixtureDir := filepath.Join(projectRoot, "tests", "fixtures", "pytest-fail")
 		fixtureDir, err = filepath.Abs(fixtureDir)
@@ -240,29 +181,8 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-		// Check for inline failures
-		if strings.Contains(output, "FAIL") {
-			lines := strings.Split(output, "\n")
-			foundInlineFailures := false
-			for i, line := range lines {
-				if strings.Contains(line, "FAIL") {
-					// Check next lines for failure details
-					for j := i + 1; j < len(lines) && j < i+10; j++ {
-						if strings.Contains(lines[j], "x ") {
-							foundInlineFailures = true
-							break
-						}
-					}
-				}
-			}
-			if !foundInlineFailures {
-				t.Errorf("Expected to see failures displayed inline after FAIL message for pytest")
-			}
-		}
-
-		// Verify NO "Test failures!" summary section
-		if strings.Contains(output, "Test failures!") {
-			t.Errorf("Found 'Test failures!' summary section in pytest output - this should be removed")
+		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+			t.Errorf("Expected minimal summary with report path for pytest")
 		}
 	})
 }

@@ -61,6 +61,16 @@ This ensures the correct runner name is recorded in reports and proper processin
 
 **Impact**: This fix eliminates the intermittent failures when running native test runners (cargo test, go test) that process output directly without adapters.
 
+## Test Count Display (2025-09-18)
+
+**Decision**: Use recursive test counting for summary table display instead of direct group statistics.
+
+**Rationale**: The summary table in `test-run.md` needs to show accurate test counts for files with nested test structures (Jest describe blocks, Vitest suites, etc.). Using recursive counting ensures that files containing only nested tests display meaningful counts rather than "0 tests".
+
+**Implementation**: Modified table generation logic in `internal/report/manager.go` to calculate recursive counts on-the-fly using `countTotalTestCases()`, `countPassedTestCases()`, etc. functions.
+
+**Impact**: Summary tables now accurately reflect all test cases regardless of nesting structure.
+
 ## Future Decisions
 
 (This section will be updated as new design decisions are made)

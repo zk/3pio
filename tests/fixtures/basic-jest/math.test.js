@@ -1,7 +1,7 @@
 describe('Math operations', () => {
   it('should add numbers correctly', () => {
     console.log('Testing addition...');
-    expect(1 + 1).toBe(2);
+    expect(1 + 1).toBe(3); // This will fail
     expect(10 + 5).toBe(15);
     console.log('Addition tests passed!');
   });

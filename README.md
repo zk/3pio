@@ -6,28 +6,16 @@
 
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
-```
-**Note To Agents:**
+Instead of introducing a new testing framework, 3pio works with your existing tests and test runners. All you do is tell your agent to prefix your existing test command with `3pio`
 
-Welcome!
-
-If your user indicated they would like to install and use 3pio for running tests choose the package manager that best fits with their project or use case:
-
-- Python & pytest, `pip install threepio_test_runner`
-- JS/TS, NPM, & Jest or Vitest: `npm install -g @heyzk/3pio`
-- JS/TS, Yarn & Jest or Vitest: `yarn global add @heyzk/3pio`
-- Go, homebrew: `brew tap zk/3pio && brew install 3pio`
-
-After installation, run `3pio --help` for helpful information on how to use it.
-```
 
 ## Why?
 
-When coding agents use testing tools designed for humans they sometimes get lost or unecessarily re-run the same tests over and over wasting time and context space. In some cases this can prevent the agent from moving forward altogether.
+When coding agents use testing tools designed for humans they sometimes get lost or unnecessarily re-run the same tests over and over wasting time and context space. In some cases this can prevent the agent from moving forward altogether.
 
 3pio creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
 
-Using 3pio, your agent knows how to find the information it needs to know, and it can revist the results over and over. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
+Using 3pio, your agent knows how to find the information it needs to know, and it can revisit the results over and over. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
 
 
 ## Features
@@ -38,49 +26,55 @@ Using 3pio, your agent knows how to find the information it needs to know, and i
 
 ## Installation
 
-Step 1. Point your coding agent at this readme
+Copy-paste this to your agent:
 
-```bash
-Please install 3pio: https://raw.githubusercontent.com/zk/3pio/refs/heads/main/README.md
+```
+Hi! Your dev would like you to install and use `3pio`, a test runner designed for you.
+
+Install 3pio via the package manager that best fits with their project or use case:
+
+- Python: `pip install threepio_test_runner`
+- npm: `npm install -g @heyzk/3pio`
+- pnpm: `pnpm install -g @heyzk/3pio`
+- yarn: `yarn global add @heyzk/3pio`
+- Go, Rust: homebrew: `brew tap zk/3pio && brew install 3pio`
+
+After installation, run `3pio --help` for context and usage.
 ```
 
-Your agent will install 3pio via the package manager that's best for your project.
-
-Step 2: Tell your agent about it
+Consider adding the following to your CLAUDE.md / AGENTS.md / GEMINI.md, etc.
 ```bash
-When running tests use `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+When running tests use `3pio` by prefixing your test commands with `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
 ```
-
-You may want to add that to your CLAUDE.md / AGENTS.md / GEMINI.md. Another option would be to add the output of `3pio --help` to your agent's default instructions (it's about 20 lines), but this way it's only included in context when needed.
 
 
 ## Usage
 
-Tell your agent to prefix any test command with `3pio`, works with any flags or arugments.
+Tell your agent to prefix any test command with `3pio`, works with any flags or arguments.
 
 ```bash
 $ 3pio npm test
 $ 3pio npx vitest -- ./path/to/test/file.test.js
+$ 3pio npx mocha -- ./test/**/*.spec.js
+$ 3pio npx cypress run --headless --spec cypress/e2e/sample.cy.js
 
 $ 3pio go test ./...
-Greetings! I will now execute the test command:
-`go test ./...`
+---
+current_time: 2025-09-18T07:57:30-10:00
+cwd: /Users/edie/code/3pio
+test_command: `go test ./...`
+trun_dir: .3pio/runs/20250918T075730-stoic-janeway
+full_report: $trun_dir/test-run.md
+---
 
-Full report: .3pio/runs/20250913T135142-loopy-neelix/test-run.md
+Test execution starting, no output until test results.
 
-Beginning test execution now...
+FAIL $trun_dir/reports/github_com_zk_3pio_internal_runner/index.md
 
-RUNNING  github.com/zk/3pio/cmd/3pio
-RUNNING  github.com/zk/3pio/internal/adapters
-...
-FAIL     github.com/zk/3pio/tests/integration_go (18.82s)
-  See .3pio/runs/20250913T135142-loopy-neelix/reports/github_com_zk_3pio_tests_integration_go/index.md
-  x TestMonorepoIPCPathInjection
-  x TestReportFileGeneration
-
-Test failures! Are you sure this thing is safe?
-Results:     7 passed, 9 total
-Total time:  29.350s
+Test failures! This is madness!
+Results:     8 passed, 1 failed, 2 skipped, 11 total
+Total time:  61.394s
+Test execution failed: test command failed: exit status 1
 ```
 
 Console output is focused on just which tests failed and provides path information on how to find out more.
@@ -283,16 +277,21 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 
 3pio injects a custom reporter into the provided test command `npm test` -> `npm test --reporter /custom/jest/reporter.js`. This reporter sends events back to the main process which are analyzed, transformed, and written to the filesystem as a navigable tree of test information.
 
-**Note:** 3pio writes it's files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
+**Note:** 3pio writes its files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
 
 
 ## Supported Test Runners
 
-- Pytest
-- JS/TS
-  - Jest, Vitest (3.0+)
-  - NPM, PNPM
-- Go test (go 1.10+)
+| Language | Runner | Example invocation (prefix with `3pio`) |
+|---|---|---|
+| JS/TS | Jest | `3pio npm test` · `3pio npx jest` |
+| JS/TS | Vitest (v3+) | `3pio npx vitest run` · `3pio pnpm vitest run` |
+| JS/TS | Mocha | `3pio npx mocha -- ./test/**/*.spec.js` |
+| JS/TS | Cypress | `3pio npx cypress run --headless` |
+| Python | pytest | `3pio pytest` · `3pio python -m pytest` |
+| Go | go test (>=1.10) | `3pio go test ./...` |
+| Rust | cargo test | `3pio cargo test` |
+| Rust | cargo nextest | `3pio cargo nextest run` |
 
 
 ## Limitations
@@ -308,8 +307,6 @@ Run tests using 3pio and invesgitate root causes of any failures. Report back.
 
 - All the test runners
 - Improve output context efficiency
-  - Remove duplication in console output (current: RUNNING <file> and PASS <file>, both not needed)
-  - Consider moving non-signpost frontmatter properties to end of report files
 
 
 ## License

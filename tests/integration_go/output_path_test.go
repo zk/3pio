@@ -44,18 +44,35 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 
 	outputStr := string(output)
 
-	// Extract the "See" path from console output
-	seeRegex := regexp.MustCompile(`See (\.3pio/runs/[^/]+/reports/([^/]+)/index\.md)`)
+	// Extract run dir from preamble
+	// Support both forward and backslashes on Windows/macOS/Linux
+	trunRegex := regexp.MustCompile(`trun_dir:\s+(\.3pio[\\/]runs[\\/][^\s]+)`)
+	trunMatch := trunRegex.FindStringSubmatch(outputStr)
+	if len(trunMatch) < 2 {
+		t.Fatalf("Could not find trun_dir in output. Output:\n%s", outputStr)
+	}
+	trunDir := trunMatch[1]
+
+	// Extract the report path printed on result line. Accept either with or without 'See '
+	// Allow nested relative path between reports/ and /index.md
+	seeRegex := regexp.MustCompile(`(?:See\s+)?(\$trun_dir|\.3pio[\\/]runs[\\/][^/\\]+)[\\/]reports[\\/]([^\r\n]+?)[\\/]index\.md`)
 	matches := seeRegex.FindStringSubmatch(outputStr)
 	if len(matches) < 3 {
-		t.Fatalf("Could not find 'See' path in output. Output:\n%s", outputStr)
+		t.Fatalf("Could not find report path in output. Output:\n%s", outputStr)
 	}
 
-	seePath := matches[1]
-	consoleReportDir := matches[2] // The directory name from console output
+	prefix := matches[1]
+	consoleReportRel := matches[2] // The relative path from console output
+	// Build full path, substituting $trun_dir with actual trun_dir
+	var seePath string
+	if prefix == "$trun_dir" {
+		seePath = filepath.Join(trunDir, "reports", consoleReportRel, "index.md")
+	} else {
+		seePath = filepath.Join(prefix, "reports", consoleReportRel, "index.md")
+	}
 
 	t.Logf("Console output shows path: %s", seePath)
-	t.Logf("Console report directory: %s", consoleReportDir)
+	t.Logf("Console report path (relative): %s", consoleReportRel)
 
 	// Verify the actual directory exists and matches
 	reportPath := filepath.Join(fixtureDir, seePath)
@@ -88,8 +105,9 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 	t.Logf("Actual directory name: %s", actualDirName)
 
 	// Most importantly: verify console output matches actual directory
-	if consoleReportDir != actualDirName {
-		t.Errorf("Console output directory (%q) does not match actual directory (%q)", consoleReportDir, actualDirName)
+	// Compare only the last segment of the console path to the actual directory name
+	if filepath.Base(consoleReportRel) != actualDirName {
+		t.Errorf("Console output directory (%q) does not match actual directory (%q)", filepath.Base(consoleReportRel), actualDirName)
 	}
 
 	// The directory name should end with string_test_js
@@ -98,7 +116,7 @@ func TestConsoleOutputMatchesActualDirectoryStructure(t *testing.T) {
 	if !strings.HasSuffix(actualDirName, "string_test_js") {
 		t.Errorf("Directory name should end with 'string_test_js', got %q", actualDirName)
 	}
-	if !strings.HasSuffix(consoleReportDir, "string_test_js") {
-		t.Errorf("Console output should end with 'string_test_js', got %q", consoleReportDir)
+	if !strings.HasSuffix(consoleReportRel, "string_test_js") {
+		t.Errorf("Console output should end with 'string_test_js', got %q", consoleReportRel)
 	}
 }

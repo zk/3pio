@@ -285,16 +285,20 @@ func TestGroupManager_HierarchyBuilding(t *testing.T) {
 		t.Fatalf("ProcessTestCase failed: %v", err)
 	}
 
-	// Verify full hierarchy was created
-	expectedGroups := [][]string{
+	// Verify full hierarchy was created (normalize like GroupManager does)
+	rawPaths := [][]string{
 		{"src/math.test.js"},
 		{"src/math.test.js", "Calculator"},
 		{"src/math.test.js", "Calculator", "addition"},
 		{"src/math.test.js", "Calculator", "addition", "positive numbers"},
 	}
 
-	for _, path := range expectedGroups {
-		groupID := GenerateGroupIDFromPath(path)
+	for _, path := range rawPaths {
+		normalized := make([]string, len(path))
+		for i, p := range path {
+			normalized[i] = gm.normalizeToAbsolutePath(p)
+		}
+		groupID := GenerateGroupIDFromPath(normalized)
 		_, exists := gm.GetGroup(groupID)
 		if !exists {
 			t.Errorf("Group not found for path: %v", path)
@@ -302,7 +306,7 @@ func TestGroupManager_HierarchyBuilding(t *testing.T) {
 	}
 
 	// Verify parent-child relationships
-	rootID := GenerateGroupID("src/math.test.js", nil)
+	rootID := GenerateGroupID(gm.normalizeToAbsolutePath("src/math.test.js"), nil)
 	root, _ := gm.GetGroup(rootID)
 	if len(root.Subgroups) != 1 {
 		t.Errorf("Root should have 1 subgroup, got %d", len(root.Subgroups))

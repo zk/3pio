@@ -7,26 +7,28 @@ This document audits the current integration test coverage against the standards
 3pio currently supports the following test runners:
 1. **Jest** (JavaScript/TypeScript)
 2. **Vitest** (JavaScript/TypeScript)
-3. **pytest** (Python)
-4. **cargo test** (Rust)
-5. **cargo nextest** (Rust)
+3. **Mocha** (JavaScript/TypeScript)
+4. **Cypress** (JavaScript/TypeScript)
+5. **pytest** (Python)
+6. **cargo test** (Rust)
+7. **cargo nextest** (Rust)
 
 ## Audit Summary
 
 ### Coverage Matrix
 
-| Category | Jest | Vitest | pytest | Rust/Cargo |
-|----------|------|--------|--------|------------|
-| 1. Basic Functionality | ✅ | ✅ | ✅ | ✅ |
-| 2. Report Generation | ✅ | ✅ | ✅ | ✅ |
-| 3. Error Handling | ✅ | ✅ | ⚠️ | ⚠️ |
-| 4. Process Management | ✅ | ✅ | ⚠️ | ⚠️ |
-| 5. Command Variations | ✅ | ✅ | ⚠️ | ⚠️ |
-| 6. Complex Project Structures | ✅ | ✅ | ❌ | ✅ |
-| 7. IPC & Adapter Management | ✅ | ✅ | ⚠️ | N/A |
-| 8. Console Output Capture | ✅ | ✅ | ⚠️ | ⚠️ |
-| 9. Performance & Scale | ⚠️ | ⚠️ | ❌ | ⚠️ |
-| 10. State Management | ✅ | ✅ | ✅ | ✅ |
+| Category | Jest | Vitest | Mocha | Cypress | pytest | Rust/Cargo |
+|----------|------|--------|-------|---------|--------|------------|
+| 1. Basic Functionality | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 2. Report Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 3. Error Handling | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
+| 4. Process Management | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| 5. Command Variations | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
+| 6. Complex Project Structures | ✅ | ✅ | ⚠️ | ✅ | ❌ | ✅ |
+| 7. IPC & Adapter Management | ✅ | ✅ | ✅ | ✅ | ⚠️ | N/A |
+| 8. Console Output Capture | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
+| 9. Performance & Scale | ⚠️ | ⚠️ | ❌ | ❌ | ❌ | ⚠️ |
+| 10. State Management | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 **Legend:**
 - ✅ Full coverage
@@ -118,6 +120,55 @@ This document audits the current integration test coverage against the standards
 ❌ **Missing:**
 6. Complex Project Structures - No monorepo or complex structure tests
 9. Performance & Scale - No performance tests
+
+### Mocha
+
+**Test Files:**
+- `basic_mocha_test.go` - full flow run on two specs
+- `empty_mocha_test.go` - empty suite handling
+- `failing_mocha_test.go` - failing spec reporting
+- `command_npm_mocha_test.go` - npm test separator handling
+- `mocha_additional_test.go` - pattern globbing, missing file handling
+
+**Coverage Analysis:**
+
+✅ **Fully Covered:**
+1. Basic Functionality - full runs, pattern matching, specific files
+2. Report Generation - reports created, detected_runner recorded
+5. Command Variations - npx, direct, npm scripts (separator)
+10. State Management - run directories and reports
+
+⚠️ **Partially Covered:**
+3. Error Handling - failing spec covered; config/syntax errors not explicitly
+4. Process Management - no interrupt tests
+6. Complex Project Structures - no monorepo/long names yet
+8. Console Output Capture - basic validation
+
+❌ **Missing:**
+9. Performance & Scale - no large-suite tests
+
+### Cypress
+
+**Test Files:**
+- `basic_cypress_test.go` - basic run single spec (headless)
+- `cypress_additional_test.go` - full run all specs with failure, pattern matching, missing spec handling
+
+**Coverage Analysis:**
+
+✅ **Fully Covered:**
+1. Basic Functionality - headless runs, pattern selection
+2. Report Generation - reports created, detected_runner recorded
+5. Command Variations - npx cypress run (headless), `--spec` patterns
+10. State Management - run directories and reports
+
+⚠️ **Partially Covered:**
+3. Error Handling - failing spec covered; config errors not explicitly
+4. Process Management - no interrupt tests
+6. Complex Project Structures - multi-spec project covered; monorepo not applicable
+8. Console Output Capture - basic validation
+
+❌ **Missing:**
+9. Performance & Scale - no large-suite tests
 
 ### Rust/Cargo
 

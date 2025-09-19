@@ -422,23 +422,27 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 
 			// Tests column - show breakdown of test results including running tests
 			var testsStr string
+			// Calculate recursive counts on-the-fly for accurate display
 			runningCount := countRunningTestCases(group)
 			totalCount := countTotalTestCases(group)
+			passedCount := countPassedTestCases(group)
+			failedCount := countFailedTestCases(group)
+			skippedCount := countSkippedTestCases(group)
 
 			if statusStr == "RUNNING" || runningCount > 0 {
 				// Show running progress
 				parts := []string{}
-				if group.Stats.PassedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
+				if passedCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", passedCount))
 				}
-				if group.Stats.FailedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d failed", group.Stats.FailedTests))
+				if failedCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", failedCount))
 				}
 				if runningCount > 0 {
 					parts = append(parts, fmt.Sprintf("%d running", runningCount))
 				}
-				if group.Stats.SkippedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
+				if skippedCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", skippedCount))
 				}
 				if totalCount > 0 && len(parts) == 0 {
 					// No tests have started yet
@@ -448,17 +452,17 @@ func (m *Manager) generateGroupBasedReport(sb *strings.Builder, statusText strin
 				} else {
 					testsStr = "-"
 				}
-			} else if group.Stats.TotalTests > 0 {
-				// Completed group - show final results
+			} else if totalCount > 0 {
+				// Completed group - show final results based on recursive counts
 				parts := []string{}
-				if group.Stats.PassedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d passed", group.Stats.PassedTests))
+				if passedCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d passed", passedCount))
 				}
-				if group.Stats.FailedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d failed", group.Stats.FailedTests))
+				if failedCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed", failedCount))
 				}
-				if group.Stats.SkippedTests > 0 {
-					parts = append(parts, fmt.Sprintf("%d skipped", group.Stats.SkippedTests))
+				if skippedCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d skipped", skippedCount))
 				}
 				testsStr = strings.Join(parts, ", ")
 			} else if group.Stats.SetupFailed {

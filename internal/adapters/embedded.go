@@ -20,6 +20,12 @@ var (
 
 	//go:embed pytest_adapter.py
 	pytestAdapter []byte
+
+	//go:embed cypress.js
+	cypressAdapter []byte
+
+	//go:embed mocha.js
+	mochaAdapter []byte
 )
 
 // GetAdapterPath returns the path to an extracted adapter with IPC path and log level injected
@@ -52,6 +58,16 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 		content = pytestAdapter
 		filename = "pytest_adapter.py"
 		isESM = false
+	case "cypress.js":
+		content = cypressAdapter
+		// Cypress reporter is CommonJS
+		filename = "cypress.js"
+		isESM = false
+	case "mocha.js":
+		content = mochaAdapter
+		// Mocha reporter is CommonJS
+		filename = "mocha.js"
+		isESM = false
 	default:
 		return "", fmt.Errorf("unknown adapter: %s", name)
 	}
@@ -59,12 +75,22 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 	// Replace template markers with actual IPC path
 	contentStr := string(content)
 
-	// For JavaScript adapters, use JSON-like escaping
-	if name == "vitest.js" || name == "jest.js" {
-		escapedPath := strconv.Quote(ipcPath) // Go's strconv.Quote is similar to JSON.stringify
-		// Replace the markers
-		pattern := regexp.MustCompile(`/\*__IPC_PATH__\*/".*?"/\*__IPC_PATH__\*/`)
-		contentStr = pattern.ReplaceAllString(contentStr, escapedPath)
+	// For JavaScript adapters, inject as single-quoted strings for ESLint consistency
+	if name == "vitest.js" || name == "jest.js" || name == "cypress.js" || name == "mocha.js" {
+		// Quote using JSON, then convert to single-quoted JS literal
+		jsonQuoted := strconv.Quote(ipcPath)
+		if len(jsonQuoted) >= 2 {
+			jsonQuoted = jsonQuoted[1 : len(jsonQuoted)-1] // strip outer quotes
+		}
+		singleQuoted := "'" + jsonQuoted + "'"
+		// Replace both compact and spaced markers, and both quote styles
+		patterns := []*regexp.Regexp{
+			regexp.MustCompile(`/\*__IPC_PATH__\*/\s*[\"'][^\"']*[\"']\s*;?\s*/\*__IPC_PATH__\*/`),
+			regexp.MustCompile(`/\*\s*__IPC_PATH__\s*\*/\s*[\"'][^\"']*[\"']\s*;?\s*/\*\s*__IPC_PATH__\s*\*/`),
+		}
+		for _, pattern := range patterns {
+			contentStr = pattern.ReplaceAllString(contentStr, singleQuoted)
+		}
 	}
 
 	// For Python adapter, use Python string escaping
@@ -76,11 +102,20 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 	}
 
 	// Inject log level into all adapters
-	// For JavaScript adapters, use JSON-like escaping for log level
-	if name == "vitest.js" || name == "jest.js" {
-		escapedLogLevel := strconv.Quote(logLevel)
-		logPattern := regexp.MustCompile(`/\*__LOG_LEVEL__\*/".*?"/\*__LOG_LEVEL__\*/`)
-		contentStr = logPattern.ReplaceAllString(contentStr, escapedLogLevel)
+	// For JavaScript adapters, inject log level as single-quoted strings
+	if name == "vitest.js" || name == "jest.js" || name == "cypress.js" || name == "mocha.js" {
+		jsonQuoted := strconv.Quote(logLevel)
+		if len(jsonQuoted) >= 2 {
+			jsonQuoted = jsonQuoted[1 : len(jsonQuoted)-1]
+		}
+		singleQuoted := "'" + jsonQuoted + "'"
+		patterns := []*regexp.Regexp{
+			regexp.MustCompile(`/\*__LOG_LEVEL__\*/\s*[\"'][^\"']*[\"']\s*;?\s*/\*__LOG_LEVEL__\*/`),
+			regexp.MustCompile(`/\*\s*__LOG_LEVEL__\s*\*/\s*[\"'][^\"']*[\"']\s*;?\s*/\*\s*__LOG_LEVEL__\s*\*/`),
+		}
+		for _, pattern := range patterns {
+			contentStr = pattern.ReplaceAllString(contentStr, singleQuoted)
+		}
 	}
 
 	// For Python adapter, use Python string escaping for log level

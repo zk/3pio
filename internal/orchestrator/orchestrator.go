@@ -157,19 +157,27 @@ func (o *Orchestrator) Run() error {
 	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
 	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
 
-	// Print greeting and command
+	// Print test run header with metadata
 	testCommand := strings.Join(o.command, " ")
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	fmt.Println()
-	fmt.Printf("Greetings! The time is now %s. I will now execute the test command:\n", timestamp)
-	fmt.Printf("`%s`\n", testCommand)
-	fmt.Println()
+	currentTime := time.Now().Format(time.RFC3339)
+	trunDir := o.runDir
+	fullReport := "$trun_dir/test-run.md"
 
-	// Print report path
-	reportPath := filepath.Join(o.runDir, "test-run.md")
-	fmt.Printf("Full report: %s\n", reportPath)
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "unknown"
+	}
+
+	fmt.Println("---")
+	fmt.Printf("current_time: %s\n", currentTime)
+	fmt.Printf("cwd: %s\n", cwd)
+	fmt.Printf("test_command: `%s`\n", testCommand)
+	fmt.Printf("trun_dir: %s\n", trunDir)
+	fmt.Printf("full_report: %s\n", fullReport)
+	fmt.Println("---")
 	fmt.Println()
-	fmt.Println("Beginning test execution now, there will be no output until test results come in.")
+	fmt.Println("Test execution starting, no output until test results.")
 	fmt.Println()
 
 	// Detect test runner
@@ -203,6 +211,10 @@ func (o *Orchestrator) Run() error {
 		detectedRunner = "vitest"
 	case "pytest_adapter.py":
 		detectedRunner = "pytest"
+	case "cypress.js":
+		detectedRunner = "cypress"
+	case "mocha.js":
+		detectedRunner = "mocha"
 	case "":
 		// Native runner - determine which one based on the underlying definition
 		if nativeRunner, ok := runnerDef.(runner.NativeRunner); ok {
@@ -671,7 +683,33 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 	return absPath
 }
 
+// normalizePathForReportManager normalizes paths the same way the report manager's GroupManager does
+func (o *Orchestrator) normalizePathForReportManager(name string) string {
+	// If it's not a file path (e.g., test names, suite names), return as-is
+	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") && !strings.Contains(name, "/") {
+		return name
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(name)
+	if err != nil {
+		// If we can't get absolute path, return original
+		return name
+	}
+
+	// Always attempt to resolve symlinks for absolute paths
+	// This is crucial for macOS where /tmp is a symlink to /private/tmp
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		return resolved
+	}
+
+	// If symlink resolution fails, return the absolute path
+	return absPath
+}
+
 // makeRelativePath normalizes paths to relative paths (matching report manager)
+// nolint:unused // kept for potential future console path normalization
 func (o *Orchestrator) makeRelativePath(name string) string {
 	// Only convert if it looks like an absolute file path
 	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") {
@@ -698,20 +736,14 @@ func (o *Orchestrator) makeRelativePath(name string) string {
 func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	switch e := event.(type) {
 	case ipc.CollectionStartEvent:
-		// Skip collection message for cargo test (it sends too many)
-		if !strings.HasPrefix(o.detectedRunner, "cargo") {
-			// Display collection start message
-			fmt.Println("Collecting tests...")
-		}
+		// Skip collection messages - we now show "Test execution starting" instead
+		// This reduces console noise and provides cleaner output
 
 	case ipc.CollectionFinishEvent:
-		// Skip collection complete message for cargo test (not meaningful)
-		if !strings.HasPrefix(o.detectedRunner, "cargo") {
-			// Display collection complete message with file count (avoid duplicates)
-			if e.Payload.Collected > 0 && e.Payload.Collected != o.lastCollected {
-				fmt.Printf("Found %d test files\n\n", e.Payload.Collected)
-				o.lastCollected = e.Payload.Collected
-			}
+		// Skip collection complete messages - we now show minimal output
+		// Track the collected count internally but don't display it
+		if e.Payload.Collected > 0 {
+			o.lastCollected = e.Payload.Collected
 		}
 
 	case ipc.GroupStartEvent:
@@ -719,8 +751,8 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		groupID := report.GenerateGroupID(e.Payload.GroupName, e.Payload.ParentNames)
 		o.groupStartTimes[groupID] = time.Now()
 
-		// Display RUNNING status for the group
-		o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
+		// Display RUNNING status for the group - disabled to reduce console noise
+		// o.displayGroupRunning(e.Payload.GroupName, e.Payload.ParentNames)
 
 	case ipc.GroupResultEvent:
 		// Check if this is a NOTESTS status (Go packages with no test files)
@@ -810,6 +842,7 @@ func (o *Orchestrator) GetExitCode() int {
 }
 
 // displayGroupRunning displays RUNNING status for a group that just started
+// nolint:unused // legacy console RUNNING display retained but disabled
 func (o *Orchestrator) displayGroupRunning(groupName string, parentNames []string) {
 	// Only display RUNNING status for top-level groups (files)
 	// Subgroups will only be shown if they have failures
@@ -827,11 +860,11 @@ func (o *Orchestrator) displayGroupResult(groupName string, parentNames []string
 	o.logger.Debug("displayGroupResult called: group=%s, parentNames=%v, status=%s, duration=%f",
 		groupName, parentNames, status, duration)
 
-	// Normalize paths to match how they're stored in the report manager
-	normalizedGroupName := o.makeRelativePath(groupName)
+	// Normalize paths the same way the report manager does - absolute paths with symlink resolution
+	normalizedGroupName := o.normalizePathForReportManager(groupName)
 	normalizedParentNames := make([]string, len(parentNames))
 	for i, name := range parentNames {
-		normalizedParentNames[i] = o.makeRelativePath(name)
+		normalizedParentNames[i] = o.normalizePathForReportManager(name)
 	}
 
 	groupID := report.GenerateGroupID(normalizedGroupName, normalizedParentNames)
@@ -877,109 +910,136 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// For groups without test cases, only show if they failed
 	if !group.HasTestCases() {
-		// Only display if the group failed (e.g., setup failure) or has no tests
-		if group.Status == report.TestStatusFail || o.noTestGroups[group.Name] {
-			statusStr := getGroupStatusString(convertReportStatusToIPC(group.Status))
+		// Check if this is a package with no test files or failed group
+		isNoTests := o.noTestGroups[group.Name]
+		isFailed := group.Status == report.TestStatusFail
 
-			// Check if this is a package with no test files
-			if o.noTestGroups[group.Name] {
-				statusStr = "NO_TESTS"
+		o.logger.Debug("Group %s has no test cases, isNoTests=%v, isFailed=%v", group.Name, isNoTests, isFailed)
+
+		// Only show if failed or has no tests (don't show successful groups)
+		if isFailed || isNoTests {
+			// Build status string
+			var statusParts []string
+			if isFailed {
+				statusParts = append(statusParts, "FAIL")
+			}
+			if isNoTests {
+				statusParts = append(statusParts, "NO_TESTS")
 			}
 
-			o.logger.Debug("Group %s has no test cases, showing as %s", group.Name, statusStr)
+			// Make the path relative before sanitizing for report path
+			groupName := group.Name
+			// On all OSes, if this is an absolute path, try to make it relative to the test execution dir
+			if filepath.IsAbs(groupName) {
+				// Derive the test execution directory from runDir
+				if absRunDir, err := filepath.Abs(o.runDir); err == nil {
+					// Go up from runDir to find the project root (parent of .3pio)
+					testExecDir := filepath.Dir(filepath.Dir(absRunDir)) // Go up twice: [id] -> runs -> .3pio
+					testExecDir = filepath.Dir(testExecDir)              // Go up once more: .3pio -> project root
 
-			// Get duration for groups with no tests (cargo reports duration even for 0 tests)
-			durationStr := ""
-			if eventDuration >= 0 {
-				durationSec := eventDuration / 1000.0 // Convert ms to seconds
-				durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
+					// Resolve symlinks for consistent comparison
+					if resolved, err := filepath.EvalSymlinks(testExecDir); err == nil {
+						testExecDir = resolved
+					}
+					if resolvedGroup, err := filepath.EvalSymlinks(groupName); err == nil {
+						groupName = resolvedGroup
+					}
+
+					// Try to make the path relative
+					if relPath, err := filepath.Rel(testExecDir, groupName); err == nil {
+						_ = relPath // no-op; kept for clarity, actual path comes from report manager below
+					}
+				}
 			}
 
-			// Only show if not pending (pending means it never really ran)
-			if group.Status != report.TestStatusPending {
-				elapsedTime := o.formatElapsedTime()
-				fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
-			}
+			// Build report path that matches actual report file layout
+			relPath := report.GetRelativeReportPath(group, o.runDir)
+			reportPath := fmt.Sprintf("$trun_dir/%s", filepath.ToSlash(relPath))
+
+			// Print all on one line
+			fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
 		}
 		return
 	}
 
-	// Build status string with counts: PASS(N) FAIL(M) SKIP(O)
-	var statusParts []string
-	if group.Stats.FailedTests > 0 {
-		statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTests))
-	}
-	if group.Stats.PassedTests > 0 {
-		statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTests))
-	}
-	if group.Stats.SkippedTests > 0 {
-		statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTests))
-	}
+	// Display group status using raw groupName
+	o.logger.Debug("displayGroupHierarchy: group.Status=%s for %s",
+		group.Status, group.Name)
 
-	// If no tests at all, just show the status
-	statusStr := ""
-	if len(statusParts) > 0 {
-		statusStr = strings.Join(statusParts, " ")
-	} else {
-		statusStr = getGroupStatusString(convertReportStatusToIPC(group.Status))
-	}
+	// Update stats to ensure they're current
+	group.UpdateStats()
 
-	o.logger.Debug("displayGroupHierarchy: displaying status=%s (group.Status=%s) for %s",
-		statusStr, group.Status, group.Name)
+	// Only display groups that have failures or no tests
+	// Use recursive stats to include subgroups
+	hasNoTestsAtAll := group.Stats.TotalTestsRecursive == 0 && group.Stats.SkippedTestsRecursive == 0
 
-	// Get duration for this group
-	durationStr := ""
+	o.logger.Debug("Group %s: FailedTestsRecursive=%d, TotalTestsRecursive=%d, PassedTestsRecursive=%d, SkippedTestsRecursive=%d",
+		group.Name, group.Stats.FailedTestsRecursive, group.Stats.TotalTestsRecursive, group.Stats.PassedTestsRecursive, group.Stats.SkippedTestsRecursive)
 
-	// Check if duration was provided from the event (-1 means no duration available)
-	if eventDuration >= 0 {
-		durationSec := eventDuration / 1000.0 // Convert ms to seconds
-		// Always show duration if provided by the test runner (including 0)
-		durationStr = fmt.Sprintf(" (%.2fs)", durationSec)
-	} else if eventDuration < 0 {
-		// Negative duration means not available, try to calculate from start time
-		groupID := group.ID
-		if startTime, ok := o.groupStartTimes[groupID]; ok {
-			duration := time.Since(startTime).Seconds()
-			if duration > 0.01 { // Only show if > 10ms
-				durationStr = fmt.Sprintf(" (%.2fs)", duration)
+	if group.Stats.FailedTestsRecursive > 0 || hasNoTestsAtAll {
+		// Build status string with fail/pass/skip counts
+		var statusParts []string
+
+		// Check if this is a NO_TESTS case first
+		if hasNoTestsAtAll && o.noTestGroups[group.Name] {
+			// For NO_TESTS groups, just show NO_TESTS without counts
+			statusParts = append(statusParts, "NO_TESTS")
+		} else {
+			// Add FAIL count if there are failures
+			if group.Stats.FailedTestsRecursive > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTestsRecursive))
 			}
-			delete(o.groupStartTimes, groupID) // Clean up
-		}
-	}
 
-	// Only display group line if there are failures
-	if group.Stats.FailedTests > 0 {
-		// Display the file result using raw groupName
-		elapsedTime := o.formatElapsedTime()
-		// Print without fixed-width padding for status
-		fmt.Printf("%s %s %s%s\n", elapsedTime, statusStr, group.Name, durationStr)
+			// Add PASS count only if > 0
+			if group.Stats.PassedTestsRecursive > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTestsRecursive))
+			}
 
-		// Show failure details
-		// Collect all failed test names from the group hierarchy
-		failedTests := o.collectFailedTests(group)
-
-		// Display up to 3 failed test names
-		displayCount := 3
-		if len(failedTests) < displayCount {
-			displayCount = len(failedTests)
+			// Add SKIP count only if > 0
+			if group.Stats.SkippedTestsRecursive > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTestsRecursive))
+			}
 		}
 
-		for i := 0; i < displayCount; i++ {
-			fmt.Printf("  x %s\n", failedTests[i])
+		// Make the path relative before sanitizing for report path
+		groupName := group.Name
+		// On all OSes, if this is an absolute path, try to make it relative to the test execution dir
+		if filepath.IsAbs(groupName) {
+			// Derive the test execution directory from runDir
+			if absRunDir, err := filepath.Abs(o.runDir); err == nil {
+				// Go up from runDir to find the project root (parent of .3pio)
+				testExecDir := filepath.Dir(filepath.Dir(absRunDir)) // Go up twice: [id] -> runs -> .3pio
+				testExecDir = filepath.Dir(testExecDir)              // Go up once more: .3pio -> project root
+
+				// Resolve symlinks for consistent comparison
+				if resolved, err := filepath.EvalSymlinks(testExecDir); err == nil {
+					testExecDir = resolved
+				}
+				if resolvedGroup, err := filepath.EvalSymlinks(groupName); err == nil {
+					groupName = resolvedGroup
+				}
+
+				// Try to make the path relative
+				if relPath, err := filepath.Rel(testExecDir, groupName); err == nil {
+					_ = relPath // no-op; kept for clarity, actual path comes from report manager below
+				}
+			}
 		}
 
-		// Show "+N more" if there are additional failures
-		if len(failedTests) > 3 {
-			fmt.Printf("  +%d more\n", len(failedTests)-3)
-		}
+		// Build report path that matches actual report file layout
+		relPath := report.GetRelativeReportPath(group, o.runDir)
+		reportPath := fmt.Sprintf("$trun_dir/%s", filepath.ToSlash(relPath))
 
-		// Show report path using raw groupName
-		reportPath := fmt.Sprintf(".3pio/runs/%s/reports/%s/index.md", o.runID, report.SanitizeGroupName(group.Name))
-		fmt.Printf("  See %s\n", reportPath)
+		// Print all on one line
+		fmt.Printf("%s %s\n", strings.Join(statusParts, " "), reportPath)
 	}
 }
 
+// formatElapsedTime returns a human-friendly elapsed time since startTime
+// (kept single implementation below)
+
 // collectFailedTests recursively collects all failed test names from a group hierarchy
+// nolint:unused // helper retained for potential future detailed failure listings
 func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 	var failedTests []string
 
@@ -1000,6 +1060,7 @@ func (o *Orchestrator) collectFailedTests(group *report.TestGroup) []string {
 }
 
 // formatElapsedTime formats the elapsed time from start in a progressive display
+// nolint:unused // elapsed time no longer printed; keep for future use
 func (o *Orchestrator) formatElapsedTime() string {
 	elapsed := time.Since(o.startTime)
 	totalSeconds := int(elapsed.Seconds())
@@ -1019,6 +1080,7 @@ func (o *Orchestrator) formatElapsedTime() string {
 }
 
 // getGroupStatusString returns a status string for groups in console output
+// nolint:unused // retained for completeness with convertStringToTestStatus
 func getGroupStatusString(status ipc.TestStatus) string {
 	switch status {
 	case ipc.TestStatusPass:
@@ -1058,6 +1120,7 @@ func convertStringToTestStatus(status string) ipc.TestStatus {
 }
 
 // convertReportStatusToIPC converts report.TestStatus to ipc.TestStatus
+// nolint:unused // not used in current console/reporting paths
 func convertReportStatusToIPC(status report.TestStatus) ipc.TestStatus {
 	switch status {
 	case report.TestStatusPass:
@@ -1103,10 +1166,8 @@ func (o *Orchestrator) displayFinalResults() {
 	// Get all root groups (files) from the report manager
 	rootGroups := o.reportManager.GetRootGroups()
 	for _, group := range rootGroups {
-		// Only display groups that have test cases
-		if group.HasTestCases() {
-			o.displayGroupHierarchy(group, 0, -1) // No duration available in this context (-1 indicates no duration)
-		}
+		// Display all groups (including those without test cases, which might be NO_TESTS)
+		o.displayGroupHierarchy(group, 0, -1) // No duration available in this context (-1 indicates no duration)
 	}
 }
 
