@@ -60,6 +60,9 @@ class ThreepioReporter:
         self.group_starts = set()
         self.file_groups = {}
 
+        # Track processed skips to avoid duplicates
+        self.processed_skips = set()  # Track (file_path, test_name) tuples
+
         self._ensure_debug_log_dir()
         self._log_startup()
         
@@ -427,6 +430,22 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
             _reporter.current_test_file = file_path
 
 
+def _extract_skip_reason(report: TestReport) -> str:
+    """Extract skip reason from pytest report object."""
+    if hasattr(report, 'longrepr'):
+        if isinstance(report.longrepr, tuple) and len(report.longrepr) >= 3:
+            # Format: (category, condition, reason)
+            reason = str(report.longrepr[2])
+            # Remove 'Skipped: ' prefix if present
+            if reason.startswith('Skipped: '):
+                return reason[9:]
+            return reason
+        elif isinstance(report.longrepr, str):
+            return report.longrepr
+
+    return "Test skipped"
+
+
 def pytest_runtest_logreport(report: TestReport) -> None:
     """Process test reports."""
     global _reporter, _is_worker
@@ -438,19 +457,65 @@ def pytest_runtest_logreport(report: TestReport) -> None:
     if not _reporter:
         return
     
-    # Only process the 'call' phase (actual test execution)
-    if report.when != 'call':
-        return
-    
-    # Parse the test hierarchy from nodeid
+    # Parse test hierarchy from nodeid (needed for all phases)
     file_path, suite_chain, test_name = _reporter.parse_test_hierarchy(report.nodeid)
 
     # Initialize results for file if needed
     if file_path not in _reporter.test_results:
         _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "failed_tests": []}
 
-    # Determine test status
+    # Check if this is an xfail case (must check before skip handling)
     has_xfail = hasattr(report, 'wasxfail')
+
+    # HANDLE SKIPPED TESTS IN ANY PHASE (but not xfail)
+    if report.skipped and report.when in ('setup', 'call') and not has_xfail:
+        # Check for duplicate processing
+        skip_key = (file_path, test_name)
+        if skip_key in _reporter.processed_skips:
+            return
+        _reporter.processed_skips.add(skip_key)
+
+        # Extract skip reason
+        skip_reason = _extract_skip_reason(report)
+
+        # Update skip count
+        _reporter.test_results[file_path]["skipped"] += 1
+
+        # Ensure all parent groups are discovered and started
+        _reporter.ensure_groups_discovered(file_path, suite_chain)
+
+        # Start all parent groups in the hierarchy
+        for i in range(len(suite_chain) + 1):
+            hierarchy = [file_path] + suite_chain[:i]
+            _reporter.ensure_group_started(hierarchy)
+
+        # Build complete hierarchy for this test case
+        parent_names = _reporter.build_hierarchy_from_file(file_path, suite_chain)
+
+        # Send IPC event for skipped test
+        _reporter.send_event("testCase", {
+            "testName": test_name,
+            "parentNames": parent_names,
+            "status": "SKIP",
+            "skipReason": skip_reason,
+            "skipPhase": report.when  # 'setup' or 'call'
+        })
+
+        # Track test in file group
+        if file_path in _reporter.file_groups:
+            _reporter.file_groups[file_path]['tests'].append({
+                'name': test_name,
+                'status': 'SKIP',
+                'duration': 0
+            })
+
+        return
+
+    # Only process non-skip events from call phase
+    if report.when != 'call':
+        return
+
+    # Determine test status
 
     if has_xfail:
         # Handle xfail/xpass cases
