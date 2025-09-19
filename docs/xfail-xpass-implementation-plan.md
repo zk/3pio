@@ -181,23 +181,14 @@ pytest has two additional important statuses:
 - **Strict xfail mode**: Tests with xfail(strict=True) - verify xpass causes failure in strict mode
 - **xfail with pytest.xfail()**: Test that calls pytest.xfail() function - verify runtime xfail works
 
-#### Exit Code Verification
-- **All xfailed tests**: Run with only xfailed tests - should exit 0 (success)
-- **Mixed with real failures**: Run with xfail and real failures - should exit 1 (failure)
-- **xpass in non-strict mode**: Run with xpass tests - should exit 0 (success)
-- **xpass in strict mode**: Run with strict xpass - should exit 1 (failure)
-
 #### Report Content Verification
 - **Summary statistics**: Verify final report shows correct counts for xfailed and xpassed
 - **Individual test status**: Verify each test shows correct XFAIL or XPASS status in report
 - **No false positives**: Verify normal skipped tests don't show as xfailed
 - **Reason display**: Verify xfail reasons appear in appropriate report sections
 - **Group aggregation**: Verify parent groups show accumulated xfail/xpass counts from children
-
-#### Cross-runner Comparison
-- **pytest baseline comparison**: Run same xfail tests with plain pytest, compare summary counts
-- **Exit code matching**: Verify 3pio mirrors pytest's exit codes for xfail scenarios
-- **Output format validation**: Verify 3pio report contains all info pytest would report about xfail/xpass
+- **Mixed status files**: Verify files with combination of all statuses display correctly
+- **Nested group summaries**: Verify xfail/xpass counts appear in nested group tables
 
 ### Test Fixtures Needed
 ```python
@@ -223,11 +214,11 @@ def test_strict_xpass():
 
 ## Considerations
 
-1. **Exit Codes**: xfail tests should not affect exit codes (they're expected failures)
-2. **Strict Mode**: pytest's strict xfail mode makes xpass fail the suite - consider how to handle this
-3. **Other Test Runners**: This implementation is pytest-specific. Consider if/how to extend to other runners
-4. **Backward Compatibility**: Ensure existing functionality isn't broken
-5. **Report Clarity**: Make it clear in reports what xfail/xpass mean for users unfamiliar with the concepts
+1. **Other Test Runners**: This implementation is pytest-specific. Consider if/how to extend to other runners
+2. **Backward Compatibility**: Ensure existing functionality isn't broken
+3. **Report Clarity**: Make it clear in reports what xfail/xpass mean for users unfamiliar with the concepts
+4. **Performance**: Minimal overhead for checking wasxfail attribute
+5. **Edge Cases**: Handle tests that are both xfailed and skipped conditionally
 
 ## Implementation Order
 1. Start with Python adapter changes (easiest to test in isolation)
@@ -239,5 +230,6 @@ def test_strict_xpass():
 ## Success Criteria
 - pytest tests marked with @pytest.mark.xfail are correctly identified as XFAIL or XPASS
 - Reports clearly show xfail/xpass counts separate from regular failures/passes
-- Exit codes remain correct (xfail doesn't fail the suite)
 - Integration tests pass with real pytest fixtures
+- No regression in existing test status handling
+- Clear visual distinction in reports between xfail (expected) and fail (unexpected)
