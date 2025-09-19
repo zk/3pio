@@ -136,16 +136,68 @@ pytest has two additional important statuses:
 ## Testing Strategy
 
 ### Unit Tests
-1. Test pytest adapter correctly identifies xfail/xpass from TestReport
-2. Test IPC events contain correct status for xfail/xpass
-3. Test group manager correctly processes xfail/xpass statuses
-4. Test report generation includes xfail/xpass in summaries
+
+#### Pytest Adapter Tests (Python)
+- **Test xfail detection**: Mock a TestReport with wasxfail attribute and skipped=True, verify adapter sends XFAIL status
+- **Test xpass detection**: Mock a TestReport with wasxfail attribute and passed=True, verify adapter sends XPASS status
+- **Test xfail reason extraction**: Verify wasxfail reason string is included in the IPC event payload
+- **Test normal skip differentiation**: Verify skipped test without wasxfail attribute still reports as SKIP, not XFAIL
+- **Test totals accumulation**: Verify xfailed and xpassed counts are tracked separately in test_results dictionary
+- **Test group totals**: Verify pytest_sessionfinish sends correct xfailed/xpassed counts in totals
+
+#### IPC Event Tests (Go)
+- **Test XFAIL event parsing**: Verify IPC manager correctly parses testCase events with status="XFAIL"
+- **Test XPASS event parsing**: Verify IPC manager correctly parses testCase events with status="XPASS"
+- **Test xfail reason field**: Verify xfailReason field is properly extracted from event payload
+- **Test group totals with xfail/xpass**: Verify GroupTotals correctly deserializes with xfailed and xpassed fields
+
+#### Group Manager Tests (Go)
+- **Test XFAIL status mapping**: Verify HandleTestCase maps "XFAIL" string to TestStatusXFail enum
+- **Test XPASS status mapping**: Verify HandleTestCase maps "XPASS" string to TestStatusXPass enum
+- **Test group status aggregation with xfail**: Verify group containing xfailed tests doesn't become FAIL status
+- **Test group status with mixed results**: Verify correct status when group has mix of pass, fail, skip, xfail, xpass
+- **Test recursive count aggregation**: Verify xfailed/xpassed counts bubble up through parent groups correctly
+
+#### Report Generation Tests (Go)
+- **Test status symbol formatting**: Verify XFAIL and XPASS get appropriate display symbols
+- **Test summary line format**: Verify test count summaries show "X xfailed, Y xpassed" when applicable
+- **Test report table rows**: Verify groups with xfail/xpass tests show correct counts in table columns
+- **Test no xfail display**: Verify reports don't show xfail/xpass counts when all are zero
+- **Test overall run status**: Verify xfailed tests don't affect overall PASS/FAIL determination
 
 ### Integration Tests
-1. Create pytest test fixtures with xfail/xpass tests
-2. Run 3pio against these fixtures
-3. Verify reports correctly show xfail/xpass statuses
-4. Verify exit codes are correct (xfail shouldn't fail the suite)
+
+#### Basic xfail/xpass Fixtures
+- **Simple xfail test**: Single test marked with xfail that fails - should report as XFAIL
+- **Simple xpass test**: Single test marked with xfail that passes - should report as XPASS
+- **Mixed results file**: File with normal pass, fail, skip, xfail, and xpass tests all together
+- **xfail with reason**: Test with xfail(reason="...") - verify reason appears in report
+- **Conditional xfail**: Test with xfail(condition=True/False) - verify conditional behavior works
+
+#### Complex Scenarios
+- **Nested test classes with xfail**: Class containing xfailed tests - verify group hierarchy handles xfail
+- **Parametrized xfail tests**: Parametrized test with some xfail markers - verify each parameter reports correctly
+- **xfail on setup/teardown**: Tests where fixture fails with xfail marker - verify proper handling
+- **Strict xfail mode**: Tests with xfail(strict=True) - verify xpass causes failure in strict mode
+- **xfail with pytest.xfail()**: Test that calls pytest.xfail() function - verify runtime xfail works
+
+#### Exit Code Verification
+- **All xfailed tests**: Run with only xfailed tests - should exit 0 (success)
+- **Mixed with real failures**: Run with xfail and real failures - should exit 1 (failure)
+- **xpass in non-strict mode**: Run with xpass tests - should exit 0 (success)
+- **xpass in strict mode**: Run with strict xpass - should exit 1 (failure)
+
+#### Report Content Verification
+- **Summary statistics**: Verify final report shows correct counts for xfailed and xpassed
+- **Individual test status**: Verify each test shows correct XFAIL or XPASS status in report
+- **No false positives**: Verify normal skipped tests don't show as xfailed
+- **Reason display**: Verify xfail reasons appear in appropriate report sections
+- **Group aggregation**: Verify parent groups show accumulated xfail/xpass counts from children
+
+#### Cross-runner Comparison
+- **pytest baseline comparison**: Run same xfail tests with plain pytest, compare summary counts
+- **Exit code matching**: Verify 3pio mirrors pytest's exit codes for xfail scenarios
+- **Output format validation**: Verify 3pio report contains all info pytest would report about xfail/xpass
 
 ### Test Fixtures Needed
 ```python
