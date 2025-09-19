@@ -72,7 +72,7 @@ func TestFailureDisplayFormat(t *testing.T) {
 		// Check that a report path is shown and points at the many-failures group (sanitized)
 		hasReportPrefix := strings.Contains(output, "$trun_dir/reports/") || strings.Contains(output, ".3pio/runs/")
 		hasManyFailures := strings.Contains(output, "many_failures/index.md") || strings.Contains(output, "many_failures\\index.md")
-		if !(hasReportPrefix && hasManyFailures) {
+		if !hasReportPrefix || !hasManyFailures {
 			t.Errorf("Expected to see report path for many-failures, got: %s", output)
 		}
 	})
