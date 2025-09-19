@@ -398,10 +398,20 @@ def pytest_runtest_logreport(report: TestReport) -> None:
 
     # Initialize results for file if needed
     if file_path not in _reporter.test_results:
-        _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
+        _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "failed_tests": []}
 
     # Determine test status
-    if report.passed:
+    has_xfail = hasattr(report, 'wasxfail')
+
+    if has_xfail:
+        # Handle xfail/xpass cases
+        if report.passed:
+            status = "XPASS"  # Test passed unexpectedly
+            _reporter.test_results[file_path]["xpassed"] = _reporter.test_results[file_path].get("xpassed", 0) + 1
+        else:  # report.skipped is True for xfail
+            status = "XFAIL"  # Test failed as expected
+            _reporter.test_results[file_path]["xfailed"] = _reporter.test_results[file_path].get("xfailed", 0) + 1
+    elif report.passed:
         status = "PASS"
         _reporter.test_results[file_path]["passed"] += 1
     elif report.failed:
@@ -431,6 +441,10 @@ def pytest_runtest_logreport(report: TestReport) -> None:
         "status": status,
         "duration": report.duration * 1000 if hasattr(report, 'duration') else 0  # Convert to milliseconds
     }
+
+    # Add xfail reason if available
+    if has_xfail:
+        payload["xfailReason"] = str(report.wasxfail)
 
     # Add error information for failures
     if report.failed:
@@ -487,10 +501,14 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
 
         # Calculate totals for the file group
         totals = {
-            'total': results.get("passed", 0) + results.get("failed", 0) + results.get("skipped", 0),
+            'total': (results.get("passed", 0) + results.get("failed", 0) +
+                     results.get("skipped", 0) + results.get("xfailed", 0) +
+                     results.get("xpassed", 0)),
             'passed': results.get("passed", 0),
             'failed': results.get("failed", 0),
-            'skipped': results.get("skipped", 0)
+            'skipped': results.get("skipped", 0),
+            'xfailed': results.get("xfailed", 0),
+            'xpassed': results.get("xpassed", 0)
         }
 
         _reporter._log_debug(f"Sending group result for file: {file_path} (status: {status})")

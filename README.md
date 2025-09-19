@@ -19,6 +19,20 @@ No code changes and no config, it's that simple.
 - Zero-config, prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
 - Supports large test suites, 3pio has been tested on projects with many hundreds of test files containing thousands of test cases.
 
+## Supported Test Runners
+
+| Language | Runner | Example invocation |
+|---|---|---|
+| JS/TS | Jest | `3pio npm test` · `3pio npx jest` |
+| JS/TS | Vitest (v3+) | `3pio npx vitest run` · `3pio pnpm vitest run` |
+| JS/TS | Mocha | `3pio npx mocha -- ./test/**/*.spec.js` |
+| JS/TS | Cypress | `3pio npx cypress run --headless` |
+| Python | pytest | `3pio pytest` · `3pio python -m pytest` |
+| Go | go test (>=1.10) | `3pio go test ./...` |
+| Rust | cargo test | `3pio cargo test` |
+| Rust | cargo nextest | `3pio cargo nextest run` |
+
+
 ## Installation
 
 Copy-paste this to your agent:
@@ -36,10 +50,22 @@ Install 3pio via the package manager that best fits with their project or use ca
 
 After installation, run `3pio --help` for context and usage.
 ```
-
-Copy-paste this at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
+Copy-paste the following at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
 ```bash
 When running tests use `3pio` by prefixing your test commands with `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+
+## Usage
+
+Tell your agent to prefix any test command with `3pio`, works with any flags or arguments.
+
+```bash
+$ 3pio npm test
+$ 3pio npx vitest -- ./path/to/test/file.test.js
+$ 3pio npx mocha -- ./test/**/*.spec.js
+$ 3pio go test ./...
+```
+
+Console output is focused on just which tests failed and provides path information on how to find out more.
 ```
 
 ## Why?
@@ -50,37 +76,6 @@ Testing tools designed for humans add noise to your agent's context. Often multi
 
 Using 3pio, your agent can target the information it needs to know. It can revisit results preventing unecessary test reruns altogether. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
 
-
-## Usage
-
-Tell your agent to prefix any test command with `3pio`, works with any flags or arguments.
-
-```bash
-$ 3pio npm test
-$ 3pio npx vitest -- ./path/to/test/file.test.js
-$ 3pio npx mocha -- ./test/**/*.spec.js
-$ 3pio npx cypress run --headless --spec cypress/e2e/sample.cy.js
-
-$ 3pio go test ./...
----
-current_time: 2025-09-18T07:57:30-10:00
-cwd: /Users/edie/code/3pio
-test_command: `go test ./...`
-trun_dir: .3pio/runs/20250918T075730-stoic-janeway
-full_report: $trun_dir/test-run.md
----
-
-Test execution starting, no output until test results.
-
-FAIL $trun_dir/reports/github_com_zk_3pio_internal_runner/index.md
-
-Test failures! This is madness!
-Results:     8 passed, 1 failed, 2 skipped, 11 total
-Total time:  61.394s
-Test execution failed: test command failed: exit status 1
-```
-
-Console output is focused on just which tests failed and provides path information on how to find out more.
 
 ## Examples
 
@@ -233,8 +228,6 @@ Console output is focused on just which tests failed and provides path informati
 ```
 
 
-
-
 3pio's persistent reports let your agent analyze patterns across many failures without overwhelming context. The agent can create actionable investigation plans and revisit specific failures as needed.
 
 
@@ -279,20 +272,6 @@ Console output is focused on just which tests failed and provides path informati
 3pio injects a custom reporter into the provided test command `npm test` -> `npm test --reporter /custom/jest/reporter.js`. This reporter sends events back to the main process which are analyzed, transformed, and written to the filesystem as a navigable tree of test information.
 
 **Note:** 3pio writes its files to project root directory at `.3pio/`, which you can safely add to your `.gitignore`.
-
-
-## Supported Test Runners
-
-| Language | Runner | Example invocation (prefix with `3pio`) |
-|---|---|---|
-| JS/TS | Jest | `3pio npm test` · `3pio npx jest` |
-| JS/TS | Vitest (v3+) | `3pio npx vitest run` · `3pio pnpm vitest run` |
-| JS/TS | Mocha | `3pio npx mocha -- ./test/**/*.spec.js` |
-| JS/TS | Cypress | `3pio npx cypress run --headless` |
-| Python | pytest | `3pio pytest` · `3pio python -m pytest` |
-| Go | go test (>=1.10) | `3pio go test ./...` |
-| Rust | cargo test | `3pio cargo test` |
-| Rust | cargo nextest | `3pio cargo nextest run` |
 
 
 ## Limitations
