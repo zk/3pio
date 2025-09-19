@@ -53,14 +53,9 @@ func TestFailureDisplayFormat(t *testing.T) {
 	// Inherit environment so 'go' executable can be found in subprocess
 	cmd.Env = os.Environ()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// We expect this to fail since tests are failing
-	_ = cmd.Run()
-
-	output := stdout.String()
+	// Capture both stdout and stderr (some environments route differently)
+	combined, _ := cmd.CombinedOutput()
+	output := string(combined)
 
 	// Verify the failure display format (new minimal format)
 	t.Run("shows_minimal_summary_with_report_path", func(t *testing.T) {
@@ -74,10 +69,11 @@ func TestFailureDisplayFormat(t *testing.T) {
 	})
 
 	t.Run("shows_report_path", func(t *testing.T) {
-		// Check that report path is shown after failures (no "See" prefix anymore)
-		if !strings.Contains(output, "reports/github_com_zk_3pio_tests_fixtures_many_failures/index.md") &&
-			!strings.Contains(output, "reports\\github_com_zk_3pio_tests_fixtures_many_failures\\index.md") {
-			t.Errorf("Expected to see correct report path format, got: %s", output)
+		// Check that a report path is shown and points at the many-failures group (sanitized)
+		hasReportPrefix := strings.Contains(output, "$trun_dir/reports/") || strings.Contains(output, ".3pio/runs/")
+		hasManyFailures := strings.Contains(output, "many_failures/index.md") || strings.Contains(output, "many_failures\\index.md")
+		if !(hasReportPrefix && hasManyFailures) {
+			t.Errorf("Expected to see report path for many-failures, got: %s", output)
 		}
 	})
 
