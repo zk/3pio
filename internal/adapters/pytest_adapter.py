@@ -27,6 +27,20 @@ from _pytest.terminal import TerminalReporter
 # Global reporter instance
 _reporter: Optional['ThreepioReporter'] = None
 
+# Worker detection flag
+_is_worker = False
+
+
+def is_xdist_worker() -> bool:
+    """Detect if running in an xdist worker process.
+
+    Returns True if this is an xdist worker process that should stay silent.
+    Returns False if this is a standalone run or xdist controller that should report.
+    """
+    # Primary detection: check for PYTEST_XDIST_WORKER environment variable
+    # This is present only in worker processes, not in the controller
+    return os.environ.get('PYTEST_XDIST_WORKER') is not None
+
 
 class ThreepioReporter:
     """pytest reporter that sends test events via IPC."""
@@ -283,15 +297,34 @@ class ThreepioReporter:
 
 def pytest_configure(config: Config) -> None:
     """Register the 3pio reporter if IPC path is set."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Detect if we're running in a worker process
+    _is_worker = is_xdist_worker()
+
     ipc_path = #__IPC_PATH__#"WILL_BE_REPLACED"#__IPC_PATH__#
-    
+
+    # Only initialize reporter in non-worker processes
+    if _is_worker:
+        # Log detection for debugging (to stderr since we're not initializing reporter)
+        try:
+            debug_log_path = Path.cwd() / ".3pio" / "debug.log"
+            debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(debug_log_path, 'a') as f:
+                timestamp = datetime.now().isoformat()
+                worker_id = os.environ.get('PYTEST_XDIST_WORKER', 'unknown')
+                f.write(f"{timestamp} INFO  | [pytest-adapter] Worker {worker_id} detected - staying silent\n")
+                f.flush()
+        except:
+            pass
+        return  # Don't initialize reporter in worker mode
+
     if True:  # IPC path will always be present after injection
         # Create the reporter instance
         _reporter = ThreepioReporter(ipc_path)
-        _reporter._log_info("Plugin initialized in pytest_configure")
-        
+        _reporter._log_info("Plugin initialized in pytest_configure (non-worker mode)")
+        _reporter._log_info(f"PYTEST_XDIST_WORKER env var: {os.environ.get('PYTEST_XDIST_WORKER', 'not set')}")
+
         # Store it in config for access in other hooks
         config._threepio_reporter = _reporter
         
@@ -314,8 +347,12 @@ def pytest_configure(config: Config) -> None:
 
 def pytest_collectreport(report: CollectReport) -> None:
     """Handle collection errors."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if not _reporter:
         return
     
@@ -338,8 +375,12 @@ def pytest_collectreport(report: CollectReport) -> None:
 
 def pytest_collection_finish(session) -> None:
     """Called after collection is completed."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if _reporter:
         # Send event to indicate collection finished
         # Get count of collected items
@@ -354,7 +395,11 @@ def pytest_collection_finish(session) -> None:
 
 def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
     """Called when running a single test."""
-    global _reporter
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
 
     if _reporter:
         file_path = _reporter.get_file_path(item)
@@ -384,8 +429,12 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
 
 def pytest_runtest_logreport(report: TestReport) -> None:
     """Process test reports."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if not _reporter:
         return
     
@@ -472,8 +521,12 @@ def pytest_runtest_logreport(report: TestReport) -> None:
 
 def pytest_sessionfinish(session, exitstatus: int) -> None:
     """Called after all tests have run."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if not _reporter:
         return
     
@@ -527,10 +580,14 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
 
 def pytest_unconfigure(config: Config) -> None:
     """Clean up when pytest is done."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     # Note: We don't restore stdout/stderr since we manage the entire test run
     # This prevents any buffered output from appearing after the tests complete
-    
+
     # Clear the global reporter
     _reporter = None
