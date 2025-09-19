@@ -6,6 +6,8 @@
 
 3pio is a test runner that translates traditional test output into a format optimized for coding agents, providing context-efficient console output and file-based logs that play well with your agent's tools.
 
+Instead of introducing a new testing framework, 3pio works with your existing tests and test runners. All you do is tell your agent to prefix your existing test command with `3pio`
+
 
 ## Why?
 

@@ -1,13 +1,12 @@
 package integration_test
 
 import (
-	"bytes"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"strings"
-	"testing"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "runtime"
+    "strings"
+    "testing"
 )
 
 func TestMultiPackageFailureReportPath(t *testing.T) {
@@ -47,20 +46,17 @@ func TestMultiPackageFailureReportPath(t *testing.T) {
 	cleanCmd.Env = os.Environ()
 	_ = cleanCmd.Run()
 
-	// Run 3pio with the test fixture (use -count=1 to disable test caching)
-	cmd := exec.Command(binaryPath, "go", "test", "-count=1", "./...")
+    // Run 3pio with the test fixture
+    // -count=1 disables cache, -p=1 forces single-package concurrency to stabilize output ordering
+    cmd := exec.Command(binaryPath, "go", "test", "-count=1", "-p=1", "./...")
 	cmd.Dir = fixtureDir
 	// Inherit environment so 'go' executable can be found in subprocess
 	cmd.Env = os.Environ()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// We expect this to fail since tests are failing
-	_ = cmd.Run()
-
-	output := stdout.String()
+    // Capture both stdout and stderr to avoid OS/TTY differences in stream routing
+    // We expect this to fail since tests are failing
+    combined, _ := cmd.CombinedOutput()
+    output := string(combined)
 
 	// Test that the summary section exists with inline display
 	t.Run("summary_section_exists", func(t *testing.T) {
