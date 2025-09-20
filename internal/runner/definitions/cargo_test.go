@@ -236,7 +236,7 @@ func TestCargoQualifyIntegrationTestWithCrate(t *testing.T) {
 	logger, _ := logger.NewFileLogger()
 	defer func() { _ = logger.Close() }()
 	def := NewCargoTestDefinition(logger)
-	def.ipcWriter = &IPCWriter{} // Mock IPC writer
+	def.ipcWriter = &IPCWriter{}         // Mock IPC writer
 	def.lastUnitTestCrate = "actix_http" // Pre-set from previous unit test
 
 	var jsonCount int
