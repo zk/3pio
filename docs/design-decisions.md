@@ -47,6 +47,69 @@ This ensures the correct runner name is recorded in reports and proper processin
 - Adapter-based runners need JavaScript/Python code to hook into test frameworks
 - This hybrid approach provides flexibility and efficiency
 
+## Runner Detection Order (2025-09-19)
+
+### Decision
+Use an ordered slice instead of a map for storing test runner definitions in the Manager.
+
+### Rationale
+Maps in Go have intentionally randomized iteration order for security reasons. Using a map for runner storage and then iterating over it for detection caused non-deterministic behavior - the same command could be detected as different runners on different runs.
+
+### Implementation
+- Changed `Manager.runners` from `map[string]Definition` to a slice of structs
+- Added `runnersByName` map for O(1) lookups by name
+- Runners are registered in priority order (Vitest before Jest, etc.)
+- Detection iterates through the slice in registration order (deterministic)
+
+### Benefits
+- Deterministic runner detection
+- Explicit priority ordering
+- No race conditions
+- Predictable behavior
+
+## Vitest Version Requirement (2025-09-19)
+
+### Decision
+Require Vitest 3.0 or higher. No support for older versions.
+
+### Rationale
+Supporting multiple Vitest versions would require:
+- Complex fallback logic
+- Version detection at runtime
+- Multiple code paths
+- Duplicate event emission bugs (as experienced)
+
+### Implementation
+- Version check in adapter constructor
+- Exit with error if Vitest < 3.0
+- Use only modern Vitest 3+ API methods
+- Clean, single code path
+
+### Benefits
+- Cleaner, more maintainable code
+- No duplicate test events
+- Modern API usage
+- Simplified debugging
+
+## Runner Detection Precedence (2025-09-19)
+
+### Decision
+Explicit runner commands always take precedence over package.json detection.
+
+### Rationale
+When both Jest and Vitest are in package.json, commands like `npx vitest run` were incorrectly detected as Jest because both runners' `Matches()` methods returned true.
+
+### Implementation
+- `MatchesWithPrecedence()` function checks:
+  1. If runner is explicitly in command → match
+  2. If another runner is explicitly specified → don't match
+  3. Only use package.json as fallback for generic commands
+
+### Benefits
+- Correct detection for explicit commands
+- Package.json still works for `npm test`
+- No ambiguity in multi-runner projects
+
 ## Output File Race Condition Fix (2025-09-14)
 
 **Problem**: When running cargo test, an intermittent race condition (~40% occurrence) caused the error: `[ERROR] Failed to process native output: error reading cargo test output: read |0: file already closed`

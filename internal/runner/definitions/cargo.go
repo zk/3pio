@@ -15,8 +15,8 @@ import (
 )
 
 // Keep these for backwards compatibility if needed
-var runningUnittestsRegex = regexp.MustCompile(`Running unittests .* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
-var runningIntegrationTestsRegex = regexp.MustCompile(`Running tests/.* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
+var runningUnittestsRegex = regexp.MustCompile(`^\s*Running unittests .* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
+var runningIntegrationTestsRegex = regexp.MustCompile(`^\s*Running tests/.* \(target/.*/deps/(.*?)-[a-f0-9]+\)`)
 
 // docTestsRegex matches "Doc-tests crate_name" with optional leading whitespace
 var docTestsRegex = regexp.MustCompile(`^\s*Doc-tests\s+(.+)$`)
@@ -28,15 +28,16 @@ type CargoTestDefinition struct {
 	ipcWriter *IPCWriter
 
 	// Workspace and crate tracking
-	workspaceName    string                     // Name of workspace if detected
-	currentCrate     string                     // Currently executing crate
-	crateTestCounts  map[string]int             // Expected test count per crate from suite events
-	crateTestsSeen   map[string]int             // Number of tests seen so far per crate
-	crateGroups      map[string]*CrateGroupInfo // Map of crate name to group info
-	crateMetadata    map[string]*CrateMetadata  // Map of crate name to metadata from Cargo.toml
-	discoveredGroups map[string]bool            // Track discovered groups to avoid duplicates
-	groupStarts      map[string]bool            // Track started groups
-	testStates       map[string]*CargoTestState // Track test state
+	workspaceName     string                     // Name of workspace if detected
+	currentCrate      string                     // Currently executing crate
+	lastUnitTestCrate string                     // Track crate from most recent unit test for integration test qualification
+	crateTestCounts   map[string]int             // Expected test count per crate from suite events
+	crateTestsSeen    map[string]int             // Number of tests seen so far per crate
+	crateGroups       map[string]*CrateGroupInfo // Map of crate name to group info
+	crateMetadata     map[string]*CrateMetadata  // Map of crate name to metadata from Cargo.toml
+	discoveredGroups  map[string]bool            // Track discovered groups to avoid duplicates
+	groupStarts       map[string]bool            // Track started groups
+	testStates        map[string]*CargoTestState // Track test state
 }
 
 // CrateMetadata stores metadata from Cargo.toml
@@ -282,6 +283,7 @@ func (c *CargoTestDefinition) processLineData(line string, jsonEventCount *int) 
 		crateName := matches[1]
 		c.mu.Lock()
 		c.currentCrate = crateName
+		c.lastUnitTestCrate = crateName // Save for qualifying integration tests
 		c.logger.Debug("Set current crate to: %s (unit tests)", crateName)
 		c.mu.Unlock()
 		return
@@ -291,8 +293,15 @@ func (c *CargoTestDefinition) processLineData(line string, jsonEventCount *int) 
 	if matches := runningIntegrationTestsRegex.FindStringSubmatch(line); matches != nil {
 		testName := matches[1]
 		c.mu.Lock()
-		c.currentCrate = testName
-		c.logger.Debug("Set current crate to: %s (integration tests)", testName)
+		// Qualify integration test with the last seen crate to ensure uniqueness
+		if c.lastUnitTestCrate != "" {
+			c.currentCrate = fmt.Sprintf("%s::%s", c.lastUnitTestCrate, testName)
+			c.logger.Debug("Set current crate to: %s (integration test qualified with crate)", c.currentCrate)
+		} else {
+			// Fallback: use test name as-is if no unit test crate was seen (shouldn't happen normally)
+			c.currentCrate = testName
+			c.logger.Debug("Set current crate to: %s (integration test, no crate context)", testName)
+		}
 		c.mu.Unlock()
 		return
 	}
@@ -476,6 +485,17 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 		return nil
 	}
 
+	// Extract the actual crate name from qualified names like "actix_http::test_client"
+	// This happens when we have integration tests qualified with their crate
+	actualCrateName := crateName
+	integrationTestFile := ""
+	if strings.Contains(crateName, "::") {
+		parts := strings.SplitN(crateName, "::", 2)
+		actualCrateName = parts[0]
+		integrationTestFile = parts[1]
+		c.logger.Debug("Processing qualified integration test: crate=%s, file=%s", actualCrateName, integrationTestFile)
+	}
+
 	// Parse test name to extract module hierarchy (without crate prefix)
 	// The JSON test names don't include the crate name, just module::test
 	parts := strings.Split(event.Name, "::")
@@ -499,7 +519,7 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 
 	// Get crate metadata if available
 	var crateDesc string
-	if metadata, ok := c.crateMetadata[crateName]; ok {
+	if metadata, ok := c.crateMetadata[actualCrateName]; ok {
 		crateDesc = metadata.Description
 	}
 
@@ -508,16 +528,23 @@ func (c *CargoTestDefinition) processTestEvent(event *CargoTestEvent) error {
 	var enhancedCrateName string
 
 	// Check if this is a doc-test crate
-	if strings.HasPrefix(crateName, "doc:") {
+	if strings.HasPrefix(actualCrateName, "doc:") {
 		// Doc-test: display as "Doc-tests <crate>"
-		actualCrateName := strings.TrimPrefix(crateName, "doc:")
+		docCrateName := strings.TrimPrefix(actualCrateName, "doc:")
 		// Convert underscores to hyphens for consistency
-		actualCrateName = strings.ReplaceAll(actualCrateName, "_", "-")
-		displayCrateName = "Doc-tests " + actualCrateName
+		docCrateName = strings.ReplaceAll(docCrateName, "_", "-")
+		displayCrateName = "Doc-tests " + docCrateName
 		enhancedCrateName = displayCrateName
+	} else if integrationTestFile != "" {
+		// Integration test: show as "crate_name/test_file"
+		displayCrateName = fmt.Sprintf("%s/%s", strings.ReplaceAll(actualCrateName, "_", "-"), integrationTestFile)
+		enhancedCrateName = displayCrateName
+		if crateDesc != "" {
+			enhancedCrateName = fmt.Sprintf("%s (%s)", displayCrateName, crateDesc)
+		}
 	} else {
-		// Regular crate: convert underscores to hyphens
-		displayCrateName = strings.ReplaceAll(crateName, "_", "-")
+		// Regular unit test: convert underscores to hyphens
+		displayCrateName = strings.ReplaceAll(actualCrateName, "_", "-")
 		// Build enhanced crate name with description
 		enhancedCrateName = displayCrateName
 		if crateDesc != "" {

@@ -213,3 +213,93 @@ func TestCargoTestDefinition_SetEnvironment(t *testing.T) {
 		t.Errorf("SetEnvironment should return RUSTC_BOOTSTRAP=1, got %s", env[0])
 	}
 }
+
+func TestCargoExtractCrateFromUnitTest(t *testing.T) {
+	logger, _ := logger.NewFileLogger()
+	defer func() { _ = logger.Close() }()
+	def := NewCargoTestDefinition(logger)
+	def.ipcWriter = &IPCWriter{} // Mock IPC writer
+
+	var jsonCount int
+	line := "     Running unittests src/lib.rs (target/debug/deps/actix_http-abc123def456)"
+	def.processLineData(line, &jsonCount)
+
+	if def.lastUnitTestCrate != "actix_http" {
+		t.Errorf("Expected lastUnitTestCrate to be 'actix_http', got '%s'", def.lastUnitTestCrate)
+	}
+	if def.currentCrate != "actix_http" {
+		t.Errorf("Expected currentCrate to be 'actix_http', got '%s'", def.currentCrate)
+	}
+}
+
+func TestCargoQualifyIntegrationTestWithCrate(t *testing.T) {
+	logger, _ := logger.NewFileLogger()
+	defer func() { _ = logger.Close() }()
+	def := NewCargoTestDefinition(logger)
+	def.ipcWriter = &IPCWriter{}         // Mock IPC writer
+	def.lastUnitTestCrate = "actix_http" // Pre-set from previous unit test
+
+	var jsonCount int
+	line := "     Running tests/test_client.rs (target/debug/deps/test_client-a1b2c3d4e5f6a7b8)"
+	def.processLineData(line, &jsonCount)
+
+	expected := "actix_http::test_client"
+	if def.currentCrate != expected {
+		t.Errorf("Expected currentCrate to be '%s', got '%s'", expected, def.currentCrate)
+		t.Logf("lastUnitTestCrate: '%s'", def.lastUnitTestCrate)
+	}
+}
+
+func TestCargoIntegrationTestWithoutPriorUnitTest(t *testing.T) {
+	logger, _ := logger.NewFileLogger()
+	defer func() { _ = logger.Close() }()
+	def := NewCargoTestDefinition(logger)
+	def.ipcWriter = &IPCWriter{} // Mock IPC writer
+	// No lastUnitTestCrate set - simulating edge case
+
+	var jsonCount int
+	line := "     Running tests/test_client.rs (target/debug/deps/test_client-a1b2c3d4e5f6a7b8)"
+	def.processLineData(line, &jsonCount)
+
+	// Should fall back to just test name without qualification
+	if def.currentCrate != "test_client" {
+		t.Errorf("Expected currentCrate to be 'test_client' (fallback), got '%s'", def.currentCrate)
+	}
+}
+
+func TestCargoMultipleCratesSameTestFile(t *testing.T) {
+	logger, _ := logger.NewFileLogger()
+	defer func() { _ = logger.Close() }()
+	def := NewCargoTestDefinition(logger)
+	def.ipcWriter = &IPCWriter{} // Mock IPC writer
+
+	var jsonCount int
+
+	// First crate's unit test
+	line1 := "     Running unittests src/lib.rs (target/debug/deps/actix_http-abc123def456789a)"
+	def.processLineData(line1, &jsonCount)
+	if def.lastUnitTestCrate != "actix_http" {
+		t.Errorf("Expected lastUnitTestCrate to be 'actix_http', got '%s'", def.lastUnitTestCrate)
+	}
+
+	// First crate's integration test
+	line2 := "     Running tests/test_client.rs (target/debug/deps/test_client-def456abc789012b)"
+	def.processLineData(line2, &jsonCount)
+	if def.currentCrate != "actix_http::test_client" {
+		t.Errorf("Expected currentCrate to be 'actix_http::test_client', got '%s'", def.currentCrate)
+	}
+
+	// Second crate's unit test
+	line3 := "     Running unittests src/lib.rs (target/debug/deps/awc-89abcdef01234567)"
+	def.processLineData(line3, &jsonCount)
+	if def.lastUnitTestCrate != "awc" {
+		t.Errorf("Expected lastUnitTestCrate to be 'awc', got '%s'", def.lastUnitTestCrate)
+	}
+
+	// Second crate's integration test (same filename as first)
+	line4 := "     Running tests/test_client.rs (target/debug/deps/test_client-0123456789abcdef)"
+	def.processLineData(line4, &jsonCount)
+	if def.currentCrate != "awc::test_client" {
+		t.Errorf("Expected currentCrate to be 'awc::test_client', got '%s'", def.currentCrate)
+	}
+}

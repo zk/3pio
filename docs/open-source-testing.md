@@ -71,3 +71,9 @@ General guidlines:
   - Compare number of tests and type between baseline and 3pio runs
   - Compare exit codes
   - Compare performance (durations) of baseline and 3pio runs.
+  - This open source test passes if the following match exactly:
+    - Exit code
+    - Number of passing test cases
+    - Number of failing test cases
+    - Number of skipped test cases
+    - Number of xpass and xfail test cases

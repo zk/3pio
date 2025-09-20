@@ -32,6 +32,8 @@ No code changes and no config, it's that simple.
 | Rust | cargo test | `3pio cargo test` |
 | Rust | cargo nextest | `3pio cargo nextest run` |
 
+See [Verified Libraries](docs/verified-libraries.md) for a list of open source projects tested with 3pio.
+
 
 ## Installation
 
@@ -50,13 +52,17 @@ Install 3pio via the package manager that best fits with their project or use ca
 
 After installation, run `3pio --help` for context and usage.
 ```
-Copy-paste the following at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
-```bash
-When running tests use `3pio` by prefixing your test commands with `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+
 
 ## Usage
 
-Tell your agent to prefix any test command with `3pio`, works with any flags or arguments.
+Copy-paste the following at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
+
+```bash
+When running tests use `3pio` by prefixing your test commands with `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+```
+
+When your agent runs your tests
 
 ```bash
 $ 3pio npm test

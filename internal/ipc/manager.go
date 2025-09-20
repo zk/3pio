@@ -140,6 +140,8 @@ func (m *Manager) watchLoop() {
 			m.logger.Error("Watcher error: %v", err)
 
 		case <-m.stopChan:
+			// Do one final read to catch any pending events before exiting
+			m.readEvents()
 			return
 		}
 	}
@@ -272,8 +274,12 @@ func (m *Manager) Cleanup() error {
 		close(m.stopChan)
 	}
 
-	// Wait for watchLoop to finish before cleaning up resources
+	// Wait for watchLoop to finish (which will do final read)
 	<-m.stopped
+
+	// Do one more final read just to be absolutely sure we got everything
+	// This handles the case where events were written after the last file watcher notification
+	m.readEvents()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()

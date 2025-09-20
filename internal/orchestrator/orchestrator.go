@@ -494,7 +494,18 @@ func (o *Orchestrator) Run() error {
 				o.logger.Debug("Command completed with error: %v", err)
 			}
 		} else {
-			o.logger.Debug("Command completed successfully")
+			// Even if no error, check the actual exit code
+			// Test runners may return non-zero exit codes for test failures
+			if cmd.ProcessState != nil {
+				o.exitCode = cmd.ProcessState.ExitCode()
+				if o.exitCode != 0 {
+					o.logger.Debug("Command completed with exit code: %d", o.exitCode)
+				} else {
+					o.logger.Debug("Command completed successfully")
+				}
+			} else {
+				o.logger.Debug("Command completed successfully")
+			}
 		}
 		// Command finished, signal cargo reader if it exists
 		if o.cargoProcessExited != nil {
@@ -540,49 +551,36 @@ func (o *Orchestrator) Run() error {
 	// All goroutines should be finished at this point
 	// (they were waited for via outputDone)
 
-	// Finalize report
+	// Finalize report - we no longer try to guess what's an error vs test failure
 	var errorDetails string
-	var shouldShowError bool
-	if commandErr != nil {
-		// Check if this is a configuration/startup error vs test failures
-		// Configuration errors happen when we have very few or no test groups
-		// or when the exit code suggests a setup problem
-		isConfigError := o.totalGroups == 0 ||
-			(o.exitCode != 0 && o.exitCode != 1 && o.totalGroups < 2) ||
-			(o.passedGroups == 0 && o.failedGroups == 0 && o.exitCode != 0)
+	shouldShowError := false
 
-		if isConfigError {
-			errorDetails = commandErr.Error()
-
-			// Include stderr content if available for command errors
-			stderrContent := strings.TrimSpace(o.stderrCapture.String())
-			if stderrContent != "" {
-				errorDetails = stderrContent
-			}
-
-			// For config/setup errors (non-zero exit with no tests run),
-			// show the actual output instead of generic "exit status N"
-			if (errorDetails == "exit status 1" || errorDetails == "exit status 2") && o.totalGroups == 0 {
-				// Read first part of output.log to show actual error
-				if outputContent, err := os.ReadFile(outputPath); err == nil {
-					lines := strings.Split(string(outputContent), "\n")
-					// Show first non-empty lines (up to 10 lines)
-					var errorLines []string
-					for i := 0; i < len(lines) && len(errorLines) < 10; i++ {
-						if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
-							errorLines = append(errorLines, lines[i])
-						}
-					}
-					if len(errorLines) > 0 {
-						errorDetails = strings.Join(errorLines, "\n")
-						shouldShowError = true
-					}
+	// If we have a non-zero exit code and no tests ran, show the output
+	// We don't know if it's a config error or something else, so just show what happened
+	if commandErr != nil && o.totalGroups == 0 && o.totalTests == 0 {
+		// Read output to show what actually happened
+		if outputContent, err := os.ReadFile(outputPath); err == nil {
+			lines := strings.Split(string(outputContent), "\n")
+			// Show first non-empty lines (up to 20 lines for better context)
+			var outputLines []string
+			for i := 0; i < len(lines) && len(outputLines) < 20; i++ {
+				if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
+					outputLines = append(outputLines, lines[i])
 				}
-			} else {
+			}
+			if len(outputLines) > 0 {
+				errorDetails = strings.Join(outputLines, "\n")
 				shouldShowError = true
 			}
 		}
+
+		// If we still don't have details, at least show the exit status
+		if errorDetails == "" {
+			errorDetails = commandErr.Error()
+			shouldShowError = true
+		}
 	}
+	// Pass errorDetails to Finalize to set ERRORED status when command fails with no tests
 	if err := o.reportManager.Finalize(o.exitCode, errorDetails); err != nil {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
@@ -597,9 +595,14 @@ func (o *Orchestrator) Run() error {
 	fmt.Println()
 
 	// Print error details if command failed and we have error details
-	if (commandErr != nil && errorDetails != "" && shouldShowError) ||
-		(commandErr != nil && o.totalGroups == 0 && errorDetails != "") {
-		fmt.Printf("Error: %s\n", errorDetails)
+	if commandErr != nil && errorDetails != "" && shouldShowError {
+		// Non-zero exit with no tests - we don't know what went wrong
+		if o.totalGroups == 0 && o.totalTests == 0 {
+			fmt.Println("Test run resulted in a non-zero exit code with no tests executed.")
+			fmt.Println("We can't differentiate test failures from runner errors, so here's the output:")
+			fmt.Println()
+		}
+		fmt.Printf("%s\n", errorDetails)
 		fmt.Println()
 	}
 
@@ -625,9 +628,9 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Format results summary
-	// Show test case counts when we have actual test counts with skipped tests
+	// Show test case counts when we have actual test counts
 	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
-	if o.totalTests > 0 && (o.skippedTests > 0 || o.xfailedTests > 0 || o.xpassedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+	if o.totalTests > 0 {
 		// Show test case counts
 		// Build the results string dynamically to only include non-zero counts
 		var parts []string
