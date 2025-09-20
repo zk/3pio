@@ -32,6 +32,8 @@ No code changes and no config, it's that simple.
 | Rust | cargo test | `3pio cargo test` |
 | Rust | cargo nextest | `3pio cargo nextest run` |
 
+See [Verified Libraries](docs/verified-libraries.md) for a list of open source projects tested with 3pio.
+
 
 ## Installation
 

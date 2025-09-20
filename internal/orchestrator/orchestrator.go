@@ -494,7 +494,18 @@ func (o *Orchestrator) Run() error {
 				o.logger.Debug("Command completed with error: %v", err)
 			}
 		} else {
-			o.logger.Debug("Command completed successfully")
+			// Even if no error, check the actual exit code
+			// Test runners may return non-zero exit codes for test failures
+			if cmd.ProcessState != nil {
+				o.exitCode = cmd.ProcessState.ExitCode()
+				if o.exitCode != 0 {
+					o.logger.Debug("Command completed with exit code: %d", o.exitCode)
+				} else {
+					o.logger.Debug("Command completed successfully")
+				}
+			} else {
+				o.logger.Debug("Command completed successfully")
+			}
 		}
 		// Command finished, signal cargo reader if it exists
 		if o.cargoProcessExited != nil {
