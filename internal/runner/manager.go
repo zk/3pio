@@ -29,8 +29,11 @@ func (m *Manager) Close() error {
 // NewManager creates a new runner manager
 func NewManager(fileLogger *logger.FileLogger) *Manager {
 	m := &Manager{
-		runners: make([]struct{ name string; def Definition }, 0),
-		logger:  fileLogger,
+		runners: make([]struct {
+			name string
+			def  Definition
+		}, 0),
+		logger: fileLogger,
 	}
 
 	// Register built-in runners in priority order
@@ -56,7 +59,10 @@ func NewManager(fileLogger *logger.FileLogger) *Manager {
 
 // Register adds a new test runner definition
 func (m *Manager) Register(name string, def Definition) {
-	m.runners = append(m.runners, struct{ name string; def Definition }{name, def})
+	m.runners = append(m.runners, struct {
+		name string
+		def  Definition
+	}{name, def})
 }
 
 // Detect identifies the test runner from command and returns its definition

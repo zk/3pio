@@ -98,11 +98,11 @@ The verification process involves:
 
 ### flask
 - **Repository**: https://github.com/pallets/flask
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
-- **Test Command**: `pytest`
-- **Test Results**: All tests passed - identical with/without 3pio
-- **Notes**: Micro web framework for Python
+- **Date Verified**: 2025-09-20
+- **Commit Hash**: `adf363679da2d9a5ddc564bb2da563c7ca083916`
+- **Test Command**: `uv run --group tests pytest tests/`
+- **Test Results**: 490 tests passed - identical with/without 3pio
+- **Notes**: Micro web framework for Python. Tests that change working directory during execution are correctly handled after fixing pytest adapter to use absolute IPC paths.
 
 ### httpie
 - **Repository**: https://github.com/httpie/cli

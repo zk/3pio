@@ -46,7 +46,8 @@ class ThreepioReporter:
     """pytest reporter that sends test events via IPC."""
 
     def __init__(self, ipc_path: str):
-        self.ipc_path = ipc_path
+        # Store the absolute path to the IPC file to handle directory changes
+        self.ipc_path = os.path.abspath(ipc_path)
         self.test_files = set()
         self.test_results = {}  # Track results per file
         self.current_test_file = None
@@ -73,15 +74,15 @@ class ThreepioReporter:
             "payload": payload,
             "timestamp": time.time()
         }
-        
+
         try:
-            # Write to IPC file (append mode, create if doesn't exist)
+            # Write to IPC file (using absolute path stored in __init__)
             with open(self.ipc_path, 'a') as f:
                 f.write(json.dumps(event) + '\n')
                 f.flush()  # Ensure immediate write
         except Exception as e:
             # Log error to debug log but stay silent in console
-            self._log_error(f"Failed to send IPC event: {e}")
+            self._log_error(f"Failed to send IPC event to {self.ipc_path}: {e}")
     
     def _ensure_debug_log_dir(self) -> None:
         """Ensure the debug log directory exists."""
@@ -108,6 +109,39 @@ class ThreepioReporter:
         self._log("INFO", "Configuration:")
         self._log("INFO", f"  - IPC Path: {self.ipc_path}")
         self._log("INFO", f"  - Process ID: {os.getpid()}")
+
+        # Add comprehensive startup logging
+        self._log("INFO", "Path Analysis:")
+        self._log("INFO", f"  - Current working directory: {os.getcwd()}")
+        self._log("INFO", f"  - IPC path is absolute: {os.path.isabs(self.ipc_path)}")
+
+        # Check if IPC file exists
+        if os.path.exists(self.ipc_path):
+            self._log("INFO", f"  - IPC file exists: YES")
+            try:
+                # Check if we can write to it
+                with open(self.ipc_path, 'a') as f:
+                    f.write("")  # Try empty write
+                self._log("INFO", f"  - IPC file writable: YES")
+            except Exception as e:
+                self._log("ERROR", f"  - IPC file writable: NO - {e}")
+        else:
+            self._log("INFO", f"  - IPC file exists: NO")
+
+            # Check if parent directory exists
+            parent_dir = os.path.dirname(self.ipc_path)
+            if os.path.exists(parent_dir):
+                self._log("INFO", f"  - Parent directory exists: YES ({parent_dir})")
+            else:
+                self._log("INFO", f"  - Parent directory exists: NO ({parent_dir})")
+
+        # Try to resolve the absolute path
+        try:
+            abs_path = os.path.abspath(self.ipc_path)
+            self._log("INFO", f"  - Absolute IPC path: {abs_path}")
+        except Exception as e:
+            self._log("ERROR", f"  - Failed to resolve absolute path: {e}")
+
         self._log("INFO", "==================================")
     
     def _log_info(self, message: str) -> None:
