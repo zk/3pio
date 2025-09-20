@@ -64,6 +64,9 @@ class ThreepioReporter:
         # Track processed skips to avoid duplicates
         self.processed_skips = set()  # Track (file_path, test_name) tuples
 
+        # Track processed errors to avoid duplicates
+        self.processed_errors = set()  # Track (file_path, test_name, phase) tuples
+
         self._ensure_debug_log_dir()
         self._log_startup()
         
@@ -445,7 +448,7 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
         if file_path not in _reporter.test_files:
             _reporter.test_files.add(file_path)
             # File discovery and group management handled by group events
-            _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
+            _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "errored": 0, "failed_tests": []}
 
             # Discover the file as a root group and start it
             _reporter.ensure_groups_discovered(file_path, [])
@@ -496,7 +499,7 @@ def pytest_runtest_logreport(report: TestReport) -> None:
 
     # Initialize results for file if needed
     if file_path not in _reporter.test_results:
-        _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "failed_tests": []}
+        _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "errored": 0, "failed_tests": []}
 
     # Check if this is an xfail case (must check before skip handling)
     has_xfail = hasattr(report, 'wasxfail')
@@ -540,6 +543,50 @@ def pytest_runtest_logreport(report: TestReport) -> None:
             _reporter.file_groups[file_path]['tests'].append({
                 'name': test_name,
                 'status': 'SKIP',
+                'duration': 0
+            })
+
+        return
+
+    # HANDLE ERRORED TESTS IN SETUP/TEARDOWN PHASE
+    if report.failed and report.when in ('setup', 'teardown'):
+        # Check for duplicate processing
+        error_key = (file_path, test_name, report.when)
+        if error_key in _reporter.processed_errors:
+            return
+        _reporter.processed_errors.add(error_key)
+
+        # Extract error information
+        error_reason = str(report.longrepr) if hasattr(report, 'longrepr') else f"{report.when} failed"
+
+        # Update error count
+        _reporter.test_results[file_path]["errored"] += 1
+
+        # Ensure all parent groups are discovered and started
+        _reporter.ensure_groups_discovered(file_path, suite_chain)
+
+        # Start all parent groups in the hierarchy
+        for i in range(len(suite_chain) + 1):
+            hierarchy = [file_path] + suite_chain[:i]
+            _reporter.ensure_group_started(hierarchy)
+
+        # Build complete hierarchy for this test case
+        parent_names = _reporter.build_hierarchy_from_file(file_path, suite_chain)
+
+        # Send IPC event for errored test
+        _reporter.send_event("testCase", {
+            "testName": test_name,
+            "parentNames": parent_names,
+            "status": "ERROR",
+            "errorReason": error_reason,
+            "errorPhase": report.when
+        })
+
+        # Track test in file group
+        if file_path in _reporter.file_groups:
+            _reporter.file_groups[file_path]['tests'].append({
+                'name': test_name,
+                'status': 'ERROR',
                 'duration': 0
             })
 
@@ -637,7 +684,7 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
         file_group = _reporter.file_groups.get(file_path, {})
 
         # Determine overall file status
-        if results.get("failed", 0) > 0:
+        if results.get("failed", 0) > 0 or results.get("errored", 0) > 0:
             status = "FAIL"
         elif results.get("passed", 0) > 0:
             status = "PASS"
@@ -655,10 +702,11 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
         totals = {
             'total': (results.get("passed", 0) + results.get("failed", 0) +
                      results.get("skipped", 0) + results.get("xfailed", 0) +
-                     results.get("xpassed", 0)),
+                     results.get("xpassed", 0) + results.get("errored", 0)),
             'passed': results.get("passed", 0),
             'failed': results.get("failed", 0),
             'skipped': results.get("skipped", 0),
+            'errored': results.get("errored", 0),
             'xfailed': results.get("xfailed", 0),
             'xpassed': results.get("xpassed", 0)
         }

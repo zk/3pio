@@ -57,6 +57,7 @@ type TestGroupStats struct {
 	PassedTests  int
 	FailedTests  int
 	SkippedTests int
+	ErroredTests int  // Tests that failed during setup/teardown
 	XFailedTests int  // Tests that failed as expected
 	XPassedTests int  // Tests that passed unexpectedly
 	SetupFailed  bool // Indicates this group failed during setup/initialization
@@ -66,6 +67,7 @@ type TestGroupStats struct {
 	PassedTestsRecursive  int
 	FailedTestsRecursive  int
 	SkippedTestsRecursive int
+	ErroredTestsRecursive int
 	XFailedTestsRecursive int
 	XPassedTestsRecursive int
 }
@@ -153,6 +155,9 @@ func (g *TestGroup) UpdateStats() {
 		case TestStatusSkip:
 			g.Stats.SkippedTests++
 			g.Stats.SkippedTestsRecursive++
+		case TestStatusError:
+			g.Stats.ErroredTests++
+			g.Stats.ErroredTestsRecursive++
 		case TestStatusXFail:
 			g.Stats.XFailedTests++
 			g.Stats.XFailedTestsRecursive++
@@ -169,6 +174,7 @@ func (g *TestGroup) UpdateStats() {
 		g.Stats.PassedTestsRecursive += sg.Stats.PassedTestsRecursive
 		g.Stats.FailedTestsRecursive += sg.Stats.FailedTestsRecursive
 		g.Stats.SkippedTestsRecursive += sg.Stats.SkippedTestsRecursive
+		g.Stats.ErroredTestsRecursive += sg.Stats.ErroredTestsRecursive
 		g.Stats.XFailedTestsRecursive += sg.Stats.XFailedTestsRecursive
 		g.Stats.XPassedTestsRecursive += sg.Stats.XPassedTestsRecursive
 	}
@@ -192,7 +198,7 @@ func (g *TestGroup) updateStatusFromChildren() {
 				allComplete = false
 				break
 			}
-			if tc.Status == TestStatusFail {
+			if tc.Status == TestStatusFail || tc.Status == TestStatusError {
 				hasFailures = true
 			}
 			if tc.Status == TestStatusSkip {
@@ -207,7 +213,7 @@ func (g *TestGroup) updateStatusFromChildren() {
 				allComplete = false
 				break
 			}
-			if sg.Status == TestStatusFail {
+			if sg.Status == TestStatusFail || sg.Status == TestStatusError {
 				hasFailures = true
 			}
 			if sg.Status == TestStatusSkip {
