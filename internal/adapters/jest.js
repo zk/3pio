@@ -180,14 +180,16 @@ class ThreePioJestReporter {
     if (testCaseResult) {
       const parentNames = [test.path, ...(testCaseResult.ancestorTitles || [])];
       const testName = testCaseResult.title;
-      
+
       let status = 'PASS';
-      if (testCaseResult.status === 'failed') {
+      // Check both status and failureMessages to catch snapshot failures
+      if (testCaseResult.status === 'failed' ||
+          (testCaseResult.failureMessages && testCaseResult.failureMessages.length > 0)) {
         status = 'FAIL';
       } else if (testCaseResult.status === 'skipped' || testCaseResult.status === 'pending') {
         status = 'SKIP';
       }
-      
+
       const error = testCaseResult.failureMessages?.join('\n\n');
       
       // Send the test case event with group hierarchy
