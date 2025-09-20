@@ -48,6 +48,7 @@ type Orchestrator struct {
 	skippedTests     int                  // Track actual test cases
 	xfailedTests     int                  // Track expected failures (xfail)
 	xpassedTests     int                  // Track unexpected passes (xpass)
+	erroredTests     int                  // Track tests that errored (e.g., setup/teardown failures)
 	totalTests       int                  // Track actual test cases
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
@@ -647,6 +648,9 @@ func (o *Orchestrator) Run() error {
 		if o.xpassedTests > 0 {
 			parts = append(parts, fmt.Sprintf("%d xpassed", o.xpassedTests))
 		}
+		if o.erroredTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d errored", o.erroredTests))
+		}
 		parts = append(parts, fmt.Sprintf("%d total", o.totalTests))
 		fmt.Printf("Results:     %s\n", strings.Join(parts, ", "))
 	} else {
@@ -823,6 +827,8 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 			o.xfailedTests++
 		case "XPASS":
 			o.xpassedTests++
+		case "ERROR":
+			o.erroredTests++
 		}
 
 		// Track failed tests for hierarchical display

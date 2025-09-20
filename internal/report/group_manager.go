@@ -808,6 +808,9 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 		if group.Stats.SkippedTests > 0 {
 			content += fmt.Sprintf("- Group tests skipped: %d\n", group.Stats.SkippedTests)
 		}
+		if group.Stats.ErroredTests > 0 {
+			content += fmt.Sprintf("- Group tests errored: %d\n", group.Stats.ErroredTests)
+		}
 		if group.Stats.XFailedTests > 0 {
 			content += fmt.Sprintf("- Group tests xfailed: %d\n", group.Stats.XFailedTests)
 		}
@@ -885,6 +888,8 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 				icon = "⊗" // Expected failure
 			case TestStatusXPass:
 				icon = "⊕" // Unexpected pass
+			case TestStatusError:
+				icon = "!" // Setup/teardown error
 			default:
 				icon = "✓"
 			}
@@ -1052,13 +1057,14 @@ func (gm *GroupManager) generateSummaryReport() string {
 	content += fmt.Sprintf("Generated: %s\n\n", time.Now().Format(time.RFC3339))
 
 	// Calculate totals
-	var totalTests, passedTests, failedTests, skippedTests int
+	var totalTests, passedTests, failedTests, skippedTests, erroredTests int
 	for _, group := range gm.rootGroups {
 		group.UpdateStats()
 		totalTests += group.Stats.TotalTestsRecursive
 		passedTests += group.Stats.PassedTestsRecursive
 		failedTests += group.Stats.FailedTestsRecursive
 		skippedTests += group.Stats.SkippedTestsRecursive
+		erroredTests += group.Stats.ErroredTestsRecursive
 	}
 
 	// Overall statistics
@@ -1070,6 +1076,10 @@ func (gm *GroupManager) generateSummaryReport() string {
 		float64(failedTests)*100/float64(max(totalTests, 1)))
 	content += fmt.Sprintf("- Skipped: %d (%.1f%%)\n", skippedTests,
 		float64(skippedTests)*100/float64(max(totalTests, 1)))
+	if erroredTests > 0 {
+		content += fmt.Sprintf("- Errored: %d (%.1f%%)\n", erroredTests,
+			float64(erroredTests)*100/float64(max(totalTests, 1)))
+	}
 	content += "\n"
 
 	// Root groups
@@ -1089,6 +1099,8 @@ func (gm *GroupManager) generateSummaryReport() string {
 			icon = "⚡"
 		case TestStatusPending:
 			icon = "⏳"
+		case TestStatusError:
+			icon = "!" // Setup/teardown error
 		default:
 			icon = "✓"
 		}
@@ -1106,6 +1118,9 @@ func (gm *GroupManager) generateSummaryReport() string {
 			}
 			if group.Stats.SkippedTestsRecursive > 0 {
 				statParts = append(statParts, fmt.Sprintf("%d skipped", group.Stats.SkippedTestsRecursive))
+			}
+			if group.Stats.ErroredTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d errored", group.Stats.ErroredTestsRecursive))
 			}
 			if group.Stats.XFailedTestsRecursive > 0 {
 				statParts = append(statParts, fmt.Sprintf("%d xfailed", group.Stats.XFailedTestsRecursive))
