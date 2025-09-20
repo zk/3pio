@@ -389,9 +389,8 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 		parentGroup, exists = gm.groups[parentID]
 		if !exists {
 			// Auto-discover parent group hierarchy
-			gm.mu.Unlock()
+			// Note: ensureGroupHierarchy expects the mutex to be held
 			err := gm.ensureGroupHierarchy(parentNames)
-			gm.mu.Lock()
 			if err != nil {
 				return err
 			}
