@@ -628,9 +628,9 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Format results summary
-	// Show test case counts when we have actual test counts with skipped tests
+	// Show test case counts when we have actual test counts
 	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
-	if o.totalTests > 0 && (o.skippedTests > 0 || o.xfailedTests > 0 || o.xpassedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+	if o.totalTests > 0 {
 		// Show test case counts
 		// Build the results string dynamically to only include non-zero counts
 		var parts []string

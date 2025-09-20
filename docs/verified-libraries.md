@@ -30,19 +30,19 @@ The verification process involves:
 
 ### uuid (Google)
 - **Repository**: https://github.com/google/uuid
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
-- **Test Command**: `go test`
-- **Test Results**: 45 tests passed, 1 skipped - identical with/without 3pio
-- **Notes**: Simple library demonstrating Go test support
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `2d3c2a9cc518326daf99a383f07c4d3c44317e4d`
+- **Test Command**: `go test -v ./...`
+- **Test Results**: 213 tests (212 passed, 1 skipped) - identical with/without 3pio
+- **Notes**: UUID generation and parsing library. Includes extensive test coverage with subtests and fuzz tests. The skipped test (TestClockSeqRace) skips regression tests by design.
 
 ### gin
 - **Repository**: https://github.com/gin-gonic/gin
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
-- **Test Command**: `go test ./...`
-- **Test Results**: 5 packages passed, 0 failed, 2 skipped - identical with/without 3pio
-- **Notes**: Popular Go web framework, demonstrates multi-package support
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `2119046230f0119c7c88f86a6b441d9d3aaad03e`
+- **Test Command**: `go test -v ./...`
+- **Test Results**: 588 tests (586 passed, 1 failed, 1 skipped) - identical with/without 3pio
+- **Notes**: Popular Go web framework. The failing test (TestRunEmpty) fails due to port 8080 already in use, which occurs in both baseline and 3pio runs. Demonstrates perfect accuracy with sub-tests and multi-package support (7 packages tested).
 
 ### echo
 - **Repository**: https://github.com/labstack/echo

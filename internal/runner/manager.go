@@ -10,8 +10,12 @@ import (
 
 // Manager manages test runner definitions
 type Manager struct {
-	runners map[string]Definition
-	logger  *logger.FileLogger
+	// Use slice for deterministic iteration order
+	runners []struct {
+		name string
+		def  Definition
+	}
+	logger *logger.FileLogger
 }
 
 // Close closes the manager and its resources
@@ -25,13 +29,14 @@ func (m *Manager) Close() error {
 // NewManager creates a new runner manager
 func NewManager(fileLogger *logger.FileLogger) *Manager {
 	m := &Manager{
-		runners: make(map[string]Definition),
+		runners: make([]struct{ name string; def Definition }, 0),
 		logger:  fileLogger,
 	}
 
-	// Register built-in runners
+	// Register built-in runners in priority order
+	// More specific runners should come before generic ones
+	m.Register("vitest", NewVitestDefinition()) // Check Vitest before Jest
 	m.Register("jest", NewJestDefinition())
-	m.Register("vitest", NewVitestDefinition())
 	m.Register("cypress", NewCypressDefinition())
 	m.Register("mocha", NewMochaDefinition())
 	m.Register("pytest", NewPytestDefinition())
@@ -51,15 +56,15 @@ func NewManager(fileLogger *logger.FileLogger) *Manager {
 
 // Register adds a new test runner definition
 func (m *Manager) Register(name string, def Definition) {
-	m.runners[name] = def
+	m.runners = append(m.runners, struct{ name string; def Definition }{name, def})
 }
 
 // Detect identifies the test runner from command and returns its definition
 func (m *Manager) Detect(command []string) (Definition, error) {
-	// Check each runner to see if it matches
-	for _, def := range m.runners {
-		if def.Matches(command) {
-			return def, nil
+	// Check each runner in registration order (deterministic)
+	for _, runner := range m.runners {
+		if runner.def.Matches(command) {
+			return runner.def, nil
 		}
 	}
 
@@ -68,9 +73,9 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 		packageManager := command[0]
 		if isPackageManager(packageManager) {
 			// Try to detect from package.json test script
-			for _, def := range m.runners {
-				if def.Matches([]string{"test"}) {
-					return def, nil
+			for _, runner := range m.runners {
+				if runner.def.Matches([]string{"test"}) {
+					return runner.def, nil
 				}
 			}
 		}
@@ -81,8 +86,13 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 
 // GetDefinition returns a specific runner definition by name
 func (m *Manager) GetDefinition(name string) (Definition, bool) {
-	def, ok := m.runners[name]
-	return def, ok
+	// Linear search is fine for ~8 items
+	for _, runner := range m.runners {
+		if runner.name == name {
+			return runner.def, true
+		}
+	}
+	return nil, false
 }
 
 // isPackageManager checks if a command is a package manager

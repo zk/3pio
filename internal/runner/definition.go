@@ -111,7 +111,7 @@ func NewJestDefinition() *JestDefinition {
 
 // Matches checks if the command is for Jest
 func (j *JestDefinition) Matches(command []string) bool {
-	return containsTestRunner(command, "jest") || j.isJestInPackageJSON()
+	return MatchesWithPrecedence(command, "jest", j.isJestInPackageJSON)
 }
 
 // GetTestFiles gets test files for Jest
@@ -302,7 +302,7 @@ func NewVitestDefinition() *VitestDefinition {
 
 // Matches checks if the command is for Vitest
 func (v *VitestDefinition) Matches(command []string) bool {
-	return containsTestRunner(command, "vitest") || v.isVitestInPackageJSON()
+	return MatchesWithPrecedence(command, "vitest", v.isVitestInPackageJSON)
 }
 
 // GetTestFiles gets test files for Vitest
@@ -587,7 +587,7 @@ func NewCypressDefinition() *CypressDefinition {
 
 // Matches checks if the command is for Cypress
 func (c *CypressDefinition) Matches(command []string) bool {
-	return containsTestRunner(command, "cypress") || c.isCypressInPackageJSON()
+	return MatchesWithPrecedence(command, "cypress", c.isCypressInPackageJSON)
 }
 
 // GetTestFiles gets test files for Cypress (dynamic by default)
@@ -710,7 +710,7 @@ func NewMochaDefinition() *MochaDefinition {
 
 // Matches checks if the command is for Mocha
 func (m *MochaDefinition) Matches(command []string) bool {
-	return containsTestRunner(command, "mocha") || m.isMochaInPackageJSON()
+	return MatchesWithPrecedence(command, "mocha", m.isMochaInPackageJSON)
 }
 
 // GetTestFiles gets test files for Mocha (dynamic by default; CLI often passes globs)
