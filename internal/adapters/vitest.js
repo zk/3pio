@@ -665,6 +665,7 @@ const ThreePioVitestReporter = class {
   }
 
   onTestFileResult(file) {
+    // Legacy method - no longer processing here
     // All test results are handled via onTestCaseResult and onTestModuleEnd
     this.stopCapture();
     this.currentTestFile = null;
@@ -678,7 +679,14 @@ const ThreePioVitestReporter = class {
     });
     this.stopCapture();
 
-    // Legacy fallback removed - only supporting Vitest 3+ with modern API
+    // Minimal fallback for Vitest 1.x compatibility
+    // Modern Vitest 3+ uses onTestCaseResult and onTestModuleEnd instead
+    if (files && files.length > 0 && this.filesStarted.size === 0) {
+      this.logger.info('Using legacy fallback for older Vitest version', { count: files.length });
+      for (const file of files) {
+        this.processFileResults(file);
+      }
+    }
     this.logger.lifecycle('Vitest adapter shutdown complete');
   }
 
@@ -706,7 +714,152 @@ const ThreePioVitestReporter = class {
     process.stderr.write = this.originalStderrWrite;
   }
 
-  // Legacy methods removed - only supporting Vitest 3+ with modern API
+  // Simplified file processing for legacy Vitest compatibility
+  processFileResults(file) {
+    const filePath = file.filepath;
+
+    // Ensure file group is discovered and started
+    this.ensureGroupsDiscovered(filePath, []);
+    this.ensureGroupStarted([filePath]);
+
+    // Process test cases if available
+    if (file.tasks) {
+      this.processTasksSimple(filePath, file.tasks);
+    }
+
+    // Send file result
+    let status = 'PASS';
+    if (file.result?.state === 'fail') {
+      status = 'FAIL';
+    } else if (file.result?.state === 'skip' || file.mode === 'skip') {
+      status = 'SKIP';
+    }
+
+    const totals = {
+      total: file.tasks ? this.countTestsSimple(file.tasks) : 0,
+      passed: file.tasks ? this.countPassedTestsSimple(file.tasks) : 0,
+      failed: file.tasks ? this.countFailedTestsSimple(file.tasks) : 0,
+      skipped: file.tasks ? this.countSkippedTestsSimple(file.tasks) : 0,
+    };
+
+    this.logger.ipc('send', 'testGroupResult', { groupName: filePath, status, totals });
+    IPCSender.sendEvent({
+      eventType: 'testGroupResult',
+      payload: {
+        groupName: filePath,
+        parentNames: [],
+        status,
+        duration: file.result?.duration || 0,
+        totals,
+      },
+    }).catch((error) => {
+      this.logger.error('Failed to send testGroupResult', error);
+    });
+  }
+
+  processTasksSimple(filePath, tasks) {
+    for (const task of tasks) {
+      if (task.type === 'test') {
+        const status =
+          task.result?.state === 'fail'
+            ? 'FAIL'
+            : task.result?.state === 'skip' || task.mode === 'skip'
+              ? 'SKIP'
+              : 'PASS';
+
+        let error = null;
+        if (task.result?.errors && task.result.errors.length > 0) {
+          const firstError = task.result.errors[0];
+          error = {
+            message:
+              typeof firstError === 'string'
+                ? firstError
+                : firstError.message || String(firstError),
+            stack: firstError.stack || '',
+            expected: firstError.expected || '',
+            actual: firstError.actual || '',
+            location: '',
+            errorType: firstError.name || 'Error',
+          };
+        }
+
+        // Simple hierarchy - just file and test name
+        const suiteChain = this.extractHierarchyFromTask(task, filePath);
+        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+
+        // Ensure groups are discovered and started
+        this.ensureGroupsDiscovered(filePath, suiteChain);
+        for (let i = 0; i <= suiteChain.length; i++) {
+          const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+          this.ensureGroupStarted(hierarchy);
+        }
+
+        this.logger.ipc('send', 'testCase', { testName: task.name, parentNames, status });
+        IPCSender.sendEvent({
+          eventType: 'testCase',
+          payload: {
+            testName: task.name,
+            parentNames,
+            status,
+            duration: task.result?.duration,
+            error,
+          },
+        }).catch((error_) => {
+          this.logger.error('Failed to send testCase event', error_);
+        });
+      } else if (task.type === 'suite' && task.tasks) {
+        this.processTasksSimple(filePath, task.tasks);
+      }
+    }
+  }
+
+  countTestsSimple(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === 'test') {
+        count++;
+      } else if (task.tasks) {
+        count += this.countTestsSimple(task.tasks);
+      }
+    }
+    return count;
+  }
+
+  countPassedTestsSimple(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === 'test' && task.result?.state === 'pass') {
+        count++;
+      } else if (task.tasks) {
+        count += this.countPassedTestsSimple(task.tasks);
+      }
+    }
+    return count;
+  }
+
+  countFailedTestsSimple(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === 'test' && task.result?.state === 'fail') {
+        count++;
+      } else if (task.tasks) {
+        count += this.countFailedTestsSimple(task.tasks);
+      }
+    }
+    return count;
+  }
+
+  countSkippedTestsSimple(tasks) {
+    let count = 0;
+    for (const task of tasks) {
+      if (task.type === 'test' && (task.result?.state === 'skip' || task.mode === 'skip')) {
+        count++;
+      } else if (task.tasks) {
+        count += this.countSkippedTestsSimple(task.tasks);
+      }
+    }
+    return count;
+  }
 };
 export { ThreePioVitestReporter as default };
 // # sourceMappingURL=vitest.js.map

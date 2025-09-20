@@ -3,7 +3,6 @@ package integration_test
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -12,10 +11,7 @@ import (
 
 // TestCypressIntegration ensures 3pio can run a basic Cypress project when Cypress is available.
 func TestCypressIntegration(t *testing.T) {
-	// Skip parallel execution on Windows CI to avoid file system deadlocks
-	if runtime.GOOS != "windows" || os.Getenv("CI") == "" {
-		t.Parallel()
-	}
+	t.Parallel()
 
 	// Skip if npm/npx or cypress are not available
 	if _, err := testutil.LookPath("npm"); err != nil {

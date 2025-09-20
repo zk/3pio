@@ -116,10 +116,7 @@ func copyDir(src, dst string) error {
 
 // TestErrorReportingToConsole verifies that errors are properly displayed to the user
 func TestErrorReportingToConsole(t *testing.T) {
-	// Skip parallel execution on Windows CI to avoid file system deadlocks
-	if runtime.GOOS != "windows" || os.Getenv("CI") == "" {
-		t.Parallel()
-	}
+	t.Parallel()
 
 	// Use the jest-config-error fixture by copying it to a temp directory
 	sourceFixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
@@ -158,10 +155,7 @@ func TestErrorReportingToConsole(t *testing.T) {
 
 // TestErrorDetailsInReport verifies that error details are included in test-run.md
 func TestErrorDetailsInReport(t *testing.T) {
-	// Skip parallel execution on Windows CI to avoid file system deadlocks
-	if runtime.GOOS != "windows" || os.Getenv("CI") == "" {
-		t.Parallel()
-	}
+	t.Parallel()
 
 	// Use the jest-config-error fixture by copying it to a temp directory
 	sourceFixtureDir := filepath.Join("..", "fixtures", "jest-config-error")
@@ -221,10 +215,7 @@ func TestErrorDetailsInReport(t *testing.T) {
 
 // TestJestConfigError verifies TypeScript config errors are reported properly
 func TestJestConfigError(t *testing.T) {
-	// Skip parallel execution on Windows CI to avoid file system deadlocks
-	if runtime.GOOS != "windows" || os.Getenv("CI") == "" {
-		t.Parallel()
-	}
+	t.Parallel()
 
 	// Use the jest-ts-config-error fixture by copying it to a temp directory
 	sourceFixtureDir := filepath.Join("..", "fixtures", "jest-ts-config-error")
