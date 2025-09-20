@@ -77,3 +77,4 @@ General guidlines:
     - Number of failing test cases
     - Number of skipped test cases
     - Number of xpass and xfail test cases
+    - Any difference in these numbers is a major issue and could indicate a fundamental issue with 3pio. This warrants deep analysis and finding the root cause of the discrepency.
