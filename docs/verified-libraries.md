@@ -109,7 +109,7 @@ The verification process involves:
 - **Date Verified**: 2025-09-15
 - **Commit Hash**: Not specified (latest main at time)
 - **Test Command**: `pytest`
-- **Test Results**: All tests passed - identical with/without 3pio
+- **Test Results**: 487 tests passed - identical with/without 3pio
 - **Notes**: Command-line HTTP client
 
 ### pandas
