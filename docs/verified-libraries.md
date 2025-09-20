@@ -46,61 +46,53 @@ The verification process involves:
 
 ### echo
 - **Repository**: https://github.com/labstack/echo
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
-- **Test Command**: `go test ./...`
-- **Test Results**: All tests passed - identical with/without 3pio
-- **Notes**: Minimalist Go web framework
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `52d2bff1b9ebb7c581304ed2e5d72397ec40ca6d`
+- **Test Command**: `go test -v ./...`
+- **Test Results**: 1535 tests passed - identical with/without 3pio
+- **Notes**: High performance, minimalist Go web framework. Comprehensive test suite includes both core framework tests and middleware tests across 2 packages.
 
 ### etcd
 - **Repository**: https://github.com/etcd-io/etcd
-- **Date Verified**: 2025-09-16
-- **Commit Hash**: `ad9d69071936b5771830add74a799f2e822e2ffc`
-- **Test Command**: `go test ./client/pkg/...`
-- **Test Results**: Multiple packages tested successfully - identical with/without 3pio
-- **Notes**: Distributed key-value store, complex Go project
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `b7420c571ed13ae55cfd5b041d83210e005d0f78`
+- **Test Command**: `go test -v ./...`
+- **Test Results**: 11 tests passed, 1 skipped - identical with/without 3pio
+- **Notes**: Distributed key-value store. When run from root with `./...`, most packages have no test files. Only 2 of 12 packages (contrib/raftexample and tools/etcd-dump-logs) contain actual tests. The full etcd test suite requires running tests from specific subdirectories with their own modules.
 
 ## Rust Libraries
 
-### zed (util package)
-- **Repository**: https://github.com/zed-industries/zed
-- **Date Verified**: 2025-09-16
-- **Commit Hash**: Latest main branch (cloned 2025-09-16)
-- **Test Command**: `cargo test --lib --bins --package util`
-- **Test Results**: 37 tests passed - identical with/without 3pio
-- **Notes**: Code editor, tested specific package to avoid GPU dependencies
-
 ### serde
 - **Repository**: https://github.com/serde-rs/serde
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `eed3c7044d6f5ad957d1a8b17de16e983b1bc2ac`
 - **Test Command**: `cargo test`
-- **Test Results**: All tests passed - identical with/without 3pio
-- **Notes**: Popular Rust serialization framework
+- **Test Results**: 478 tests passed, 1 skipped - identical with/without 3pio
+- **Notes**: Rust serialization framework. The skipped test (compiletest::ui) requires nightly compiler. 3pio runs ~22% faster than baseline due to optimized JSON output parsing.
 
 ### clap
 - **Repository**: https://github.com/clap-rs/clap
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `bc9bea5dc4c4f2dcaaa63ce6e5d5c9d801f3c39f`
 - **Test Command**: `cargo test`
-- **Test Results**: All tests passed - identical with/without 3pio
-- **Notes**: Command-line argument parser for Rust
+- **Test Results**: 911 tests (910 passed, 1 failed) - identical with/without 3pio
+- **Notes**: Command-line argument parser for Rust. The single failing test is in the ui suite (trycmd tests), which is a pre-existing failure in the repository. 3pio correctly captures and reports all test results with exact match on pass/fail/skip counts and exit code (101).
 
 ### actix-web
 - **Repository**: https://github.com/actix/actix-web
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `41d0176c895dcebdc7b67e0e039b8c0e2bb96bb5`
 - **Test Command**: `cargo test`
-- **Test Results**: All tests passed - identical with/without 3pio
-- **Notes**: Popular Rust web framework
+- **Test Results**: 1251 tests passed, 11 skipped - off by 1 from baseline (1252 passed)
+- **Notes**: Popular Rust web framework. Known issue: 3pio incorrectly merges integration tests with same filename from different crates (actix-http/tests/test_client.rs and awc/tests/test_client.rs both contain `with_query_parameter`). See cargo-crate-grouping-issue.md for details. All other test results match correctly.
 
 ### tokio
 - **Repository**: https://github.com/tokio-rs/tokio
-- **Date Verified**: 2025-09-15
-- **Commit Hash**: Not specified (latest main at time)
+- **Date Verified**: 2025-09-19
+- **Commit Hash**: `6d1ae6286880c828c13efb5f11b60c18fb94f947`
 - **Test Command**: `cargo test`
-- **Test Results**: All tests passed - identical with/without 3pio
-- **Notes**: Asynchronous runtime for Rust
+- **Test Results**: 2566 tests (2471 passed, 95 skipped) - identical with/without 3pio
+- **Notes**: Asynchronous runtime for Rust. Comprehensive test suite across 6 workspace crates including unit tests, integration tests, and extensive doctests. 3pio successfully tracked all tests across 248 test groups with negligible performance overhead.
 
 ## Python Libraries
 
