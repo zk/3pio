@@ -149,16 +149,16 @@ function ThreePioMochaReporter(runner /*, options */) {
   });
 
   function emitTestCase(test, kind, err) {
-    if (!specFile) specFile = resolveSpecFrom(test) || 'unknown.spec';
+    const testFile = resolveSpecFrom(test) || specFile || 'unknown.spec';
     const chain = toChain(test);
     const duration = typeof test.duration === 'number' ? test.duration : 0;
 
     // Ensure discovery for all parent groups
-    ensureDiscovered(specFile, chain);
+    ensureDiscovered(testFile, chain);
 
     const payload = {
       testName: test.title || 'Unnamed test',
-      parentNames: [specFile, ...chain],
+      parentNames: [testFile, ...chain],
       status: statusFrom(kind),
       duration,
     };

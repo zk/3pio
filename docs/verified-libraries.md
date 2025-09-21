@@ -143,12 +143,11 @@ The following popular libraries should be tested with 3pio to expand our verifie
 ### JavaScript/TypeScript TODO
 - **axios** (https://github.com/axios/axios) - Popular HTTP client library (115k+ stars)
 - **express** (https://github.com/expressjs/express) - Fast, minimalist web framework (65k+ stars)
-- **lodash** (https://github.com/lodash/lodash) - Modern JavaScript utility library (60k+ stars)
 - **next.js** (https://github.com/vercel/next.js) - React framework for production (125k+ stars)
 - **typescript** (https://github.com/microsoft/TypeScript) - TypeScript language itself (100k+ stars)
 - **vue** (https://github.com/vuejs/core) - Vue.js 3 framework (47k+ stars)
 - **svelte** (https://github.com/sveltejs/svelte) - Cybernetically enhanced web apps (79k+ stars)
-- **redux** (https://github.com/reduxjs/redux) - Predictable state container (61k+ stars)
+- ~~**redux** (https://github.com/reduxjs/redux)~~ - Uses Vitest 2.1.9 (3pio requires Vitest 3.0+)
 
 ### Go TODO
 - **kubernetes** (https://github.com/kubernetes/kubernetes) - Container orchestration (110k+ stars)
