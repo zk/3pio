@@ -1,25 +1,18 @@
 # Vitest Version Requirements
 
-## Minimum Version: 3.0.0
+## Minimum Version: 2.0.0
 
-3pio requires **Vitest 3.0 or higher** for proper operation. The adapter uses modern Vitest 3+ reporter API methods that are not available in earlier versions.
+3pio supports **Vitest 2.x and 3.x**. The adapter detects the installed Vitest major version at runtime and uses the corresponding reporter API surface.
 
-## Why Vitest 3.0+?
+## Why 2.x and 3.x?
 
-The decision to require Vitest 3.0+ was made to:
-
-1. **Maintain clean, maintainable code** - Supporting multiple Vitest versions would require complex fallback logic and version detection
-2. **Avoid duplicate test events** - Earlier implementations had issues with duplicate test event emission when trying to support both old and new APIs
-3. **Use modern reporter APIs** - Vitest 3 provides cleaner reporter methods like `onTestCaseResult` and `onTestModuleEnd`
-4. **Simplify maintenance** - A single code path is easier to test and debug
+- 3.x provides modern reporter APIs (e.g., `onTestCaseResult`, `onTestModuleEnd`).
+- 2.x is still widely used and exposes a different reporter surface; we normalize its events during `onFinished`.
+- We avoid duplicate events by cleanly branching per major version.
 
 ## Version Check
 
-The Vitest adapter automatically checks the installed Vitest version on startup. If Vitest < 3.0 is detected:
-
-1. An error message is displayed to the console
-2. The adapter exits with code 1
-3. The user is prompted to upgrade Vitest
+The Vitest adapter automatically checks the installed Vitest version on startup. If Vitest < 2.0 is detected, the adapter exits with an error and prompts to upgrade.
 
 ## Upgrading Vitest
 
@@ -35,14 +28,12 @@ pnpm add -D vitest@latest
 
 ## Breaking Changes
 
-If you're upgrading from Vitest 1.x or 2.x to 3.x, please review the [Vitest migration guide](https://vitest.dev/guide/migration) for any breaking changes that might affect your test suite.
+If you're upgrading between major versions, review the [Vitest migration guide](https://vitest.dev/guide/migration) for any breaking changes that might affect your test suite.
 
 ## Technical Details
 
-The adapter specifically uses these Vitest 3+ APIs:
-- `onTestCaseResult` - For individual test result reporting
-- `onTestModuleEnd` - For file completion events
-- `onTestRunStart` - For test run initialization
-- `onTestFileStart` - For file start events
+Adapter APIs used:
+- Vitest 3.x: `onTestCaseResult`, `onTestModuleEnd`, `onTestRunStart`, `onTestFileStart`
+- Vitest 2.x: `onFinished` with post-run task traversal to emit `testCase` and file results
 
-These methods provide cleaner integration points and eliminate the need for complex workarounds that were required in earlier versions.
+We normalize both paths to a single internal IPC event model.

@@ -110,6 +110,30 @@ The verification process involves:
 - **Test Results**: 2566 tests (2471 passed, 95 skipped) - identical with/without 3pio
 - **Notes**: Asynchronous runtime for Rust. Comprehensive test suite across 6 workspace crates including unit tests, integration tests, and extensive doctests. 3pio successfully tracked all tests across 248 test groups with negligible performance overhead.
 
+### ripgrep
+- **Repository**: https://github.com/BurntSushi/ripgrep
+- **Date Verified**: 2025-09-20
+- **Commit Hash**: `bb8172fe9baa450ede7ff84677ab45048675fd02`
+- **Test Commands**: `cargo test`, `cargo nextest run`
+- **Test Results**: 426 tests passed - identical with/without 3pio (both test runners)
+- **Notes**: Line-oriented search tool written in Rust. Tests include 114 unit tests and 312 integration tests. Verified with both cargo test and cargo nextest, demonstrating 3pio's compatibility with multiple Rust test runners.
+
+### cobra
+- **Repository**: https://github.com/spf13/cobra
+- **Date Verified**: 2025-09-20
+- **Commit Hash**: `7da941c3547e93b8c9f70bbd3befca79c6335388`
+- **Test Command**: `go test -v ./...`
+- **Test Results**: 424 tests passed - identical with/without 3pio
+- **Notes**: Popular CLI library for Go. Includes extensive testing with subtests. Demonstrates perfect accuracy with Go's native test runner including proper handling of subtests and test groups across 2 packages.
+
+### fiber
+- **Repository**: https://github.com/gofiber/fiber
+- **Date Verified**: 2025-09-20
+- **Commit Hash**: `8136af2`
+- **Test Command**: `go test -v ./...`
+- **Test Results**: 1981 tests (1980 passed, 1 skipped) - identical with/without 3pio
+- **Notes**: Express-inspired web framework for Go. Large test suite across 32 packages including core framework and extensive middleware testing. 3pio demonstrated ~12% performance improvement over baseline while maintaining exact test count accuracy.
+
 ## Python Libraries
 
 ### flask
@@ -141,23 +165,20 @@ The verification process involves:
 The following popular libraries should be tested with 3pio to expand our verified libraries list:
 
 ### JavaScript/TypeScript TODO
-- **axios** (https://github.com/axios/axios) - Popular HTTP client library (115k+ stars)
 - **express** (https://github.com/expressjs/express) - Fast, minimalist web framework (65k+ stars)
 - **next.js** (https://github.com/vercel/next.js) - React framework for production (125k+ stars)
 - **typescript** (https://github.com/microsoft/TypeScript) - TypeScript language itself (100k+ stars)
 - **vue** (https://github.com/vuejs/core) - Vue.js 3 framework (47k+ stars)
 - **svelte** (https://github.com/sveltejs/svelte) - Cybernetically enhanced web apps (79k+ stars)
-- ~~**redux** (https://github.com/reduxjs/redux)~~ - Uses Vitest 2.1.9 (3pio requires Vitest 3.0+)
+- **redux** (https://github.com/reduxjs/redux) - Uses Vitest 2.1.9 (now supported via v2 path)
 
 ### Go TODO
 - **kubernetes** (https://github.com/kubernetes/kubernetes) - Container orchestration (110k+ stars)
 - **docker/moby** (https://github.com/moby/moby) - Container platform (68k+ stars)
 - **prometheus** (https://github.com/prometheus/prometheus) - Monitoring system (55k+ stars)
 - **hugo** (https://github.com/gohugoio/hugo) - Fast website framework (75k+ stars)
-- **cobra** (https://github.com/spf13/cobra) - CLI library (38k+ stars)
 - **milvus** (https://github.com/milvus-io/milvus) - Vector database (30k+ stars)
 - **rclone** (https://github.com/rclone/rclone) - Cloud storage sync (46k+ stars)
-- **fiber** (https://github.com/gofiber/fiber) - Express-inspired web framework (33k+ stars)
 
 ### Python TODO
 - **django** (https://github.com/django/django) - High-level web framework (80k+ stars)
@@ -172,11 +193,9 @@ The following popular libraries should be tested with 3pio to expand our verifie
 ### Rust TODO
 - **rocket** (https://github.com/rwf2/Rocket) - Web framework (24k+ stars)
 - **axum** (https://github.com/tokio-rs/axum) - Ergonomic web framework (19k+ stars)
-- **diesel** (https://github.com/diesel-rs/diesel) - ORM and query builder (12k+ stars)
 - **warp** (https://github.com/seanmonstar/warp) - Web server framework (9k+ stars)
 - **tauri** (https://github.com/tauri-apps/tauri) - Desktop app framework (83k+ stars)
 - **rustdesk** (https://github.com/rustdesk/rustdesk) - Remote desktop software (74k+ stars)
-- **ripgrep** (https://github.com/BurntSushi/ripgrep) - Line-oriented search tool (48k+ stars)
 - **starship** (https://github.com/starship/starship) - Cross-shell prompt (44k+ stars)
 
 ## Verification Criteria

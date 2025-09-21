@@ -271,19 +271,21 @@ const ThreePioVitestReporter = class {
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
     this.logger = Logger.create('vitest-adapter');
 
-    // Check Vitest version - require 3.0 or higher
+    // Check Vitest version - require 2.0 or higher; branch for v2 vs v3 APIs
     try {
       const vitestPkg = require('vitest/package.json');
       const version = vitestPkg.version;
       const majorVersion = parseInt(version.split('.')[0], 10);
-      if (majorVersion < 3) {
-        console.error(`\n[3pio] ERROR: Vitest ${version} is not supported. 3pio requires Vitest 3.0 or higher.\n`);
-        console.error('Please upgrade Vitest: npm install --save-dev vitest@latest\n');
+      this.vitestMajor = Number.isFinite(majorVersion) ? majorVersion : 3;
+      if (majorVersion < 2) {
+        console.error(`\n[3pio] ERROR: Vitest ${version} is not supported. 3pio requires Vitest 2.0 or higher.\n`);
+        console.error('Please upgrade Vitest: npm install --save-dev vitest@^2\n');
         process.exit(1);
       }
     } catch (e) {
-      // If we can't check version, proceed but log warning
-      console.warn('[3pio] WARNING: Could not verify Vitest version. 3pio requires Vitest 3.0 or higher.');
+      // If we can't check version, proceed but default to v3 behavior
+      this.vitestMajor = 3;
+      console.warn('[3pio] WARNING: Could not verify Vitest version. Assuming Vitest 3.x compatible reporter API.');
     }
 
     const ipcPath =
@@ -295,7 +297,7 @@ const ThreePioVitestReporter = class {
       `  - IPC Path: ${ipcPath}`,
       `  - Process ID: ${process.pid}`,
       `  - Worker: ${process.env.VITEST_POOL_ID || 'main'}`,
-      `  - Requires: Vitest 3.0+`,
+      `  - Requires: Vitest 2.0+`,
       '==================================',
     ]);
   }
@@ -487,6 +489,8 @@ const ThreePioVitestReporter = class {
   }
 
   onTestCaseResult(testCase) {
+    // Vitest v3+ only
+    if (this.vitestMajor && this.vitestMajor < 3) return;
     const result = testCase?.result?.();
     const diagnostic = testCase?.diagnostic?.();
     const filePath = testCase?.module?.moduleId || testCase?.filepath;
@@ -587,6 +591,8 @@ const ThreePioVitestReporter = class {
   }
 
   onTestModuleEnd(testModule) {
+    // Vitest v3+ only
+    if (this.vitestMajor && this.vitestMajor < 3) return;
     // Module end event - test results are handled via onTestCaseResult
     this.logger.info('[V3] onTestModuleEnd called', {
       moduleId: testModule?.moduleId,
@@ -636,6 +642,8 @@ const ThreePioVitestReporter = class {
   // sendTestCasesFromModule removed - using modern Vitest 3+ API methods instead
 
   onTestRunEnd(testModules, unhandledErrors, reason) {
+    // Vitest v3+ only
+    if (this.vitestMajor && this.vitestMajor < 3) return;
     this.logger.info('[V3] onTestRunEnd called', {
       modules: testModules?.length || 0,
       errors: unhandledErrors?.length || 0,
@@ -648,6 +656,8 @@ const ThreePioVitestReporter = class {
   }
 
   onHookStart(hook) {
+    // Vitest v3+ only
+    if (this.vitestMajor && this.vitestMajor < 3) return;
     this.logger.debug('[V3] onHookStart called', {
       type: hook?.type,
       name: hook?.name,
@@ -655,6 +665,8 @@ const ThreePioVitestReporter = class {
   }
 
   onHookEnd(hook) {
+    // Vitest v3+ only
+    if (this.vitestMajor && this.vitestMajor < 3) return;
     this.logger.debug('[V3] onHookEnd called', {
       type: hook?.type,
       name: hook?.name,
@@ -662,6 +674,8 @@ const ThreePioVitestReporter = class {
   }
 
   onTestAnnotate(testCase, annotation) {
+    // Vitest v3+ only
+    if (this.vitestMajor && this.vitestMajor < 3) return;
     this.logger.debug('[V3] onTestAnnotate called', {
       testName: testCase?.name,
       annotation,
@@ -702,8 +716,124 @@ const ThreePioVitestReporter = class {
       files: files?.length || 0,
       errors: errors?.length || 0,
     });
+
+    // For Vitest v2, walk files to emit events and group results
+    if (this.vitestMajor && this.vitestMajor < 3) {
+      try {
+        this.processV2Files(files || []);
+      } catch (e) {
+        this.logger.error('Error while processing Vitest v2 files', e);
+      }
+    }
+
     this.stopCapture();
     this.logger.lifecycle('Vitest adapter shutdown complete');
+  }
+
+  // Vitest v2 compatibility: walk finished file tasks and emit events
+  processV2Files(files) {
+    if (!Array.isArray(files)) return;
+
+    const toArray = (val) => (Array.isArray(val) ? val : val ? [val] : []);
+
+    for (const file of files) {
+      const filePath = file?.filepath || file?.file?.filepath || file?.name || file?.moduleId;
+      if (!filePath) continue;
+
+      // Ensure root group exists and is started
+      this.ensureGroupsDiscovered(filePath, []);
+      this.ensureGroupStarted([filePath]);
+
+      // Store file group info if not present
+      if (!this.fileGroups.has(filePath)) {
+        this.fileGroups.set(filePath, { startTime: Date.now(), tests: [] });
+      }
+
+      const visitSuite = (suite, chain) => {
+        const name = suite?.name;
+        const nextChain = name ? [...chain, name] : chain;
+
+        // Discover and start suite groups along the chain
+        this.ensureGroupsDiscovered(filePath, nextChain);
+        for (let i = 0; i <= nextChain.length; i++) {
+          const hierarchy = [filePath, ...nextChain.slice(0, i)];
+          this.ensureGroupStarted(hierarchy);
+        }
+
+        const tasks = toArray(suite?.tasks);
+        for (const t of tasks) {
+          if (!t) continue;
+          if (t.type === 'suite') {
+            visitSuite(t, nextChain);
+          } else if (t.type === 'test') {
+            const result = t.result || {};
+            const state = result.state || t.state || 'unknown';
+            const status = state === 'pass' || state === 'passed' ? 'PASS' : state === 'fail' || state === 'failed' ? 'FAIL' : state === 'skip' || state === 'skipped' || state === 'todo' ? 'SKIP' : 'UNKNOWN';
+
+            const parentNames = this.buildHierarchyFromFile(filePath, nextChain);
+
+            let errorObj = null;
+            const firstError = (result.errors && result.errors[0]) || (t.errors && t.errors[0]);
+            if (firstError) {
+              errorObj = {
+                message: firstError.message || String(firstError),
+                stack: firstError.stack || '',
+                expected: firstError.expected || '',
+                actual: firstError.actual || '',
+                location: '',
+                errorType: firstError.name || 'Error',
+              };
+            }
+
+            this.logger.ipc('send', 'testCase', { testName: t.name, parentNames, status });
+            IPCSender.sendEvent({
+              eventType: 'testCase',
+              payload: {
+                testName: t.name,
+                parentNames,
+                status,
+                duration: result.duration,
+                error: errorObj,
+              },
+            }).catch((error) => {
+              this.logger.error('Failed to send testCase event (v2)', error);
+            });
+
+            const fg = this.fileGroups.get(filePath);
+            if (fg) fg.tests.push({ name: t.name, status, duration: result.duration });
+          }
+        }
+      };
+
+      // v2 file may have tasks directly or nested under .tasks
+      visitSuite(file, []);
+
+      // Emit file group result
+      const fileGroup = this.fileGroups.get(filePath);
+      if (fileGroup) {
+        const fileDuration = fileGroup.startTime ? Date.now() - fileGroup.startTime : undefined;
+        const totals = {
+          total: fileGroup.tests.length,
+          passed: fileGroup.tests.filter((t) => t.status === 'PASS').length,
+          failed: fileGroup.tests.filter((t) => t.status === 'FAIL').length,
+          skipped: fileGroup.tests.filter((t) => t.status === 'SKIP').length,
+        };
+        const status = totals.failed > 0 ? 'FAIL' : totals.skipped === totals.total && totals.total > 0 ? 'SKIP' : 'PASS';
+        this.logger.ipc('send', 'testGroupResult', { groupName: filePath, status, totals });
+        IPCSender.sendEvent({
+          eventType: 'testGroupResult',
+          payload: {
+            groupName: filePath,
+            parentNames: [],
+            status,
+            duration: fileDuration,
+            totals,
+          },
+        }).catch((error) => {
+          this.logger.error('Failed to send testGroupResult (v2)', error);
+        });
+      }
+    }
   }
 
   startCapture() {
