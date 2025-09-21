@@ -243,9 +243,9 @@ func (g *GoTestDefinition) ProcessOutput(stdout io.Reader, ipcPath string) error
 		g.logger.Debug("Scanner encountered error (will finalize groups anyway): %v", scanErr)
 	}
 
-	// Finalize any pending groups even if scanner had an error
-	g.logger.Debug("Finalizing pending groups...")
-	g.finalizePendingGroups()
+	// Finalize any incomplete tests and groups even if scanner had an error
+	g.logger.Debug("Finalizing incomplete tests and groups...")
+	g.finalizeIncompleteTestsAndGroups()
 
 	if scanErr != nil {
 		// Log the error but don't fail - we've already processed the events
@@ -890,8 +890,8 @@ func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames [
 		},
 	}
 
-	// Add error details for failed tests
-	if status == "FAIL" && output != "" {
+	// Add error details for failed/errored tests
+	if (status == "FAIL" || status == "ERROR") && output != "" {
 		event["payload"].(map[string]interface{})["error"] = map[string]interface{}{
 			"message": output,
 		}
@@ -902,10 +902,55 @@ func (g *GoTestDefinition) sendTestCaseWithGroups(testName string, parentNames [
 	}
 }
 
-// finalizePendingGroups sends group results for any groups that haven't been finalized
-func (g *GoTestDefinition) finalizePendingGroups() {
+// finalizeIncompleteTestsAndGroups handles any tests that started but never completed,
+// marking them as ERROR, and then finalizes any package groups that haven't been completed
+func (g *GoTestDefinition) finalizeIncompleteTestsAndGroups() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	// First, handle any incomplete tests (tests that started but never completed)
+	for key, state := range g.testStates {
+		g.logger.Debug("Found incomplete test: %s in package %s", state.Name, state.Package)
+
+		// Parse the test hierarchy (handle subtests with "/" separator)
+		suiteChain, finalTestName := g.parseTestHierarchy(state.Name)
+
+		// Build complete hierarchy for this test case using package
+		parentNames := g.buildHierarchyFromPackage(state.Package, suiteChain)
+
+		// Calculate duration
+		duration := time.Since(state.StartTime).Seconds()
+
+		// Collect error message from captured output
+		var errorMsg string
+		if len(state.Output) > 0 {
+			// Join all captured output as the error message
+			errorMsg = strings.TrimSpace(strings.Join(state.Output, ""))
+			// If we have output that looks like an error, use it
+			if errorMsg == "" {
+				errorMsg = "Test did not complete (possible crash or fatal error)"
+			}
+		} else {
+			errorMsg = "Test did not complete (possible crash or fatal error)"
+		}
+
+		g.logger.Debug("Marking incomplete test %s as ERROR with message: %s", key, errorMsg)
+
+		// Send ERROR status for the incomplete test
+		g.sendTestCaseWithGroups(finalTestName, parentNames, "ERROR", duration, errorMsg)
+
+		// Update package stats to include this failed test
+		if pkgGroup, exists := g.packageGroups[state.Package]; exists {
+			pkgGroup.Tests = append(pkgGroup.Tests, TestInfo{
+				Name:     state.Name,
+				Status:   "ERROR",
+				Duration: duration,
+			})
+		}
+	}
+
+	// Clear all incomplete tests now that we've reported them
+	g.testStates = make(map[string]*TestState)
 
 	// Check if there are any package groups that haven't been finalized
 	for pkgName, pkgGroup := range g.packageGroups {
@@ -921,6 +966,7 @@ func (g *GoTestDefinition) finalizePendingGroups() {
 				"passed":  0,
 				"failed":  0,
 				"skipped": 0,
+				"errored": 0,
 			}
 
 			status := "FAIL" // Default to FAIL if incomplete
@@ -935,11 +981,13 @@ func (g *GoTestDefinition) finalizePendingGroups() {
 						totals["failed"] = totals["failed"].(int) + 1
 					case "SKIP":
 						totals["skipped"] = totals["skipped"].(int) + 1
+					case "ERROR":
+						totals["errored"] = totals["errored"].(int) + 1
 					}
 				}
 
 				// Determine status based on test results
-				if totals["failed"].(int) > 0 {
+				if totals["failed"].(int) > 0 || totals["errored"].(int) > 0 {
 					status = "FAIL"
 				} else if totals["passed"].(int) > 0 {
 					status = "PASS"

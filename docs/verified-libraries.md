@@ -21,7 +21,7 @@ The verification process involves:
 ### vueuse
 - **Repository**: https://github.com/vueuse/vueuse
 - **Date Verified**: 2025-09-20
-- **Commit Hash**: Not specified (latest main at time)
+- **Commit Hash**: `51872941f63a4d6719b96b6672e594a981e98da3`
 - **Test Command**: `pnpm test:unit`
 - **Test Results**: 181 test files, 1343 passed tests, 2 skipped - matches baseline (1359 passed includes todo tests)
 - **Notes**: Large Vue.js monorepo with comprehensive composables testing. Minor difference in test counts due to Vitest's "todo" tests being counted differently between reporters. Todo test support is on the roadmap for 3pio
@@ -29,10 +29,18 @@ The verification process involves:
 ### react
 - **Repository**: https://github.com/facebook/react
 - **Date Verified**: 2025-09-20
-- **Commit Hash**: Not specified (latest main at time)
+- **Commit Hash**: `d91d28c8ba6fe7c96e651f82fc47c9d5481bf5f9`
 - **Test Command**: `yarn test`
 - **Test Results**: 6791 tests (6768 passed, 23 skipped) - identical with/without 3pio during stable runs
 - **Notes**: The React core library test suite. Demonstrates 3pio's accuracy with complex Jest configurations and large-scale test suites.
+
+### axios
+- **Repository**: https://github.com/axios/axios
+- **Date Verified**: 2025-09-20
+- **Commit Hash**: `54a1fcc1b6a237d591e19825a4c1554227ffaeca`
+- **Test Command**: `npm run test:mocha`
+- **Test Results**: 219 tests passed - identical with/without 3pio
+- **Notes**: Popular HTTP client library using Mocha test runner. Project uses ESM modules ("type": "module" in package.json). Fixed mocha adapter to support ESM by using .cjs extension when ESM is detected.
 
 ## Go Libraries
 
@@ -127,6 +135,50 @@ The verification process involves:
 - **Test Command**: `uv run pytest pandas/` (complete test suite)
 - **Test Results**: 170,962 passed tests - identical with/without 3pio
 - **Notes**: Complete pandas test suite (198K+ tests). Built from source with meson build system. Baseline: 170,962 passed, 26,650 skipped, 799 xfailed, 84 xpassed, 373 errors. 3pio: 170,962 passed, 25,861 skipped, 795 xfailed, 84 xpassed. Core test results match exactly. Small differences in skipped tests and error handling are expected due to pytest plugin behavior differences. Demonstrates 3pio's capability with large-scale real-world test suites.
+
+## Libraries To Verify (TODO)
+
+The following popular libraries should be tested with 3pio to expand our verified libraries list:
+
+### JavaScript/TypeScript TODO
+- **axios** (https://github.com/axios/axios) - Popular HTTP client library (115k+ stars)
+- **express** (https://github.com/expressjs/express) - Fast, minimalist web framework (65k+ stars)
+- **lodash** (https://github.com/lodash/lodash) - Modern JavaScript utility library (60k+ stars)
+- **next.js** (https://github.com/vercel/next.js) - React framework for production (125k+ stars)
+- **typescript** (https://github.com/microsoft/TypeScript) - TypeScript language itself (100k+ stars)
+- **vue** (https://github.com/vuejs/core) - Vue.js 3 framework (47k+ stars)
+- **svelte** (https://github.com/sveltejs/svelte) - Cybernetically enhanced web apps (79k+ stars)
+- **redux** (https://github.com/reduxjs/redux) - Predictable state container (61k+ stars)
+
+### Go TODO
+- **kubernetes** (https://github.com/kubernetes/kubernetes) - Container orchestration (110k+ stars)
+- **docker/moby** (https://github.com/moby/moby) - Container platform (68k+ stars)
+- **prometheus** (https://github.com/prometheus/prometheus) - Monitoring system (55k+ stars)
+- **hugo** (https://github.com/gohugoio/hugo) - Fast website framework (75k+ stars)
+- **cobra** (https://github.com/spf13/cobra) - CLI library (38k+ stars)
+- **milvus** (https://github.com/milvus-io/milvus) - Vector database (30k+ stars)
+- **rclone** (https://github.com/rclone/rclone) - Cloud storage sync (46k+ stars)
+- **fiber** (https://github.com/gofiber/fiber) - Express-inspired web framework (33k+ stars)
+
+### Python TODO
+- **django** (https://github.com/django/django) - High-level web framework (80k+ stars)
+- **fastapi** (https://github.com/tiangolo/fastapi) - Modern, fast web framework (77k+ stars)
+- **scikit-learn** (https://github.com/scikit-learn/scikit-learn) - Machine learning library (59k+ stars)
+- **requests** (https://github.com/psf/requests) - HTTP library (52k+ stars)
+- **pytorch** (https://github.com/pytorch/pytorch) - ML framework (83k+ stars)
+- **numpy** (https://github.com/numpy/numpy) - Scientific computing (27k+ stars)
+- **home-assistant** (https://github.com/home-assistant/core) - Home automation (73k+ stars)
+- **rich** (https://github.com/Textualize/rich) - Terminal formatting library (49k+ stars)
+
+### Rust TODO
+- **rocket** (https://github.com/rwf2/Rocket) - Web framework (24k+ stars)
+- **axum** (https://github.com/tokio-rs/axum) - Ergonomic web framework (19k+ stars)
+- **diesel** (https://github.com/diesel-rs/diesel) - ORM and query builder (12k+ stars)
+- **warp** (https://github.com/seanmonstar/warp) - Web server framework (9k+ stars)
+- **tauri** (https://github.com/tauri-apps/tauri) - Desktop app framework (83k+ stars)
+- **rustdesk** (https://github.com/rustdesk/rustdesk) - Remote desktop software (74k+ stars)
+- **ripgrep** (https://github.com/BurntSushi/ripgrep) - Line-oriented search tool (48k+ stars)
+- **starship** (https://github.com/starship/starship) - Cross-shell prompt (44k+ stars)
 
 ## Verification Criteria
 
