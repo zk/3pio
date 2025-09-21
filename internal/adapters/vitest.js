@@ -265,6 +265,10 @@ const ThreePioVitestReporter = class {
 
   fileGroups = /* @__PURE__ */ new Map();
 
+  // Vitest v2 tracking maps
+  v2TaskIndex = /* @__PURE__ */ new Map();
+  v2Emitted = /* @__PURE__ */ new Set();
+
   // Suite tracking removed - using modern Vitest 3+ API methods
   constructor() {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
@@ -446,6 +450,17 @@ const ThreePioVitestReporter = class {
     // Only send collection finish if onPathsCollected wasn't called
     // (for older Vitest versions or single-threaded mode)
     // Don't send in parallel mode as each worker only sees its subset
+    // For Vitest v2, index tasks for onTaskUpdate processing
+    if (this.vitestMajor && this.vitestMajor < 3 && Array.isArray(files)) {
+      try {
+        this.indexV2Tasks(files);
+        this.logger.debug('[V2] Indexed tasks for onTaskUpdate processing', {
+          count: this.v2TaskIndex.size,
+        });
+      } catch (e) {
+        this.logger.error('Failed to index v2 tasks during onCollected', e);
+      }
+    }
   }
 
   // New Vitest 3+ Reporter Methods
@@ -832,6 +847,97 @@ const ThreePioVitestReporter = class {
         }).catch((error) => {
           this.logger.error('Failed to send testGroupResult (v2)', error);
         });
+      }
+    }
+  }
+
+  // Vitest v2: build an index of test tasks for quick lookup by id
+  indexV2Tasks(files) {
+    const toArray = (val) => (Array.isArray(val) ? val : val ? [val] : []);
+    this.v2TaskIndex.clear();
+    for (const file of files) {
+      const filePath = file?.filepath || file?.file?.filepath || file?.name || file?.moduleId;
+      if (!filePath) continue;
+
+      const visit = (node, chain) => {
+        const name = node?.name;
+        const nextChain = node?.type === 'suite' && name ? [...chain, name] : chain;
+        const tasks = toArray(node?.tasks);
+        for (const t of tasks) {
+          if (!t) continue;
+          if (t.type === 'suite') {
+            visit(t, nextChain);
+          } else if (t.type === 'test') {
+            if (t.id != null) {
+              this.v2TaskIndex.set(t.id, { filePath, suiteChain: nextChain, name: t.name });
+            }
+          }
+        }
+      };
+      visit(file, []);
+    }
+  }
+
+  // Vitest v2: handle incremental result updates
+  onTaskUpdate(packs) {
+    if (!(this.vitestMajor && this.vitestMajor < 3)) return;
+    if (!Array.isArray(packs)) return;
+
+    const terminal = (st) => st === 'pass' || st === 'passed' || st === 'fail' || st === 'failed' || st === 'skip' || st === 'skipped' || st === 'todo';
+    for (const pack of packs) {
+      try {
+        const id = Array.isArray(pack) ? pack[0] : pack?.id;
+        const res = Array.isArray(pack) ? pack[1] : pack?.result;
+        if (id == null || !res) continue;
+        const meta = this.v2TaskIndex.get(id);
+        if (!meta) continue;
+
+        const state = res.state || 'unknown';
+        if (!terminal(state)) continue; // only emit when test finishes
+
+        if (this.v2Emitted.has(id)) continue;
+        this.v2Emitted.add(id);
+
+        const { filePath, suiteChain, name } = meta;
+
+        // Ensure file group exists
+        if (filePath && !this.fileGroups.has(filePath)) {
+          this.fileGroups.set(filePath, { startTime: Date.now(), tests: [] });
+        }
+
+        // Ensure groups discovered & started
+        this.ensureGroupsDiscovered(filePath, suiteChain);
+        for (let i = 0; i <= suiteChain.length; i++) {
+          const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+          this.ensureGroupStarted(hierarchy);
+        }
+
+        const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+        const status = state === 'pass' || state === 'passed' ? 'PASS' : state === 'fail' || state === 'failed' ? 'FAIL' : state === 'skip' || state === 'skipped' || state === 'todo' ? 'SKIP' : 'UNKNOWN';
+
+        let errorObj = null;
+        const firstError = res.errors && res.errors[0];
+        if (firstError) {
+          errorObj = {
+            message: firstError.message || String(firstError),
+            stack: firstError.stack || '',
+            expected: firstError.expected || '',
+            actual: firstError.actual || '',
+            location: '',
+            errorType: firstError.name || 'Error',
+          };
+        }
+
+        this.logger.ipc('send', 'testCase', { testName: name, parentNames, status });
+        IPCSender.sendEvent({
+          eventType: 'testCase',
+          payload: { testName: name, parentNames, status, duration: res.duration, error: errorObj },
+        }).catch((error) => this.logger.error('Failed to send testCase event (v2 update)', error));
+
+        const fg = this.fileGroups.get(filePath);
+        if (fg) fg.tests.push({ name, status, duration: res.duration });
+      } catch (e) {
+        this.logger.error('Error handling v2 onTaskUpdate pack', e);
       }
     }
   }
