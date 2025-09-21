@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "strict": true,
+    "moduleResolution": "Bundler",
+    "verbatimModuleSyntax": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src", "tests", "types"]
+}
+

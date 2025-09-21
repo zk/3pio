@@ -1,0 +1,12 @@
+{
+  "name": "vitest-typecheck-v3",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "vitest run --typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  }
+}
+
