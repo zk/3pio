@@ -380,6 +380,70 @@ func (v *VitestDefinition) BuildCommand(args []string, adapterPath string) []str
 		// Commands like: npm test, yarn test, pnpm test, bun test, deno task test
 		result := make([]string, 0, len(args)+6)
 
+		// Special handling: extract simple Yarn vitest script to direct invocation
+		// This improves reliability of reporter injection for Yarn Berry scripts.
+		if len(args) >= 2 && args[0] == "yarn" {
+			isYarnTest := args[1] == "test"
+			if !isYarnTest && len(args) >= 3 && args[1] == "run" && args[2] == "test" {
+				isYarnTest = true
+			}
+			if isYarnTest {
+				// Attempt to read a simple vitest command from package.json scripts.test
+				if data, err := os.ReadFile("package.json"); err == nil {
+					var pkg map[string]interface{}
+					if json.Unmarshal(data, &pkg) == nil {
+						if scripts, ok := pkg["scripts"].(map[string]interface{}); ok {
+							if testScript, ok := scripts["test"].(string); ok {
+								// Only handle simple commands that start with vitest and have no shell operators
+								compoundTokens := []string{"&&", "||", "|", ";", "npm-run-all", "concurrently"}
+								simple := strings.Contains(testScript, "vitest")
+								for _, tok := range compoundTokens {
+									if strings.Contains(testScript, tok) {
+										simple = false
+										break
+									}
+								}
+								if simple {
+									// Tokenize and extract args after the 'vitest' token
+									tokens := strings.Fields(testScript)
+									vitestIdx := -1
+									for i, t := range tokens {
+										if t == "vitest" {
+											vitestIdx = i
+											break
+										}
+									}
+									if vitestIdx >= 0 {
+										// Collect passthrough args provided by user after '--'
+										passthrough := []string{}
+										for i, a := range args {
+											if a == "--" {
+												if i+1 < len(args) {
+													passthrough = append(passthrough, args[i+1:]...)
+												}
+												break
+											}
+										}
+
+										result = append(result, "yarn", "vitest", "--reporter", adapterPath, "--reporter", "default")
+										// Append script's vitest args (after the 'vitest' token)
+										if vitestIdx+1 < len(tokens) {
+											result = append(result, tokens[vitestIdx+1:]...)
+										}
+										// Append any user-provided passthrough args
+										if len(passthrough) > 0 {
+											result = append(result, passthrough...)
+										}
+										return result
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Different package managers handle flags differently:
 		// - pnpm: passes unknown flags directly to the script (no -- needed)
 		// - npm/yarn/bun/deno: need -- separator to pass flags to the script
