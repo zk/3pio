@@ -264,10 +264,12 @@ const ThreePioVitestReporter = class {
   groupStarts = /* @__PURE__ */ new Map();
 
   fileGroups = /* @__PURE__ */ new Map();
-
-  // Vitest v2 tracking maps
+  // Vitest v2 tracking structures
   v2TaskIndex = /* @__PURE__ */ new Map();
   v2Emitted = /* @__PURE__ */ new Set();
+  v2Planned = /* @__PURE__ */ new Map(); // key -> { filePath, suiteChain, name }
+  v2Completed = /* @__PURE__ */ new Set(); // keys that reached terminal/backfill
+  v2PendingEmitted = /* @__PURE__ */ new Set();
 
   // Suite tracking removed - using modern Vitest 3+ API methods
   constructor() {
@@ -454,6 +456,7 @@ const ThreePioVitestReporter = class {
     if (this.vitestMajor && this.vitestMajor < 3 && Array.isArray(files)) {
       try {
         this.indexV2Tasks(files);
+        this.planV2Tests(files);
         this.logger.debug('[V2] Indexed tasks for onTaskUpdate processing', {
           count: this.v2TaskIndex.size,
         });
@@ -630,12 +633,8 @@ const ThreePioVitestReporter = class {
           skipped: fileGroup.tests.filter((t) => t.status === 'SKIP').length,
         };
 
-        const status =
-          totals.failed > 0
-            ? 'FAIL'
-            : totals.skipped === totals.total && totals.total > 0
-              ? 'SKIP'
-              : 'PASS';
+        // Group (file) is PASS only if all tests passed with no skips; otherwise FAIL
+        const status = totals.failed === 0 && totals.skipped === 0 ? 'PASS' : 'FAIL';
 
         this.logger.ipc('send', 'testGroupResult', { groupName: filePath, status, totals });
         IPCSender.sendEvent({
@@ -732,10 +731,57 @@ const ThreePioVitestReporter = class {
       errors: errors?.length || 0,
     });
 
-    // For Vitest v2, walk files to emit events and group results
+    // For Vitest v2, walk files to backfill any missing events and group results
     if (this.vitestMajor && this.vitestMajor < 3) {
       try {
+        // First, traverse finished files to backfill terminal cases and emit group results later
         this.processV2Files(files || []);
+
+        // Then, emit SKIP for any planned tests that never completed (suite aborts)
+        if (this.v2Planned && this.v2Planned.size > 0) {
+          const hasUnhandled = Array.isArray(errors) && errors.length > 0;
+          const fileErrored = /* @__PURE__ */ new Set();
+          for (const [key, meta] of this.v2Planned.entries()) {
+            if (this.v2Completed && this.v2Completed.has(key)) continue;
+            const { filePath, suiteChain, name } = meta;
+            this.ensureGroupsDiscovered(filePath, suiteChain);
+            for (let i = 0; i <= suiteChain.length; i++) {
+              const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+              this.ensureGroupStarted(hierarchy);
+            }
+            const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+            const finalStatus = hasUnhandled ? 'ERROR' : 'SKIP';
+            this.logger.ipc('send', 'testCase', { testName: name, parentNames, status: finalStatus });
+            await IPCSender.sendEvent({
+              eventType: 'testCase',
+              payload: { testName: name, parentNames, status: finalStatus, duration: undefined, error: null },
+            }).catch((error) => this.logger.error('Failed to send planned testCase SKIP (v2)', error));
+            if (!this.v2Completed) this.v2Completed = /* @__PURE__ */ new Set();
+            this.v2Completed.add(key);
+            if (!this.fileGroups.has(filePath)) {
+              this.fileGroups.set(filePath, { startTime: Date.now(), tests: [] });
+            }
+            const fg = this.fileGroups.get(filePath);
+            if (fg) fg.tests.push({ name, status: finalStatus, duration: undefined });
+
+            // Emit a group error once per file when we classify aborted tests as ERROR
+            if (hasUnhandled && !fileErrored.has(filePath)) {
+              fileErrored.add(filePath);
+              const message = errors && errors[0] && (errors[0].message || String(errors[0])) || 'Unhandled error';
+              IPCSender.sendEvent({
+                eventType: 'testGroupError',
+                payload: {
+                  groupName: filePath,
+                  parentNames: [],
+                  errorType: 'SETUP_FAILURE',
+                  duration: undefined,
+                  error: { message, phase: 'setup' },
+                  metadata: undefined,
+                },
+              }).catch((err) => this.logger.error('Failed to send testGroupError (v2)', err));
+            }
+          }
+        }
       } catch (e) {
         this.logger.error('Error while processing Vitest v2 files', e);
       }
@@ -783,9 +829,18 @@ const ThreePioVitestReporter = class {
           } else if (t.type === 'test') {
             const result = t.result || {};
             const state = result.state || t.state || 'unknown';
-            const status = state === 'pass' || state === 'passed' ? 'PASS' : state === 'fail' || state === 'failed' ? 'FAIL' : state === 'skip' || state === 'skipped' || state === 'todo' ? 'SKIP' : 'UNKNOWN';
+            const status = state === 'pass' || state === 'passed'
+              ? 'PASS'
+              : state === 'fail' || state === 'failed'
+                ? 'FAIL'
+                : state === 'skip' || state === 'skipped' || state === 'todo' || !state
+                  ? 'SKIP'
+                  : 'SKIP';
 
             const parentNames = this.buildHierarchyFromFile(filePath, nextChain);
+            // Skip if already completed via onTaskUpdate
+            const key = `${filePath}::${nextChain.join('::')}::${t.name}`;
+            if (this.v2Completed && this.v2Completed.has(key)) continue;
 
             let errorObj = null;
             const firstError = (result.errors && result.errors[0]) || (t.errors && t.errors[0]);
@@ -811,11 +866,13 @@ const ThreePioVitestReporter = class {
                 error: errorObj,
               },
             }).catch((error) => {
-              this.logger.error('Failed to send testCase event (v2)', error);
+              this.logger.error('Failed to send testCase event (v2 backfill)', error);
             });
 
             const fg = this.fileGroups.get(filePath);
             if (fg) fg.tests.push({ name: t.name, status, duration: result.duration });
+            if (!this.v2Completed) this.v2Completed = /* @__PURE__ */ new Set();
+            this.v2Completed.add(key);
           }
         }
       };
@@ -833,7 +890,8 @@ const ThreePioVitestReporter = class {
           failed: fileGroup.tests.filter((t) => t.status === 'FAIL').length,
           skipped: fileGroup.tests.filter((t) => t.status === 'SKIP').length,
         };
-        const status = totals.failed > 0 ? 'FAIL' : totals.skipped === totals.total && totals.total > 0 ? 'SKIP' : 'PASS';
+        // Group (file) is PASS only if all tests passed with no skips; otherwise FAIL
+        const status = totals.failed === 0 && totals.skipped === 0 ? 'PASS' : 'FAIL';
         this.logger.ipc('send', 'testGroupResult', { groupName: filePath, status, totals });
         IPCSender.sendEvent({
           eventType: 'testGroupResult',
@@ -849,6 +907,14 @@ const ThreePioVitestReporter = class {
         });
       }
     }
+  }
+
+  // Heuristic: treat declaration files as typecheck tasks; exclude from test counts
+  isTypeCheckPath(p) {
+    if (!p || typeof p !== 'string') return false;
+    // Normalize path separators
+    const fp = p.toLowerCase();
+    return fp.endsWith('.d.ts') || fp.endsWith('.d.tsx') || fp.includes('/types/') || fp.includes('test-d.ts');
   }
 
   // Vitest v2: build an index of test tasks for quick lookup by id
@@ -878,6 +944,33 @@ const ThreePioVitestReporter = class {
     }
   }
 
+  // Vitest v2: plan all tests discovered during collection
+  planV2Tests(files) {
+    const toArray = (val) => (Array.isArray(val) ? val : val ? [val] : []);
+    if (!this.v2Planned) this.v2Planned = /* @__PURE__ */ new Map();
+    for (const file of files || []) {
+      const filePath = file?.filepath || file?.file?.filepath || file?.name || file?.moduleId;
+      if (!filePath) continue;
+      const visit = (node, chain) => {
+        const name = node?.name;
+        const nextChain = node?.type === 'suite' && name ? [...chain, name] : chain;
+        const tasks = toArray(node?.tasks);
+        for (const t of tasks) {
+          if (!t) continue;
+          if (t.type === 'suite') {
+            visit(t, nextChain);
+          } else if (t.type === 'test') {
+            const key = `${filePath}::${nextChain.join('::')}::${t.name}`;
+            if (!this.v2Planned.has(key)) {
+              this.v2Planned.set(key, { filePath, suiteChain: nextChain, name: t.name });
+            }
+          }
+        }
+      };
+      visit(file, []);
+    }
+  }
+
   // Vitest v2: handle incremental result updates
   onTaskUpdate(packs) {
     if (!(this.vitestMajor && this.vitestMajor < 3)) return;
@@ -893,12 +986,34 @@ const ThreePioVitestReporter = class {
         if (!meta) continue;
 
         const state = res.state || 'unknown';
-        if (!terminal(state)) continue; // only emit when test finishes
+        const { filePath, suiteChain, name } = meta;
+        const contentKey = `${filePath}::${suiteChain.join('::')}::${name}`;
 
+        // Handle non-terminal states: record planned and emit PENDING once
+        if (!terminal(state)) {
+          if (!this.v2Planned.has(contentKey)) {
+            this.v2Planned.set(contentKey, { filePath, suiteChain, name });
+          }
+          if (!this.v2PendingEmitted.has(contentKey)) {
+            this.ensureGroupsDiscovered(filePath, suiteChain);
+            for (let i = 0; i <= suiteChain.length; i++) {
+              const hierarchy = [filePath, ...suiteChain.slice(0, i)];
+              this.ensureGroupStarted(hierarchy);
+            }
+            const parentNames = this.buildHierarchyFromFile(filePath, suiteChain);
+            this.logger.ipc('send', 'testCase', { testName: name, parentNames, status: 'PENDING' });
+            IPCSender.sendEvent({
+              eventType: 'testCase',
+              payload: { testName: name, parentNames, status: 'PENDING', duration: undefined, error: null },
+            }).catch((error) => this.logger.error('Failed to send testCase PENDING (v2)', error));
+            this.v2PendingEmitted.add(contentKey);
+          }
+          continue;
+        }
+
+        // Terminal state: emit final if not already emitted
         if (this.v2Emitted.has(id)) continue;
         this.v2Emitted.add(id);
-
-        const { filePath, suiteChain, name } = meta;
 
         // Ensure file group exists
         if (filePath && !this.fileGroups.has(filePath)) {
@@ -936,6 +1051,9 @@ const ThreePioVitestReporter = class {
 
         const fg = this.fileGroups.get(filePath);
         if (fg) fg.tests.push({ name, status, duration: res.duration });
+        // Mark completed by content key for reconciliation with planned tests
+        if (!this.v2Completed) this.v2Completed = /* @__PURE__ */ new Set();
+        this.v2Completed.add(contentKey);
       } catch (e) {
         this.logger.error('Error handling v2 onTaskUpdate pack', e);
       }

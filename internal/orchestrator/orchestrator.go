@@ -53,9 +53,10 @@ type Orchestrator struct {
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
-	groupFailedTests map[string][]string  // Track failed test names by group
-	completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
-	noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
+    groupFailedTests map[string][]string  // Track failed test names by group
+    completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
+    noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
+    seenTestCases    map[string]bool      // Deduplicate testCase events by hierarchy
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -128,16 +129,17 @@ func New(config Config) (*Orchestrator, error) {
 		return nil, fmt.Errorf("logger must be a *logger.FileLogger or *logger.TestLogger")
 	}
 
-	return &Orchestrator{
-		runnerManager:    runnerMgr,
-		logger:           config.Logger,
-		command:          config.Command,
-		displayedGroups:  make(map[string]bool),
-		groupStartTimes:  make(map[string]time.Time),
-		groupFailedTests: make(map[string][]string),
-		completedGroups:  make(map[string]bool),
-		noTestGroups:     make(map[string]bool),
-	}, nil
+    return &Orchestrator{
+        runnerManager:    runnerMgr,
+        logger:           config.Logger,
+        command:          config.Command,
+        displayedGroups:  make(map[string]bool),
+        groupStartTimes:  make(map[string]time.Time),
+        groupFailedTests: make(map[string][]string),
+        completedGroups:  make(map[string]bool),
+        noTestGroups:     make(map[string]bool),
+        seenTestCases:    make(map[string]bool),
+    }, nil
 }
 
 // Close closes the orchestrator and cleans up resources
@@ -816,7 +818,12 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		}
 
 	case ipc.GroupTestCaseEvent:
-		// Track test case counts
+		// Track test case counts with deduplication by (parentNames + testName)
+		key := strings.Join(e.Payload.ParentNames, "::") + "::" + e.Payload.TestName
+		if o.seenTestCases[key] {
+			return
+		}
+		o.seenTestCases[key] = true
 		o.totalTests++
 		switch e.Payload.Status {
 		case "PASS":

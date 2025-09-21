@@ -223,33 +223,33 @@ func (g *TestGroup) updateStatusFromChildren() {
 
 		// Update status if all children are complete
 		if allComplete && hasTests {
-			if hasFailures {
-				g.Status = TestStatusFail
-			} else if hasSkipped && !hasFailures {
-				// Only mark as skip if ALL tests were skipped
-				allSkipped := true
-				for _, tc := range g.TestCases {
-					if tc.Status != TestStatusSkip {
-						allSkipped = false
-						break
-					}
-				}
-				if allSkipped {
-					for _, sg := range g.Subgroups {
-						if sg.Status != TestStatusSkip {
-							allSkipped = false
-							break
-						}
-					}
-				}
-				if allSkipped {
-					g.Status = TestStatusSkip
-				} else {
-					g.Status = TestStatusPass
-				}
-			} else {
-				g.Status = TestStatusPass
-			}
+            if hasFailures {
+                g.Status = TestStatusFail
+            } else if hasSkipped {
+                // Mark SKIP only if ALL direct tests and ALL subgroups are skipped; otherwise FAIL
+                allSkipped := true
+                for _, tc := range g.TestCases {
+                    if tc.Status != TestStatusSkip {
+                        allSkipped = false
+                        break
+                    }
+                }
+                if allSkipped {
+                    for _, sg := range g.Subgroups {
+                        if sg.Status != TestStatusSkip {
+                            allSkipped = false
+                            break
+                        }
+                    }
+                }
+                if allSkipped {
+                    g.Status = TestStatusSkip
+                } else {
+                    g.Status = TestStatusFail
+                }
+            } else {
+                g.Status = TestStatusPass
+            }
 
 			if g.EndTime.IsZero() {
 				g.EndTime = time.Now()

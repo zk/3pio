@@ -159,45 +159,9 @@ Run tests without coverage when using 3pio:
 1. Use 3pio for test execution and result tracking
 2. Run coverage separately without 3pio for coverage metrics
 
-## Go Test JSON Flag Issues
+## Go Test Notes
 
-### Critical Bug: `-json` Flag Causes False Test Failures (Go 1.24+)
-
-**Impact**: 3pio automatically injects the `-json` flag into Go test commands, which causes test isolation failures and false negative results in projects using Go 1.24 or later.
-
-#### Problem Description
-- 3pio modifies `go test -v ./...` to `go test -json -v ./...` automatically
-- Go 1.24+ introduced changes to JSON output format that affect parallel test execution
-- Tests that rely on shared resources (files, databases, ports) may fail due to timing/isolation issues
-- Results in 3pio reporting test failures that don't occur during normal test execution
-
-#### Evidence
-- **Prometheus Testing**: Baseline run had 1 failure, 3pio run had 4 failures + 3 errors
-- **Manual Verification**: Running `go test -json` manually reproduces some of the same failures that only occur in 3pio
-- **Known Go Issues**: Go documentation acknowledges problems with JSON output and parallel execution
-
-#### Symptoms
-- Tests that pass in baseline runs fail in 3pio runs
-- Database/file locking errors: "lock DB directory: resource temporarily unavailable"
-- Timing-sensitive tests failing due to changed parallelization behavior
-- Exit codes may still match (both fail) but failure counts differ significantly
-
-#### Affected Projects
-- Any Go project using Go 1.24+ with shared resources
-- Projects with timing-sensitive tests
-- Database-dependent test suites
-- Integration tests that use temporary files/directories
-
-#### Recommended Fix
-The 3pio Go adapter should be updated to handle JSON output without modifying test execution behavior, possibly by:
-- Using `go test -v` and parsing regular output instead of JSON
-- Finding alternative approaches to capture test events without changing parallelization
-- Adding a configuration option to disable JSON mode for problematic projects
-
-#### Workaround
-None currently available. This is a fundamental issue with 3pio's Go test runner implementation.
-
-**Status**: Critical - affects reliability of Go project testing with 3pio
+3pio automatically adds the `-json` flag to `go test` so it can process structured events. Recent changes process events per package and handle interleaved output from multiple packages within a single, sequential event loop. If you encounter any problems with very large, multi‑package test runs, please open an issue with a minimal reproduction so we can investigate.
 
 ## Environment Variables
 

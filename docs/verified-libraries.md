@@ -42,6 +42,13 @@ The verification process involves:
 - **Test Results**: 219 tests passed - identical with/without 3pio
 - **Notes**: Popular HTTP client library using Mocha test runner. Project uses ESM modules ("type": "module" in package.json). Fixed mocha adapter to support ESM by using .cjs extension when ESM is detected.
 
+### redux (partial)
+- Repository: https://github.com/reduxjs/redux
+- Date Verified: 2025-09-21
+- Commit Hash: `78b28443`
+- Test Command: `yarn test` (extracted to `yarn vitest --run --typecheck`)
+- Test Results: baseline 119 passed; 3pio 184 passed (under investigation)
+- Notes: Vitest v2 with `--typecheck`. 3pio’s v2 adapter currently counts additional TypeScript typecheck tasks as tests in this project; aligning counts with baseline is in progress. Functionality/report generation are correct, exit codes match.
 ## Go Libraries
 
 ### uuid (Google)
@@ -209,3 +216,25 @@ For a library to be included in this list, it must meet the following criteria:
 5. **No Test Disruption**: 3pio integration must not cause any additional test failures
 
 Libraries that are partially supported or have known issues are documented separately in the project's issue tracker.
+### rich
+- **Repository**: https://github.com/Textualize/rich
+- **Date Verified**: 2025-09-21
+- **Commit Hash**: `ea9d4db5d84b4e834979304e3053bf757daae322`
+- **Test Command**: `pytest tests/`
+- **Test Results**: 855 passed, 25 skipped — identical with/without 3pio
+- **Notes**: Verified in isolated venv via editable install. 3pio run generated reports successfully; counts and exit codes matched baseline exactly.
+- **requests**
+- **Repository**: https://github.com/psf/requests
+- **Date Verified**: 2025-09-21
+- **Commit Hash**: `420d16bc7ef326f7b65f90e4644adc0f6a0e1d44`
+- **Test Command**: `pytest tests/`
+- **Test Results**: 595 passed, 15 skipped, 1 xfailed — identical with/without 3pio
+- **Notes**: Ran in a fresh venv with extras [socks, security] and dev requirements. 3pio produced matching counts and exit codes; reports generated successfully.
+
+### fastapi
+- **Repository**: https://github.com/tiangolo/fastapi
+- **Date Verified**: 2025-09-21
+- **Commit Hash**: `f0da082dd3532384b2037bda7322eb9c33effa5f`
+- **Test Command**: `pytest tests/`
+- **Test Results**: 1990 passed, 503 skipped — identical with/without 3pio
+- **Notes**: On macOS with LibreSSL, urllib3 v2 emits NotOpenSSLWarning which FastAPI treats as error; resolved by pinning urllib3<2 in the venv. With that environment fix, counts and exit codes matched and reports were generated.

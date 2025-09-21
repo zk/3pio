@@ -160,11 +160,11 @@ func TestTestGroup_UpdateStats(t *testing.T) {
 }
 
 func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
-	tests := []struct {
-		name           string
-		setupGroup     func() *TestGroup
-		expectedStatus TestStatus
-	}{
+    tests := []struct {
+        name           string
+        setupGroup     func() *TestGroup
+        expectedStatus TestStatus
+    }{
 		{
 			name: "All tests pass",
 			setupGroup: func() *TestGroup {
@@ -177,7 +177,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 					},
 				}
 			},
-			expectedStatus: TestStatusPass,
+        expectedStatus: TestStatusPass,
 		},
 		{
 			name: "One test fails",
@@ -219,7 +219,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 					},
 				}
 			},
-			expectedStatus: TestStatusPass,
+        expectedStatus: TestStatusFail,
 		},
 		{
 			name: "Subgroup fails",
@@ -235,20 +235,80 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			},
 			expectedStatus: TestStatusFail,
 		},
-		{
-			name: "Tests still running",
-			setupGroup: func() *TestGroup {
-				return &TestGroup{
-					Status: TestStatusRunning,
-					TestCases: []TestCase{
-						{Status: TestStatusPass},
-						{Status: TestStatusRunning},
-					},
-				}
-			},
-			expectedStatus: TestStatusRunning,
-		},
-	}
+        {
+            name: "Tests still running",
+            setupGroup: func() *TestGroup {
+                return &TestGroup{
+                    Status: TestStatusRunning,
+                    TestCases: []TestCase{
+                        {Status: TestStatusPass},
+                        {Status: TestStatusRunning},
+                    },
+                }
+            },
+            expectedStatus: TestStatusRunning,
+        },
+        {
+            name: "All subgroups skipped",
+            setupGroup: func() *TestGroup {
+                return &TestGroup{
+                    Status:    TestStatusRunning,
+                    StartTime: time.Now(),
+                    Subgroups: map[string]*TestGroup{
+                        "sg1": {Status: TestStatusSkip},
+                        "sg2": {Status: TestStatusSkip},
+                    },
+                }
+            },
+            expectedStatus: TestStatusSkip,
+        },
+        {
+            name: "Mixed subgroup pass and skip => FAIL",
+            setupGroup: func() *TestGroup {
+                return &TestGroup{
+                    Status:    TestStatusRunning,
+                    StartTime: time.Now(),
+                    Subgroups: map[string]*TestGroup{
+                        "sg1": {Status: TestStatusPass},
+                        "sg2": {Status: TestStatusSkip},
+                    },
+                }
+            },
+            expectedStatus: TestStatusFail,
+        },
+        {
+            name: "All subgroups pass",
+            setupGroup: func() *TestGroup {
+                return &TestGroup{
+                    Status:    TestStatusRunning,
+                    StartTime: time.Now(),
+                    Subgroups: map[string]*TestGroup{
+                        "sg1": {Status: TestStatusPass},
+                        "sg2": {Status: TestStatusPass},
+                    },
+                }
+            },
+            expectedStatus: TestStatusPass,
+        },
+        {
+            name: "Nested subgroup skip propagates FAIL",
+            setupGroup: func() *TestGroup {
+                nested := &TestGroup{Status: TestStatusSkip}
+                parent := &TestGroup{Status: TestStatusRunning, Subgroups: map[string]*TestGroup{"nested": nested}}
+                // Recompute parent status from nested before checking top-level
+                parent.UpdateStats()
+                return &TestGroup{
+                    Status:    TestStatusRunning,
+                    StartTime: time.Now(),
+                    Subgroups: map[string]*TestGroup{
+                        "sg1": parent,
+                        "sg2": {Status: TestStatusPass},
+                    },
+                }
+            },
+            expectedStatus: TestStatusFail,
+        },
+    }
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
