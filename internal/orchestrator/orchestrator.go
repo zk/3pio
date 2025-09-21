@@ -162,28 +162,7 @@ func (o *Orchestrator) Run() error {
 	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
 	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
 
-	// Print test run header with metadata
-	testCommand := strings.Join(o.command, " ")
-	currentTime := time.Now().Format(time.RFC3339)
-	trunDir := o.runDir
-	fullReport := "$trun_dir/test-run.md"
-
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "unknown"
-	}
-
-	fmt.Println("---")
-	fmt.Printf("current_time: %s\n", currentTime)
-	fmt.Printf("cwd: %s\n", cwd)
-	fmt.Printf("test_command: `%s`\n", testCommand)
-	fmt.Printf("trun_dir: %s\n", trunDir)
-	fmt.Printf("full_report: %s\n", fullReport)
-	fmt.Println("---")
-	fmt.Println()
-	fmt.Println("Test execution starting, no output until test results.")
-	fmt.Println()
+    // We'll print the header after we build the final command to display the actual executed command
 
 	// Detect test runner
 	runnerDef, err := o.runnerManager.Detect(o.command)
@@ -309,10 +288,33 @@ func (o *Orchestrator) Run() error {
 		testCommandSlice = runnerDef.BuildCommand(o.command, adapterPath)
 		o.logger.Debug("Adapter path: %s", adapterPath)
 
-		// Update modified command now that we have the actual command
-		modifiedCommand = strings.Join(testCommandSlice, " ")
-		o.reportManager.UpdateModifiedCommand(modifiedCommand)
-	}
+        // Update modified command now that we have the actual command
+        modifiedCommand = strings.Join(testCommandSlice, " ")
+        o.reportManager.UpdateModifiedCommand(modifiedCommand)
+    }
+
+    // Print test run header with metadata using the final command (applies to all runners)
+    finalCommand := strings.Join(testCommandSlice, " ")
+    currentTime := time.Now().Format(time.RFC3339)
+    trunDir := o.runDir
+    fullReport := "$trun_dir/test-run.md"
+
+    // Get current working directory
+    cwd, err := os.Getwd()
+    if err != nil {
+        cwd = "unknown"
+    }
+
+    fmt.Println("---")
+    fmt.Printf("current_time: %s\n", currentTime)
+    fmt.Printf("cwd: %s\n", cwd)
+    fmt.Printf("test_command: `%s`\n", finalCommand)
+    fmt.Printf("trun_dir: %s\n", trunDir)
+    fmt.Printf("full_report: %s\n", fullReport)
+    fmt.Println("---")
+    fmt.Println()
+    fmt.Println("Test execution starting, no output until test results.")
+    fmt.Println()
 
 	o.logger.Debug("Executing command: %v", testCommandSlice)
 	o.logger.Debug("IPC path: %s", o.ipcPath)
