@@ -97,27 +97,66 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 						scriptParts := strings.Fields(scriptCommand)
 						if len(scriptParts) > 0 {
 							firstCmd := scriptParts[0]
-							// Check for direct invocation or via npx/yarn/pnpm
-							for _, runner := range supportedRunners {
-								if firstCmd == runner ||
-								   (firstCmd == "npx" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
-								   (firstCmd == "yarn" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
-								   (firstCmd == "pnpm" && len(scriptParts) > 1 && scriptParts[1] == runner) {
-									directInvocation = true
-									break
+
+							// Handle cross-env specifically - it's just a env var setter
+							if firstCmd == "cross-env" && len(scriptParts) > 1 {
+								// Skip cross-env and any environment variables (KEY=VALUE pairs)
+								for i := 1; i < len(scriptParts); i++ {
+									if !strings.Contains(scriptParts[i], "=") {
+										// This is the actual command after cross-env
+										firstCmd = scriptParts[i]
+										// Check if there's another arg for npx/yarn/pnpm cases
+										if i+1 < len(scriptParts) && (firstCmd == "npx" || firstCmd == "yarn" || firstCmd == "pnpm") {
+											// Check the next argument for the test runner
+											nextCmd := scriptParts[i+1]
+											for _, runner := range supportedRunners {
+												if nextCmd == runner {
+													directInvocation = true
+													break
+												}
+											}
+										} else {
+											// Check if this is a direct test runner
+											for _, runner := range supportedRunners {
+												if firstCmd == runner {
+													directInvocation = true
+													break
+												}
+											}
+										}
+										break
+									}
+								}
+							} else {
+								// Original logic for non-cross-env commands
+								// Check for direct invocation or via npx/yarn/pnpm
+								for _, runner := range supportedRunners {
+									if firstCmd == runner ||
+									   (firstCmd == "npx" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+									   (firstCmd == "yarn" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+									   (firstCmd == "pnpm" && len(scriptParts) > 1 && scriptParts[1] == runner) {
+										directInvocation = true
+										break
+									}
 								}
 							}
 						}
 
 						// If the script doesn't directly invoke a test runner, fail immediately
 						if !directInvocation {
+							// Get any additional arguments safely
+							var additionalArgs string
+							if len(command) > 3 {
+								additionalArgs = strings.Join(command[3:], " ")
+							}
+
 							return nil, fmt.Errorf("3pio error: npm script '%s' uses a custom wrapper ('%s').\n"+
 								"3pio cannot inject adapters into custom wrapper scripts.\n"+
 								"Please either:\n"+
 								"  1. Run the test command directly: npx jest %s\n"+
 								"  2. Modify the script to directly invoke the test runner\n"+
 								"  3. Update the wrapper script to pass through all arguments",
-								scriptName, scriptCommand, strings.Join(command[3:], " "))
+								scriptName, scriptCommand, additionalArgs)
 						}
 					}
 				}
