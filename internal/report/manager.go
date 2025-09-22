@@ -710,6 +710,28 @@ func (m *Manager) GetGroup(groupID string) (*TestGroup, bool) {
 	return m.groupManager.GetGroup(groupID)
 }
 
+// GetGroupManager returns the GroupManager for accessing test statistics
+// This provides the single source of truth for test counts
+func (m *Manager) GetGroupManager() *GroupManager {
+	return m.groupManager
+}
+
+// GetStats returns aggregated test statistics from the GroupManager
+func (m *Manager) GetStats() TestGroupStats {
+	if m.groupManager == nil {
+		return TestGroupStats{}
+	}
+	return m.groupManager.GetStats()
+}
+
+// GetTestCount returns the total number of tests
+func (m *Manager) GetTestCount() int {
+	if m.groupManager == nil {
+		return 0
+	}
+	return m.groupManager.GetTestCount()
+}
+
 // noopLogger is a default logger that does nothing
 type noopLogger struct{}
 

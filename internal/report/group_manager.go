@@ -1253,3 +1253,85 @@ func (gm *GroupManager) Flush() {
 		}
 	}
 }
+
+// GetStats returns aggregated test statistics across all groups
+// This is the single source of truth for test counts
+func (gm *GroupManager) GetStats() TestGroupStats {
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	stats := TestGroupStats{}
+
+	// Aggregate stats from all groups
+	for _, group := range gm.groups {
+		// Count direct test cases in each group
+		for _, tc := range group.TestCases {
+			stats.TotalTests++
+			stats.TotalTestsRecursive++
+
+			switch tc.Status {
+			case TestStatusPass:
+				stats.PassedTests++
+				stats.PassedTestsRecursive++
+			case TestStatusFail:
+				stats.FailedTests++
+				stats.FailedTestsRecursive++
+			case TestStatusSkip:
+				stats.SkippedTests++
+				stats.SkippedTestsRecursive++
+			case TestStatusError:
+				stats.ErroredTests++
+				stats.ErroredTestsRecursive++
+			case TestStatusXFail:
+				stats.XFailedTests++
+				stats.XFailedTestsRecursive++
+			case TestStatusXPass:
+				stats.XPassedTests++
+				stats.XPassedTestsRecursive++
+			}
+		}
+
+		// Check for setup failures
+		if group.Stats.SetupFailed {
+			stats.SetupFailed = true
+		}
+	}
+
+	return stats
+}
+
+// GetGroupStats returns statistics for a specific group by ID
+func (gm *GroupManager) GetGroupStats(groupID string) (TestGroupStats, bool) {
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	group, exists := gm.groups[groupID]
+	if !exists {
+		return TestGroupStats{}, false
+	}
+
+	// Return a copy to prevent race conditions
+	return group.Stats, true
+}
+
+// GetTestCount returns the total number of tests across all groups
+func (gm *GroupManager) GetTestCount() int {
+	stats := gm.GetStats()
+	return stats.TotalTests
+}
+
+// GetTestsByStatus returns count of tests by status
+func (gm *GroupManager) GetTestsByStatus(status TestStatus) int {
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	count := 0
+	for _, group := range gm.groups {
+		for _, tc := range group.TestCases {
+			if tc.Status == status {
+				count++
+			}
+		}
+	}
+	return count
+}

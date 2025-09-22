@@ -36,27 +36,22 @@ type Orchestrator struct {
 	detectedRunner string // Track which test runner was detected
 
 	// Console output state
-	startTime        time.Time
-	passedGroups     int
-	failedGroups     int
-	skippedGroups    int
-	xfailedGroups    int // Track groups with xfailed tests
-	xpassedGroups    int // Track groups with xpassed tests
-	totalGroups      int
-	passedTests      int                  // Track actual test cases
-	failedTests      int                  // Track actual test cases
-	skippedTests     int                  // Track actual test cases
-	xfailedTests     int                  // Track expected failures (xfail)
-	xpassedTests     int                  // Track unexpected passes (xpass)
-	erroredTests     int                  // Track tests that errored (e.g., setup/teardown failures)
-	totalTests       int                  // Track actual test cases
+	startTime     time.Time
+	passedGroups  int
+	failedGroups  int
+	skippedGroups int
+	xfailedGroups int // Track groups with xfailed tests
+	xpassedGroups int // Track groups with xpassed tests
+	totalGroups   int
+	// Test counting is now handled by GroupManager via GetStats()
+	// See report.Manager.GetStats() for test counts
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
 	groupFailedTests map[string][]string  // Track failed test names by group
 	completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
 	noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
-	seenTestCases    map[string]bool      // Deduplicate testCase events by hierarchy
+	// Test case tracking now handled by GroupManager
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -138,7 +133,7 @@ func New(config Config) (*Orchestrator, error) {
 		groupFailedTests: make(map[string][]string),
 		completedGroups:  make(map[string]bool),
 		noTestGroups:     make(map[string]bool),
-		seenTestCases:    make(map[string]bool),
+		// seenTestCases removed - GroupManager handles test tracking
 	}, nil
 }
 
@@ -562,7 +557,8 @@ func (o *Orchestrator) Run() error {
 
 	// If we have a non-zero exit code and no tests ran, show the output
 	// We don't know if it's a config error or something else, so just show what happened
-	if commandErr != nil && o.totalGroups == 0 && o.totalTests == 0 {
+	stats := o.reportManager.GetStats()
+	if commandErr != nil && o.totalGroups == 0 && stats.TotalTests == 0 {
 		// Read output to show what actually happened
 		if outputContent, err := os.ReadFile(outputPath); err == nil {
 			lines := strings.Split(string(outputContent), "\n")
@@ -602,7 +598,8 @@ func (o *Orchestrator) Run() error {
 	// Print error details if command failed and we have error details
 	if commandErr != nil && errorDetails != "" && shouldShowError {
 		// Non-zero exit with no tests - we don't know what went wrong
-		if o.totalGroups == 0 && o.totalTests == 0 {
+		stats := o.reportManager.GetStats()
+		if o.totalGroups == 0 && stats.TotalTests == 0 {
 			fmt.Println("Test run resulted in a non-zero exit code with no tests executed.")
 			fmt.Println("We can't differentiate test failures from runner errors, so here's the output:")
 			fmt.Println()
@@ -635,27 +632,29 @@ func (o *Orchestrator) Run() error {
 	// Format results summary
 	// Show test case counts when we have actual test counts
 	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
-	if o.totalTests > 0 {
+	// Get test statistics from GroupManager (single source of truth)
+	stats = o.reportManager.GetStats()
+	if stats.TotalTests > 0 {
 		// Show test case counts
 		// Build the results string dynamically to only include non-zero counts
 		var parts []string
-		parts = append(parts, fmt.Sprintf("%d passed", o.passedTests))
-		if o.failedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d failed", o.failedTests))
+		parts = append(parts, fmt.Sprintf("%d passed", stats.PassedTests))
+		if stats.FailedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d failed", stats.FailedTests))
 		}
-		if o.skippedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d skipped", o.skippedTests))
+		if stats.SkippedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d skipped", stats.SkippedTests))
 		}
-		if o.xfailedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d xfailed", o.xfailedTests))
+		if stats.XFailedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d xfailed", stats.XFailedTests))
 		}
-		if o.xpassedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d xpassed", o.xpassedTests))
+		if stats.XPassedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d xpassed", stats.XPassedTests))
 		}
-		if o.erroredTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d errored", o.erroredTests))
+		if stats.ErroredTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d errored", stats.ErroredTests))
 		}
-		parts = append(parts, fmt.Sprintf("%d total", o.totalTests))
+		parts = append(parts, fmt.Sprintf("%d total", stats.TotalTests))
 		fmt.Printf("Results:     %s\n", strings.Join(parts, ", "))
 	} else {
 		// Show group counts for other runners or when no test-level detail available
@@ -798,33 +797,10 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		}
 
 	case ipc.GroupTestCaseEvent:
-		// Track test case counts with deduplication by (parentNames + testName)
+		// Test tracking now handled by GroupManager
+		// GroupManager correctly handles test state transitions (PENDING->PASS/FAIL/SKIP)
 		key := strings.Join(e.Payload.ParentNames, "::") + "::" + e.Payload.TestName
-		fmt.Printf("[DEBUG] Processing test case: %s, status: %s\n", key, e.Payload.Status)
-		if o.seenTestCases[key] {
-			fmt.Printf("[DEBUG] DUPLICATE detected: %s\n", key)
-			o.logger.Info("Duplicate test case detected", "key", key, "status", e.Payload.Status)
-			return
-		}
-		o.seenTestCases[key] = true
-		o.totalTests++
-		o.logger.Debug("Processing test case", "key", key, "status", e.Payload.Status, "totalTests", o.totalTests)
-		switch e.Payload.Status {
-		case "PASS":
-			o.passedTests++
-		case "FAIL":
-			o.failedTests++
-			fmt.Printf("[DEBUG] Failed test recorded: %s, failedTests now: %d\n", key, o.failedTests)
-			o.logger.Info("Failed test recorded", "key", key, "failedTests", o.failedTests)
-		case "SKIP":
-			o.skippedTests++
-		case "XFAIL":
-			o.xfailedTests++
-		case "XPASS":
-			o.xpassedTests++
-		case "ERROR":
-			o.erroredTests++
-		}
+		o.logger.Debug("Test case event received", "key", key, "status", e.Payload.Status)
 
 		// Track failed tests for hierarchical display
 		if e.Payload.Status == "FAIL" {
