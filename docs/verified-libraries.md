@@ -50,6 +50,13 @@ The verification process involves:
 - Test Results: baseline 119 passed; 3pio 184 passed (under investigation)
 - Notes: Vitest v2 with `--typecheck`. 3pio’s v2 adapter currently counts additional TypeScript typecheck tasks as tests in this project; aligning counts with baseline is in progress. Functionality/report generation are correct, exit codes match.
 ## Go Libraries
+### express
+- **Repository**: https://github.com/expressjs/express
+- **Date Verified**: 2025-09-21
+- **Commit Hash**: `2eb42059`
+- **Test Command**: `npm test`
+- **Test Results**: 1238 passed — identical with/without 3pio
+- **Notes**: Fixed mocha adapter to emit per-file group results and disambiguate duplicate suite titles (e.g., multiple “in router” blocks). Also corrected path normalization to avoid treating strings like “GET /” as file paths. Counts and exit codes now match baseline.
 
 ### uuid (Google)
 - **Repository**: https://github.com/google/uuid

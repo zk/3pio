@@ -196,3 +196,4 @@ For detailed information about these issues and their solutions, see `docs/known
 - Lint after every batch of edits
 - When running tests any failure is important. Never move on or report success if there are failing tests.
 - Never disable or skip tests to get CI to pass.
+- Do not add files to `docs/` unless specifically asked to. You can use `noggin/` to put documentation you'd like to create yourself.
