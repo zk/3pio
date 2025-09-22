@@ -481,15 +481,19 @@ func (o *Orchestrator) Run() error {
 		done <- cmd.Wait()
 	}()
 
+	// Track if the command had a real execution error (not just non-zero exit code)
 	var commandErr error
 	select {
 	case err := <-done:
-		commandErr = err
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
+				// This is a normal exit with a non-zero code (e.g., test failures)
+				// Not an error in 3pio execution
 				o.exitCode = exitErr.ExitCode()
 				o.logger.Debug("Command completed with exit code: %d", exitErr.ExitCode())
 			} else {
+				// This is a real error (e.g., command not found, permission denied)
+				commandErr = err
 				o.exitCode = 1
 				o.logger.Debug("Command completed with error: %v", err)
 			}
@@ -556,9 +560,9 @@ func (o *Orchestrator) Run() error {
 	shouldShowError := false
 
 	// If we have a non-zero exit code and no tests ran, show the output
-	// We don't know if it's a config error or something else, so just show what happened
+	// This is likely a configuration error even if commandErr is nil
 	stats := o.reportManager.GetStats()
-	if commandErr != nil && o.totalGroups == 0 && stats.TotalTests == 0 {
+	if o.exitCode != 0 && o.totalGroups == 0 && stats.TotalTests == 0 {
 		// Read output to show what actually happened
 		if outputContent, err := os.ReadFile(outputPath); err == nil {
 			lines := strings.Split(string(outputContent), "\n")
@@ -577,7 +581,11 @@ func (o *Orchestrator) Run() error {
 
 		// If we still don't have details, at least show the exit status
 		if errorDetails == "" {
-			errorDetails = commandErr.Error()
+			if commandErr != nil {
+				errorDetails = commandErr.Error()
+			} else {
+				errorDetails = fmt.Sprintf("Command failed with exit code %d", o.exitCode)
+			}
 			shouldShowError = true
 		}
 	}
@@ -595,17 +603,16 @@ func (o *Orchestrator) Run() error {
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
 
-	// Print error details if command failed and we have error details
-	if commandErr != nil && errorDetails != "" && shouldShowError {
-		// Non-zero exit with no tests - we don't know what went wrong
+	// Print error details if we have a non-zero exit code with no tests
+	if o.exitCode != 0 && errorDetails != "" && shouldShowError {
+		// Non-zero exit with no tests - likely a configuration or setup error
 		stats := o.reportManager.GetStats()
 		if o.totalGroups == 0 && stats.TotalTests == 0 {
-			fmt.Println("Test run resulted in a non-zero exit code with no tests executed.")
-			fmt.Println("We can't differentiate test failures from runner errors, so here's the output:")
+			// This is likely a configuration error - show it with Error: prefix
+			fmt.Println("Error:")
+			fmt.Printf("%s\n", errorDetails)
 			fmt.Println()
 		}
-		fmt.Printf("%s\n", errorDetails)
-		fmt.Println()
 	}
 
 	// Add random failure exclamation if tests failed
@@ -974,34 +981,17 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// Only display groups that have failures or no tests
 	// Use recursive stats to include subgroups
-	hasNoTestsAtAll := group.Stats.TotalTestsRecursive == 0 && group.Stats.SkippedTestsRecursive == 0
 
 	o.logger.Debug("Group %s: FailedTestsRecursive=%d, TotalTestsRecursive=%d, PassedTestsRecursive=%d, SkippedTestsRecursive=%d",
 		group.Name, group.Stats.FailedTestsRecursive, group.Stats.TotalTestsRecursive, group.Stats.PassedTestsRecursive, group.Stats.SkippedTestsRecursive)
 
-	if group.Stats.FailedTestsRecursive > 0 || hasNoTestsAtAll {
+	if group.Stats.FailedTestsRecursive > 0 {
 		// Build status string with fail/pass/skip counts
 		var statusParts []string
 
-		// Check if this is a NO_TESTS case first
-		if hasNoTestsAtAll && o.noTestGroups[group.Name] {
-			// For NO_TESTS groups, just show NO_TESTS without counts
-			statusParts = append(statusParts, "NO_TESTS")
-		} else {
-			// Add FAIL count if there are failures
-			if group.Stats.FailedTestsRecursive > 0 {
-				statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTestsRecursive))
-			}
-
-			// Add PASS count only if > 0
-			if group.Stats.PassedTestsRecursive > 0 {
-				statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTestsRecursive))
-			}
-
-			// Add SKIP count only if > 0
-			if group.Stats.SkippedTestsRecursive > 0 {
-				statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTestsRecursive))
-			}
+		// Add FAIL if there are failures
+		if group.Stats.FailedTestsRecursive > 0 {
+			statusParts = append(statusParts, "FAIL")
 		}
 
 		// Make the path relative before sanitizing for report path
