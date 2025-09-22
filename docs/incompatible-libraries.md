@@ -8,6 +8,24 @@ These libraries use test runners that 3pio does not currently support:
 
 ### JavaScript/TypeScript
 
+#### typescript
+- **Repository**: https://github.com/microsoft/TypeScript
+- **Date Tested**: 2025-09-21
+- **Test Runner**: Custom "hereby" task runner with parallel Mocha workers
+- **Issue**: Uses parallel test execution architecture that 3pio cannot intercept
+- **Test Details**:
+  - Total tests: 98,877 passing, 3 failing
+  - Test files: 19,584
+  - Parallel workers: 9
+  - Duration: ~5 minutes
+- **Architecture Problem**:
+  ```
+  npm test → hereby runtests-parallel → 9 parallel workers → each runs Mocha independently
+  ```
+  3pio's reporter injection only affects the main process, not the child workers.
+- **Partial Workaround**: Individual test files can be run directly with `npx mocha built/local/run.js --grep "pattern"` and 3pio tracks them correctly (verified with 210 scanner tests)
+- **Notes**: TypeScript's test architecture is optimized for speed through parallelization, making it fundamentally incompatible with 3pio's current single-process adapter model
+
 #### lodash
 - **Repository**: https://github.com/lodash/lodash
 - **Date Tested**: 2025-09-20

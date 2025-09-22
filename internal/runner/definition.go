@@ -203,16 +203,23 @@ func (j *JestDefinition) BuildCommand(args []string, adapterPath string) []strin
 		isYarnScript := len(args) >= 2 && args[0] == "yarn" &&
 			(args[1] == "test" || args[1] == "run" || !strings.Contains(args[1], "jest"))
 
+		// pnpm scripts also have issues with -- separator
+		// When running pnpm test-unit, pnpm adds its own -- separator when forwarding to Jest,
+		// so if we add one too, Jest receives double separators and treats --reporters as a file pattern
+		isPnpmScript := len(args) >= 2 && args[0] == "pnpm" &&
+			!strings.Contains(args[1], "exec") && !strings.Contains(args[1], "dlx") &&
+			!strings.Contains(args[1], "jest") // Direct jest call would be pnpm jest
+
 		if hasSeparator {
 			// Append reporter flags at the end (after all other Jest flags)
 			result = append(result, args...)
 			result = append(result, "--reporters", adapterPath)
-		} else if isYarnScript {
-			// For yarn scripts, don't use -- separator
+		} else if isYarnScript || isPnpmScript {
+			// For yarn and pnpm scripts, don't use -- separator
 			result = append(result, args...)
 			result = append(result, "--reporters", adapterPath)
 		} else {
-			// Add all args, then -- separator, then reporter flags (for npm, pnpm, bun)
+			// Add all args, then -- separator, then reporter flags (for npm, bun)
 			result = append(result, args...)
 			result = append(result, "--", "--reporters", adapterPath)
 		}

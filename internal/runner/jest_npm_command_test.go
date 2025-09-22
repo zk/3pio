@@ -73,19 +73,34 @@ func TestJestDefinition_BuildCommand_NPM(t *testing.T) {
 
 		// PNPM variations
 		{
-			name:     "pnpm test",
+			name:     "pnpm test script should NOT use -- separator (like yarn)",
 			args:     []string{"pnpm", "test"},
-			expected: []string{"pnpm", "test", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"pnpm", "test", "--reporters", "/fake/adapter/path"},
 		},
 		{
-			name:     "pnpm run test",
+			name:     "pnpm run test script should NOT use -- separator",
 			args:     []string{"pnpm", "run", "test"},
-			expected: []string{"pnpm", "run", "test", "--", "--reporters", "/fake/adapter/path"},
+			expected: []string{"pnpm", "run", "test", "--reporters", "/fake/adapter/path"},
 		},
 		{
-			name:     "pnpm exec jest",
+			name:     "pnpm test-unit script should NOT use -- separator",
+			args:     []string{"pnpm", "test-unit"},
+			expected: []string{"pnpm", "test-unit", "--reporters", "/fake/adapter/path"},
+		},
+		{
+			name:     "pnpm exec jest should still use -- separator (not a script)",
 			args:     []string{"pnpm", "exec", "jest"},
 			expected: []string{"pnpm", "exec", "jest", "--", "--reporters", "/fake/adapter/path"},
+		},
+		{
+			name:     "pnpm dlx jest should still use -- separator (not a script)",
+			args:     []string{"pnpm", "dlx", "jest"},
+			expected: []string{"pnpm", "dlx", "jest", "--", "--reporters", "/fake/adapter/path"},
+		},
+		{
+			name:     "pnpm jest direct call should still use -- separator",
+			args:     []string{"pnpm", "jest"},
+			expected: []string{"pnpm", "jest", "--", "--reporters", "/fake/adapter/path"},
 		},
 		{
 			name:     "pnpm test with -- and test pattern",

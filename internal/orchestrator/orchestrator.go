@@ -53,10 +53,10 @@ type Orchestrator struct {
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
-    groupFailedTests map[string][]string  // Track failed test names by group
-    completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
-    noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
-    seenTestCases    map[string]bool      // Deduplicate testCase events by hierarchy
+	groupFailedTests map[string][]string  // Track failed test names by group
+	completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
+	noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
+	seenTestCases    map[string]bool      // Deduplicate testCase events by hierarchy
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -129,17 +129,17 @@ func New(config Config) (*Orchestrator, error) {
 		return nil, fmt.Errorf("logger must be a *logger.FileLogger or *logger.TestLogger")
 	}
 
-    return &Orchestrator{
-        runnerManager:    runnerMgr,
-        logger:           config.Logger,
-        command:          config.Command,
-        displayedGroups:  make(map[string]bool),
-        groupStartTimes:  make(map[string]time.Time),
-        groupFailedTests: make(map[string][]string),
-        completedGroups:  make(map[string]bool),
-        noTestGroups:     make(map[string]bool),
-        seenTestCases:    make(map[string]bool),
-    }, nil
+	return &Orchestrator{
+		runnerManager:    runnerMgr,
+		logger:           config.Logger,
+		command:          config.Command,
+		displayedGroups:  make(map[string]bool),
+		groupStartTimes:  make(map[string]time.Time),
+		groupFailedTests: make(map[string][]string),
+		completedGroups:  make(map[string]bool),
+		noTestGroups:     make(map[string]bool),
+		seenTestCases:    make(map[string]bool),
+	}, nil
 }
 
 // Close closes the orchestrator and cleans up resources
@@ -164,7 +164,7 @@ func (o *Orchestrator) Run() error {
 	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
 	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
 
-    // We'll print the header after we build the final command to display the actual executed command
+	// We'll print the header after we build the final command to display the actual executed command
 
 	// Detect test runner
 	runnerDef, err := o.runnerManager.Detect(o.command)
@@ -290,33 +290,33 @@ func (o *Orchestrator) Run() error {
 		testCommandSlice = runnerDef.BuildCommand(o.command, adapterPath)
 		o.logger.Debug("Adapter path: %s", adapterPath)
 
-        // Update modified command now that we have the actual command
-        modifiedCommand = strings.Join(testCommandSlice, " ")
-        o.reportManager.UpdateModifiedCommand(modifiedCommand)
-    }
+		// Update modified command now that we have the actual command
+		modifiedCommand = strings.Join(testCommandSlice, " ")
+		o.reportManager.UpdateModifiedCommand(modifiedCommand)
+	}
 
-    // Print test run header with metadata using the final command (applies to all runners)
-    finalCommand := strings.Join(testCommandSlice, " ")
-    currentTime := time.Now().Format(time.RFC3339)
-    trunDir := o.runDir
-    fullReport := "$trun_dir/test-run.md"
+	// Print test run header with metadata using the final command (applies to all runners)
+	finalCommand := strings.Join(testCommandSlice, " ")
+	currentTime := time.Now().Format(time.RFC3339)
+	trunDir := o.runDir
+	fullReport := "$trun_dir/test-run.md"
 
-    // Get current working directory
-    cwd, err := os.Getwd()
-    if err != nil {
-        cwd = "unknown"
-    }
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "unknown"
+	}
 
-    fmt.Println("---")
-    fmt.Printf("current_time: %s\n", currentTime)
-    fmt.Printf("cwd: %s\n", cwd)
-    fmt.Printf("test_command: `%s`\n", finalCommand)
-    fmt.Printf("trun_dir: %s\n", trunDir)
-    fmt.Printf("full_report: %s\n", fullReport)
-    fmt.Println("---")
-    fmt.Println()
-    fmt.Println("Test execution starting, no output until test results.")
-    fmt.Println()
+	fmt.Println("---")
+	fmt.Printf("current_time: %s\n", currentTime)
+	fmt.Printf("cwd: %s\n", cwd)
+	fmt.Printf("test_command: `%s`\n", finalCommand)
+	fmt.Printf("trun_dir: %s\n", trunDir)
+	fmt.Printf("full_report: %s\n", fullReport)
+	fmt.Println("---")
+	fmt.Println()
+	fmt.Println("Test execution starting, no output until test results.")
+	fmt.Println()
 
 	o.logger.Debug("Executing command: %v", testCommandSlice)
 	o.logger.Debug("IPC path: %s", o.ipcPath)
@@ -715,27 +715,7 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 
 // normalizePathForReportManager normalizes paths the same way the report manager's GroupManager does
 func (o *Orchestrator) normalizePathForReportManager(name string) string {
-	// If it's not a file path (e.g., test names, suite names), return as-is
-	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") && !strings.Contains(name, "/") {
-		return name
-	}
-
-	// Convert to absolute path
-	absPath, err := filepath.Abs(name)
-	if err != nil {
-		// If we can't get absolute path, return original
-		return name
-	}
-
-	// Always attempt to resolve symlinks for absolute paths
-	// This is crucial for macOS where /tmp is a symlink to /private/tmp
-	resolved, err := filepath.EvalSymlinks(absPath)
-	if err == nil {
-		return resolved
-	}
-
-	// If symlink resolution fails, return the absolute path
-	return absPath
+	return report.NormalizeToAbsolutePath(name)
 }
 
 // makeRelativePath normalizes paths to relative paths (matching report manager)
@@ -820,16 +800,22 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 	case ipc.GroupTestCaseEvent:
 		// Track test case counts with deduplication by (parentNames + testName)
 		key := strings.Join(e.Payload.ParentNames, "::") + "::" + e.Payload.TestName
+		fmt.Printf("[DEBUG] Processing test case: %s, status: %s\n", key, e.Payload.Status)
 		if o.seenTestCases[key] {
+			fmt.Printf("[DEBUG] DUPLICATE detected: %s\n", key)
+			o.logger.Info("Duplicate test case detected", "key", key, "status", e.Payload.Status)
 			return
 		}
 		o.seenTestCases[key] = true
 		o.totalTests++
+		o.logger.Debug("Processing test case", "key", key, "status", e.Payload.Status, "totalTests", o.totalTests)
 		switch e.Payload.Status {
 		case "PASS":
 			o.passedTests++
 		case "FAIL":
 			o.failedTests++
+			fmt.Printf("[DEBUG] Failed test recorded: %s, failedTests now: %d\n", key, o.failedTests)
+			o.logger.Info("Failed test recorded", "key", key, "failedTests", o.failedTests)
 		case "SKIP":
 			o.skippedTests++
 		case "XFAIL":

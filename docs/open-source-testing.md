@@ -17,6 +17,7 @@ General guidlines:
 - Verify binary `build/3pio --version`
 - Create project clone directory if needed `mkdir -p /tmp/3pio-open-source`
 - The user will indicate the project to test, clone it to the `tmp/3pio-open-source` directory.
+  - Cloning can take many minutes for large projects, set the timeout for 10 minutes when cloning.
   - Identify the test framework used
   - Identify test commands
   - Check if dependencies have been installed, fi not install dependencies.

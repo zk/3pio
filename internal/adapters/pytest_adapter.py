@@ -557,7 +557,28 @@ def pytest_runtest_logreport(report: TestReport) -> None:
         _reporter.processed_errors.add(error_key)
 
         # Extract error information
-        error_reason = str(report.longrepr) if hasattr(report, 'longrepr') else f"{report.when} failed"
+        error_str = str(report.longrepr) if hasattr(report, 'longrepr') else f"{report.when} failed"
+
+        # Create error object matching TestError struct
+        error_obj = {
+            "message": error_str,
+        }
+
+        # Try to extract error type
+        import re
+        error_type_match = re.match(r'^(\w+Error):', error_str)
+        if error_type_match:
+            error_obj["errorType"] = error_type_match.group(1)
+        elif 'Error' in error_str:
+            # Try to find any word ending with 'Error'
+            error_words = re.findall(r'(\w+Error)', error_str)
+            if error_words:
+                error_obj["errorType"] = error_words[0]
+        else:
+            error_obj["errorType"] = f"{report.when.capitalize()}Error"
+
+        # Set the stack trace (same as message for now)
+        error_obj["stack"] = error_str
 
         # Update error count
         _reporter.test_results[file_path]["errored"] += 1
@@ -578,7 +599,7 @@ def pytest_runtest_logreport(report: TestReport) -> None:
             "testName": test_name,
             "parentNames": parent_names,
             "status": "ERROR",
-            "errorReason": error_reason,
+            "error": error_obj,  # Use error field with object instead of errorReason with string
             "errorPhase": report.when
         })
 
@@ -644,7 +665,37 @@ def pytest_runtest_logreport(report: TestReport) -> None:
     # Add error information for failures
     if report.failed:
         if hasattr(report, 'longrepr') and report.longrepr:
-            payload["error"] = str(report.longrepr)
+            # Parse the error into a structured format
+            error_str = str(report.longrepr)
+
+            # Create error object matching TestError struct
+            error_obj = {
+                "message": error_str,
+            }
+
+            # Try to extract error type from the traceback
+            if hasattr(report.longrepr, 'reprcrash'):
+                reprcrash = report.longrepr.reprcrash
+                if reprcrash and hasattr(reprcrash, 'message'):
+                    # Extract the error type from the message (e.g., "AssertionError: assert 'foo' == 'bar'")
+                    message_parts = reprcrash.message.split(':', 1)
+                    if len(message_parts) > 0:
+                        error_obj["errorType"] = message_parts[0]
+
+            # If we couldn't extract error type, try to parse from the error string
+            if "errorType" not in error_obj:
+                # Look for common error patterns like "AssertionError:", "ValueError:", etc.
+                import re
+                error_type_match = re.match(r'^(\w+Error):', error_str)
+                if error_type_match:
+                    error_obj["errorType"] = error_type_match.group(1)
+                elif 'AssertionError' in error_str:
+                    error_obj["errorType"] = "AssertionError"
+
+            # Set the stack trace (same as message for now)
+            error_obj["stack"] = error_str
+
+            payload["error"] = error_obj
         # Track failed test for file result
         _reporter.test_results[file_path]["failed_tests"].append({
             "name": test_name,

@@ -7,7 +7,11 @@ const fs = require('fs');
 const path = require('path');
 
 // IPC Path will be replaced at runtime
-const IPC_PATH = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+const IPC_PATH_TEMPLATE = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+
+// Convert to absolute path to handle working directory changes during test execution
+// This is critical for projects like Next.js that may change working directory during test runs
+const IPC_PATH = path.resolve(IPC_PATH_TEMPLATE);
 
 // Log level will be replaced at runtime
 const LOG_LEVEL = /*__LOG_LEVEL__*/"WARN"/*__LOG_LEVEL__*/;

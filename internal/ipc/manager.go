@@ -169,7 +169,15 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		// Only new group-based testCase events are supported
 		var e GroupTestCaseEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Debug("Failed to parse group test case event: %v", err)
+			m.logger.Error("Failed to parse group test case event: %v", err)
+			m.logger.Error("Failed JSON line: %s", string(line))
+			// Try to extract basic info for debugging
+			var basicInfo map[string]interface{}
+			if basicErr := json.Unmarshal(line, &basicInfo); basicErr == nil {
+				if payload, ok := basicInfo["payload"].(map[string]interface{}); ok {
+					m.logger.Error("Event had testName=%v, status=%v", payload["testName"], payload["status"])
+				}
+			}
 			return
 		}
 		event = e

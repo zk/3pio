@@ -1,8 +1,8 @@
 package runner
 
 import (
-    "os"
-    "testing"
+	"os"
+	"testing"
 )
 
 func TestVitestBuildCommand(t *testing.T) {

@@ -67,18 +67,19 @@ func (gm *GroupManager) logError(format string, args ...interface{}) {
 	}
 }
 
-// normalizeToAbsolutePath converts any path to an absolute path for consistent storage
-func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
-    // Treat only absolute or dot-prefixed relative paths as file paths.
-    // Do NOT convert arbitrary strings that merely contain '/' (e.g., test titles like "GET /").
-    isAbs := strings.HasPrefix(name, "/")
-    isDotRel := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
-    // Basic Windows absolute path detection (e.g., C:\ or D:/)
-    isWinAbs := len(name) > 2 && ((name[1] == ':' && (name[2] == '\\' || name[2] == '/')))
+// NormalizeToAbsolutePath converts any path to an absolute path for consistent storage.
+// This is a shared function used by both the report manager and orchestrator.
+func NormalizeToAbsolutePath(name string) string {
+	// Treat only absolute or dot-prefixed relative paths as file paths.
+	// Do NOT convert arbitrary strings that merely contain '/' (e.g., test titles like "GET /").
+	isAbs := strings.HasPrefix(name, "/")
+	isDotRel := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
+	// Basic Windows absolute path detection (e.g., C:\ or D:/)
+	isWinAbs := len(name) > 2 && (name[1] == ':' && (name[2] == '\\' || name[2] == '/'))
 
-    if !(isAbs || isDotRel || isWinAbs) {
-        return name
-    }
+	if !(isAbs || isDotRel || isWinAbs) {
+		return name
+	}
 
 	// Convert to absolute path
 	absPath, err := filepath.Abs(name)
@@ -87,18 +88,20 @@ func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
 		return name
 	}
 
-    // Always attempt to resolve symlinks for absolute paths
+	// Always attempt to resolve symlinks for absolute paths
 	// This is crucial for macOS where /tmp is a symlink to /private/tmp
 	resolved, err := filepath.EvalSymlinks(absPath)
 	if err == nil {
 		return resolved
 	}
 
-	// If symlink resolution fails, it might be because:
-	// 1. The file doesn't exist yet (which is ok for test group names)
-	// 2. There's no symlink to resolve
-	// In either case, return the absolute path
+	// If symlink resolution fails, return the absolute path
 	return absPath
+}
+
+// normalizeToAbsolutePath converts any path to an absolute path for consistent storage
+func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
+	return NormalizeToAbsolutePath(name)
 }
 
 // makeRelativePath converts absolute paths to relative for display purposes only
@@ -260,23 +263,23 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 		group = gm.groups[groupID]
 	}
 
-    // If group already marked as setup failure (from ProcessGroupError), don't override status
-    if group.Stats.SetupFailed {
-        gm.logInfo("Completed group (status preserved due to setup failure): %s", BuildHierarchicalPath(group))
-        // Still update times/duration if provided
-        group.EndTime = time.Now()
-        if payload.Duration > 0 {
-            group.Duration = time.Duration(payload.Duration) * time.Millisecond
-        } else if !group.StartTime.IsZero() {
-            group.Duration = group.EndTime.Sub(group.StartTime)
-        }
-        group.Updated = time.Now()
-        gm.propagateCompletion(group)
-        gm.scheduleReportUpdate(groupID)
-        return nil
-    }
-    // Update group status
-    switch payload.Status {
+	// If group already marked as setup failure (from ProcessGroupError), don't override status
+	if group.Stats.SetupFailed {
+		gm.logInfo("Completed group (status preserved due to setup failure): %s", BuildHierarchicalPath(group))
+		// Still update times/duration if provided
+		group.EndTime = time.Now()
+		if payload.Duration > 0 {
+			group.Duration = time.Duration(payload.Duration) * time.Millisecond
+		} else if !group.StartTime.IsZero() {
+			group.Duration = group.EndTime.Sub(group.StartTime)
+		}
+		group.Updated = time.Now()
+		gm.propagateCompletion(group)
+		gm.scheduleReportUpdate(groupID)
+		return nil
+	}
+	// Update group status
+	switch payload.Status {
 	case "PASS":
 		group.Status = TestStatusPass
 	case "FAIL":
@@ -348,9 +351,9 @@ func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
 		group = gm.groups[groupID]
 	}
 
-    // Treat group-level errors (e.g., setup failures) as FAIL status
-    // so any non-fully-passing subgroup is clearly marked as an issue.
-    group.Status = TestStatusFail
+	// Treat group-level errors (e.g., setup failures) as FAIL status
+	// so any non-fully-passing subgroup is clearly marked as an issue.
+	group.Status = TestStatusFail
 	group.EndTime = time.Now()
 
 	// Use provided duration if available
@@ -369,8 +372,8 @@ func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
 		}
 	}
 
-    // Mark that this group failed due to setup, used to prevent later overrides
-    group.Stats.SetupFailed = true
+	// Mark that this group failed due to setup, used to prevent later overrides
+	group.Stats.SetupFailed = true
 
 	// Propagate completion to ancestors
 	gm.propagateCompletion(group)

@@ -1,7 +1,9 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/zk/3pio/internal/logger"
@@ -67,23 +69,66 @@ func (m *Manager) Register(name string, def Definition) {
 
 // Detect identifies the test runner from command and returns its definition
 func (m *Manager) Detect(command []string) (Definition, error) {
-	// Check each runner in registration order (deterministic)
-	for _, runner := range m.runners {
-		if runner.def.Matches(command) {
-			return runner.def, nil
+	// FIRST: Check if this is a package manager script command
+	if len(command) > 0 {
+		packageManager := command[0]
+		if isPackageManager(packageManager) && len(command) >= 2 {
+			// Check if we're running a script (not installing or other npm commands)
+			isScriptCommand := command[1] == "run" || command[1] == "test" ||
+				(packageManager != "npm" && !strings.HasPrefix(command[1], "-")) // yarn/pnpm allow direct script names
+
+			if isScriptCommand {
+				// Extract the script name
+				scriptName := ""
+				if command[1] == "run" && len(command) > 2 {
+					scriptName = command[2]
+				} else if command[1] != "run" {
+					scriptName = command[1]
+				}
+
+				if scriptName != "" {
+					// Read package.json and check what the script actually runs
+					if scriptCommand := resolvePackageScript(scriptName); scriptCommand != "" {
+						// Check if the resolved script directly invokes a known test runner
+						supportedRunners := []string{"jest", "vitest", "mocha", "cypress", "pytest"}
+						directInvocation := false
+
+						// Split the command to check the first part
+						scriptParts := strings.Fields(scriptCommand)
+						if len(scriptParts) > 0 {
+							firstCmd := scriptParts[0]
+							// Check for direct invocation or via npx/yarn/pnpm
+							for _, runner := range supportedRunners {
+								if firstCmd == runner ||
+								   (firstCmd == "npx" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+								   (firstCmd == "yarn" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+								   (firstCmd == "pnpm" && len(scriptParts) > 1 && scriptParts[1] == runner) {
+									directInvocation = true
+									break
+								}
+							}
+						}
+
+						// If the script doesn't directly invoke a test runner, fail immediately
+						if !directInvocation {
+							return nil, fmt.Errorf("3pio error: npm script '%s' uses a custom wrapper ('%s').\n"+
+								"3pio cannot inject adapters into custom wrapper scripts.\n"+
+								"Please either:\n"+
+								"  1. Run the test command directly: npx jest %s\n"+
+								"  2. Modify the script to directly invoke the test runner\n"+
+								"  3. Update the wrapper script to pass through all arguments",
+								scriptName, scriptCommand, strings.Join(command[3:], " "))
+						}
+					}
+				}
+			}
 		}
 	}
 
-	// Special handling for npm/yarn/pnpm commands
-	if len(command) > 0 {
-		packageManager := command[0]
-		if isPackageManager(packageManager) {
-			// Try to detect from package.json test script
-			for _, runner := range m.runners {
-				if runner.def.Matches([]string{"test"}) {
-					return runner.def, nil
-				}
-			}
+	// SECOND: Now check normal runner detection
+	for _, runner := range m.runners {
+		if runner.def.Matches(command) {
+			return runner.def, nil
 		}
 	}
 
@@ -120,6 +165,31 @@ func isPackageManager(cmd string) bool {
 		}
 	}
 	return false
+}
+
+// resolvePackageScript reads package.json and returns the actual command for a script
+func resolvePackageScript(scriptName string) string {
+	data, err := os.ReadFile("package.json")
+	if err != nil {
+		return ""
+	}
+
+	var pkg map[string]interface{}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return ""
+	}
+
+	scripts, ok := pkg["scripts"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	script, ok := scripts[scriptName].(string)
+	if !ok {
+		return ""
+	}
+
+	return script
 }
 
 // OutputParser interface for parsing test output

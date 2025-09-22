@@ -42,21 +42,32 @@ The verification process involves:
 - **Test Results**: 219 tests passed - identical with/without 3pio
 - **Notes**: Popular HTTP client library using Mocha test runner. Project uses ESM modules ("type": "module" in package.json). Fixed mocha adapter to support ESM by using .cjs extension when ESM is detected.
 
-### redux (partial)
-- Repository: https://github.com/reduxjs/redux
-- Date Verified: 2025-09-21
-- Commit Hash: `78b28443`
-- Test Command: `yarn test` (extracted to `yarn vitest --run --typecheck`)
-- Test Results: baseline 119 passed; 3pio 184 passed (under investigation)
-- Notes: Vitest v2 with `--typecheck`. 3pio’s v2 adapter currently counts additional TypeScript typecheck tasks as tests in this project; aligning counts with baseline is in progress. Functionality/report generation are correct, exit codes match.
-## Go Libraries
+### next.js
+- **Repository**: https://github.com/vercel/next.js
+- **Date Verified**: 2025-09-21
+- **Commit Hash**: `52ac89f6`
+- **Test Command**: `pnpm test-unit`
+- **Test Results**: 1694 passed, 2 skipped — identical with/without 3pio
+- **Notes**: The React Framework for Production. Large test suite with 220 test files executed across multiple packages (test/unit/, packages/next/, packages/font/). 3pio successfully tracked all tests with exact match on skip counts and exit codes.
+
 ### express
 - **Repository**: https://github.com/expressjs/express
 - **Date Verified**: 2025-09-21
 - **Commit Hash**: `2eb42059`
 - **Test Command**: `npm test`
 - **Test Results**: 1238 passed — identical with/without 3pio
-- **Notes**: Fixed mocha adapter to emit per-file group results and disambiguate duplicate suite titles (e.g., multiple “in router” blocks). Also corrected path normalization to avoid treating strings like “GET /” as file paths. Counts and exit codes now match baseline.
+- **Notes**: Fixed mocha adapter to emit per-file group results and disambiguate duplicate suite titles (e.g., multiple "in router" blocks). Also corrected path normalization to avoid treating strings like "GET /" as file paths. Counts and exit codes now match baseline.
+
+
+### redux (partial)
+- Repository: https://github.com/reduxjs/redux
+- Date Verified: 2025-09-21
+- Commit Hash: `78b28443`
+- Test Command: `yarn test` (extracted to `yarn vitest --run --typecheck`)
+- Test Results: baseline 119 passed; 3pio 184 passed (under investigation)
+- Notes: Vitest v2 with `--typecheck`. 3pio's v2 adapter currently counts additional TypeScript typecheck tasks as tests in this project; aligning counts with baseline is in progress. Functionality/report generation are correct, exit codes match.
+
+## Go Libraries
 
 ### uuid (Google)
 - **Repository**: https://github.com/google/uuid
@@ -179,12 +190,24 @@ The verification process involves:
 The following popular libraries should be tested with 3pio to expand our verified libraries list:
 
 ### JavaScript/TypeScript TODO
-- **express** (https://github.com/expressjs/express) - Fast, minimalist web framework (65k+ stars)
-- **next.js** (https://github.com/vercel/next.js) - React framework for production (125k+ stars)
-- **typescript** (https://github.com/microsoft/TypeScript) - TypeScript language itself (100k+ stars)
 - **vue** (https://github.com/vuejs/core) - Vue.js 3 framework (47k+ stars)
 - **svelte** (https://github.com/sveltejs/svelte) - Cybernetically enhanced web apps (79k+ stars)
 - **redux** (https://github.com/reduxjs/redux) - Uses Vitest 2.1.9 (now supported via v2 path)
+- **webpack** (https://github.com/webpack/webpack) - JavaScript bundler (65k+ stars) - Uses Jest
+- **babel** (https://github.com/babel/babel) - JavaScript compiler (43k+ stars) - Uses Jest
+- **prettier** (https://github.com/prettier/prettier) - Code formatter (49k+ stars) - Uses Jest
+- **storybook** (https://github.com/storybookjs/storybook) - UI component workshop (84k+ stars) - Uses Jest
+- **chart.js** (https://github.com/chartjs/Chart.js) - HTML5 charts library (66k+ stars) - Uses Jest
+- **socket.io** (https://github.com/socketio/socket.io) - Realtime application framework (62k+ stars) - Uses Mocha
+- **electron** (https://github.com/electron/electron) - Cross-platform desktop apps (118k+ stars) - Uses Jest/Mocha
+- **eslint** (https://github.com/eslint/eslint) - JavaScript linter (25k+ stars) - Uses Mocha
+- **d3** (https://github.com/d3/d3) - Data visualization library (108k+ stars) - Uses Mocha
+- **immutable.js** (https://github.com/immutable-js/immutable-js) - Persistent data collections (33k+ stars) - Uses Mocha
+- **ramda** (https://github.com/ramda/ramda) - Functional JavaScript library (23k+ stars) - Uses Mocha
+- **commander.js** (https://github.com/tj/commander.js) - Node.js CLI solution (27k+ stars) - Uses Mocha
+- **chalk** (https://github.com/chalk/chalk) - Terminal string styling (22k+ stars) - Uses Jest
+- **date-fns** (https://github.com/date-fns/date-fns) - Date utility library (35k+ stars) - Uses Jest
+- **moment** (https://github.com/moment/moment) - Date/time library (48k+ stars) - Uses Mocha
 
 ### Go TODO
 - **kubernetes** (https://github.com/kubernetes/kubernetes) - Container orchestration (110k+ stars)
