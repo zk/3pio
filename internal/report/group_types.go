@@ -188,8 +188,8 @@ func (g *TestGroup) updateStatusFromChildren() {
 	if g.Status == TestStatusPending || g.Status == TestStatusRunning {
 		allComplete := true
 		hasFailures := false
-		hasSkipped := false
 		hasTests := false
+		allSkipped := true
 
 		// Check test cases
 		for _, tc := range g.TestCases {
@@ -201,8 +201,8 @@ func (g *TestGroup) updateStatusFromChildren() {
 			if tc.Status == TestStatusFail || tc.Status == TestStatusError {
 				hasFailures = true
 			}
-			if tc.Status == TestStatusSkip {
-				hasSkipped = true
+			if tc.Status != TestStatusSkip {
+				allSkipped = false
 			}
 		}
 
@@ -216,38 +216,21 @@ func (g *TestGroup) updateStatusFromChildren() {
 			if sg.Status == TestStatusFail || sg.Status == TestStatusError {
 				hasFailures = true
 			}
-			if sg.Status == TestStatusSkip {
-				hasSkipped = true
+			if sg.Status != TestStatusSkip {
+				allSkipped = false
 			}
 		}
 
 		// Update status if all children are complete
 		if allComplete && hasTests {
 			if hasFailures {
+				// Any FAIL/ERROR in the group or subgroups yields FAIL
 				g.Status = TestStatusFail
-			} else if hasSkipped {
-				// Mark SKIP only if ALL direct tests and ALL subgroups are skipped; otherwise FAIL
-				allSkipped := true
-				for _, tc := range g.TestCases {
-					if tc.Status != TestStatusSkip {
-						allSkipped = false
-						break
-					}
-				}
-				if allSkipped {
-					for _, sg := range g.Subgroups {
-						if sg.Status != TestStatusSkip {
-							allSkipped = false
-							break
-						}
-					}
-				}
-				if allSkipped {
-					g.Status = TestStatusSkip
-				} else {
-					g.Status = TestStatusFail
-				}
+			} else if allSkipped {
+				// SKIP only if ALL direct tests and ALL subgroups are SKIP
+				g.Status = TestStatusSkip
 			} else {
+				// Otherwise (has PASS/XFAIL/XPASS and possibly SKIP, but no failures) yields PASS
 				g.Status = TestStatusPass
 			}
 

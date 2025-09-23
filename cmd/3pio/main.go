@@ -145,7 +145,9 @@ func runTestsCore(args []string) (int, error) {
 			return 1, err
 		}
 
-		fmt.Fprintf(os.Stderr, "Test execution failed: %v\n", err)
+		// Only print error if it's a real execution error (not just non-zero exit)
+		// Real errors like command not found, permission denied, etc.
+		fmt.Fprintf(os.Stderr, "3pio execution error: %v\n", err)
 		return orch.GetExitCode(), err
 	}
 

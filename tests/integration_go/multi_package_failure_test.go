@@ -68,7 +68,7 @@ func TestMultiPackageFailureReportPath(t *testing.T) {
 
 	// Verify that failures are shown inline after FAIL message
 	t.Run("minimal_summary_displayed_for_zebra", func(t *testing.T) {
-		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+		if !strings.Contains(output, "FAIL ") || !strings.Contains(output, "/reports/") {
 			t.Errorf("Expected minimal summary with report path for pkg_zebra\nActual output:\n%s", output)
 		}
 	})

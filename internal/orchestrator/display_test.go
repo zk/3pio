@@ -66,9 +66,9 @@ func TestDisplayGroupWithFailures(t *testing.T) {
 	output := buf.String()
 
 	// Verify the output format
-	// Now should contain minimal summary: FAIL(12) PASS(11) and a report path under $trun_dir
+	// Now should contain minimal summary: FAIL 12) PASS(11) and a report path under $trun_dir
 	expectedParts := []string{
-		"FAIL(",              // Shows FAIL count
+		"FAIL ",              // Shows FAIL count
 		"$trun_dir/reports/", // Report path prefix
 		"validate_test_ts",   // Sanitized file name within report path
 	}
@@ -147,7 +147,7 @@ func TestDisplayGroupWithoutFailures(t *testing.T) {
 	output := buf.String()
 
 	// For passing groups, the failure block should not be shown
-	if strings.Contains(output, "FAIL(") {
+	if strings.Contains(output, "FAIL ") {
 		t.Errorf("Passing group should not show FAIL output. Got: %s", output)
 	}
 	if strings.Contains(output, "report:") {

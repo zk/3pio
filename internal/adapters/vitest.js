@@ -641,8 +641,18 @@ const ThreePioVitestReporter = class {
           skipped: fileGroup.tests.filter((t) => t.status === 'SKIP').length,
         };
 
-        // Group (file) is PASS only if all tests passed with no skips; otherwise FAIL
-        const status = totals.failed === 0 && totals.skipped === 0 ? 'PASS' : 'FAIL';
+        // Determine group status based on test results:
+        // - FAIL if any tests failed
+        // - SKIP if all tests are skipped
+        // - PASS if tests passed (with possible skips) but no failures
+        let status;
+        if (totals.failed > 0) {
+          status = 'FAIL';
+        } else if (totals.skipped > 0 && totals.passed === 0) {
+          status = 'SKIP';
+        } else {
+          status = 'PASS';
+        }
 
         this.logger.ipc('send', 'testGroupResult', { groupName: filePath, status, totals });
         IPCSender.sendEvent({
@@ -1019,8 +1029,18 @@ const ThreePioVitestReporter = class {
           failed: fileGroup.tests.filter((t) => t.status === 'FAIL').length,
           skipped: fileGroup.tests.filter((t) => t.status === 'SKIP').length,
         };
-        // Group (file) is PASS only if all tests passed with no skips; otherwise FAIL
-        const status = totals.failed === 0 && totals.skipped === 0 ? 'PASS' : 'FAIL';
+        // Determine group status based on test results:
+        // - FAIL if any tests failed
+        // - SKIP if all tests are skipped
+        // - PASS if tests passed (with possible skips) but no failures
+        let status;
+        if (totals.failed > 0) {
+          status = 'FAIL';
+        } else if (totals.skipped > 0 && totals.passed === 0) {
+          status = 'SKIP';
+        } else {
+          status = 'PASS';
+        }
         this.logger.ipc('send', 'testGroupResult', { groupName: filePath, status, totals });
         IPCSender.sendEvent({
           eventType: 'testGroupResult',

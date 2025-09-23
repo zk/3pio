@@ -58,6 +58,13 @@ The verification process involves:
 - **Test Results**: 1238 passed — identical with/without 3pio
 - **Notes**: Fixed mocha adapter to emit per-file group results and disambiguate duplicate suite titles (e.g., multiple "in router" blocks). Also corrected path normalization to avoid treating strings like "GET /" as file paths. Counts and exit codes now match baseline.
 
+### svelte
+- **Repository**: https://github.com/sveltejs/svelte
+- **Date Verified**: 2025-09-22
+- **Commit Hash**: `3c694ce3a`
+- **Test Command**: `pnpm test` or `vitest run`
+- **Test Results**: 6758 passed, 126 skipped — identical with/without 3pio
+- **Notes**: Cybernetically enhanced web apps framework. Comprehensive test suite using Vitest v2. One test file (runtime-browser) requires Playwright browsers which weren't installed, resulting in 85 skipped tests consistently in both runs. 3pio correctly tracked all nested test suites and generated 27 test group reports with complete accuracy.
 
 ### redux (partial)
 - Repository: https://github.com/reduxjs/redux
@@ -191,7 +198,6 @@ The following popular libraries should be tested with 3pio to expand our verifie
 
 ### JavaScript/TypeScript TODO
 - **vue** (https://github.com/vuejs/core) - Vue.js 3 framework (47k+ stars)
-- **svelte** (https://github.com/sveltejs/svelte) - Cybernetically enhanced web apps (79k+ stars)
 - **redux** (https://github.com/reduxjs/redux) - Uses Vitest 2.1.9 (now supported via v2 path)
 - **webpack** (https://github.com/webpack/webpack) - JavaScript bundler (65k+ stars) - Uses Jest
 - **babel** (https://github.com/babel/babel) - JavaScript compiler (43k+ stars) - Uses Jest

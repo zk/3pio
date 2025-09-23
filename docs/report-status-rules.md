@@ -10,9 +10,9 @@ Statuses used
 - PASS, FAIL, SKIP, PENDING, RUNNING, ERROR, XFAIL (expected fail), XPASS (unexpected pass)
 
 Derivation rules (uniform across runners)
-- PASS: Only if all direct tests PASS and all subgroups PASS (no SKIP/FAIL/ERROR/XFAIL/XPASS present).
+- PASS: If there are any PASS/XFAIL/XPASS tests and no FAIL/ERROR tests. Groups with PASS, XFAIL, XPASS, and/or SKIP tests (but no actual failures) are marked as PASS.
 - SKIP: Only if all direct tests are SKIP and all subgroups are SKIP (i.e., everything under this group was skipped).
-- FAIL: Otherwise. Any presence of FAIL/ERROR in the group or any subgroup, or any mixture (e.g., PASS + SKIP) yields FAIL.
+- FAIL: Any presence of FAIL/ERROR in the group or any subgroup yields FAIL.
 - PENDING/RUNNING: Used mid-run; not considered “complete”. When all children reach a complete state, the group transitions to PASS/SKIP/FAIL per the above rules.
 
 Setup/teardown failures

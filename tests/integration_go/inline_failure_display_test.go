@@ -62,7 +62,7 @@ func TestInlineFailureDisplay(t *testing.T) {
 		output := stdout.String()
 
 		// New format prints a minimal summary with counts and a report path
-		if !strings.Contains(output, "FAIL(") {
+		if !strings.Contains(output, "FAIL ") {
 			t.Errorf("Expected to see FAIL count in output")
 		}
 		if !strings.Contains(output, "/reports/") {
@@ -109,7 +109,7 @@ func TestInlineFailureDisplay(t *testing.T) {
 		output := stdout.String()
 
 		// Minimal summary with counts and report path is expected
-		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+		if !strings.Contains(output, "FAIL ") || !strings.Contains(output, "/reports/") {
 			t.Errorf("Expected minimal summary with report path for Jest")
 		}
 	})
@@ -150,7 +150,7 @@ func TestInlineFailureDisplay(t *testing.T) {
 
 		output := stdout.String()
 
-		if !strings.Contains(output, "FAIL(") || !strings.Contains(output, "/reports/") {
+		if !strings.Contains(output, "FAIL ") || !strings.Contains(output, "/reports/") {
 			t.Errorf("Expected minimal summary with report path for Vitest")
 		}
 	})

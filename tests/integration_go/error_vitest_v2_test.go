@@ -30,7 +30,7 @@ func TestVitestV2FailedTestsReporting(t *testing.T) {
 	}
 
 	// Console output should show a concise summary line per failing file
-	if !strings.Contains(output, "FAIL(") {
+	if !strings.Contains(output, "FAIL ") {
 		t.Error("Should show a FAIL summary line (v2)")
 	}
 	if !strings.Contains(output, "$trun_dir/reports/") {

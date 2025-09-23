@@ -219,7 +219,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 					},
 				}
 			},
-			expectedStatus: TestStatusFail,
+			expectedStatus: TestStatusPass,
 		},
 		{
 			name: "Subgroup fails",
@@ -263,7 +263,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			expectedStatus: TestStatusSkip,
 		},
 		{
-			name: "Mixed subgroup pass and skip => FAIL",
+			name: "Mixed subgroup pass and skip => PASS",
 			setupGroup: func() *TestGroup {
 				return &TestGroup{
 					Status:    TestStatusRunning,
@@ -274,7 +274,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 					},
 				}
 			},
-			expectedStatus: TestStatusFail,
+			expectedStatus: TestStatusPass,
 		},
 		{
 			name: "All subgroups pass",
@@ -291,7 +291,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			expectedStatus: TestStatusPass,
 		},
 		{
-			name: "Nested subgroup skip propagates FAIL",
+			name: "Nested subgroup skip propagates PASS",
 			setupGroup: func() *TestGroup {
 				nested := &TestGroup{Status: TestStatusSkip}
 				parent := &TestGroup{Status: TestStatusRunning, Subgroups: map[string]*TestGroup{"nested": nested}}
@@ -306,7 +306,7 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 					},
 				}
 			},
-			expectedStatus: TestStatusFail,
+			expectedStatus: TestStatusPass,
 		},
 	}
 
