@@ -132,9 +132,9 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 								// Check for direct invocation or via npx/yarn/pnpm
 								for _, runner := range supportedRunners {
 									if firstCmd == runner ||
-									   (firstCmd == "npx" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
-									   (firstCmd == "yarn" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
-									   (firstCmd == "pnpm" && len(scriptParts) > 1 && scriptParts[1] == runner) {
+										(firstCmd == "npx" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+										(firstCmd == "yarn" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+										(firstCmd == "pnpm" && len(scriptParts) > 1 && scriptParts[1] == runner) {
 										directInvocation = true
 										break
 									}

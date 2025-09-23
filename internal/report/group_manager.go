@@ -77,7 +77,7 @@ func NormalizeToAbsolutePath(name string) string {
 	// Basic Windows absolute path detection (e.g., C:\ or D:/)
 	isWinAbs := len(name) > 2 && (name[1] == ':' && (name[2] == '\\' || name[2] == '/'))
 
-	if !(isAbs || isDotRel || isWinAbs) {
+	if !isAbs && !isDotRel && !isWinAbs {
 		return name
 	}
 
