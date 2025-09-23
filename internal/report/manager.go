@@ -660,15 +660,15 @@ func (m *Manager) Finalize(exitCode int, errorDetails ...string) error {
 
 	// Close our owned FileLogger if we created one
 
-	// Update final status if we have state and it's not already finalized
-	if m.state != nil && m.state.Status != "COMPLETE" && m.state.Status != "ERROR" {
+	// Update final status if we have state and it's not already ERROR
+	if m.state != nil && m.state.Status != "ERROR" {
 		// Cancel any pending timer to prevent race condition
 		if m.writeTimer != nil {
 			m.writeTimer.Stop()
 			m.writeTimer = nil
 		}
 
-		// Only set ERROR status for actual command errors, not test failures
+		// Set ERROR status for actual command errors, COMPLETE otherwise
 		if len(errorDetails) > 0 && errorDetails[0] != "" {
 			m.state.Status = "ERROR"
 			m.state.ErrorDetails = errorDetails[0]
@@ -708,6 +708,28 @@ func (m *Manager) GetGroup(groupID string) (*TestGroup, bool) {
 		return nil, false
 	}
 	return m.groupManager.GetGroup(groupID)
+}
+
+// GetGroupManager returns the GroupManager for accessing test statistics
+// This provides the single source of truth for test counts
+func (m *Manager) GetGroupManager() *GroupManager {
+	return m.groupManager
+}
+
+// GetStats returns aggregated test statistics from the GroupManager
+func (m *Manager) GetStats() TestGroupStats {
+	if m.groupManager == nil {
+		return TestGroupStats{}
+	}
+	return m.groupManager.GetStats()
+}
+
+// GetTestCount returns the total number of tests
+func (m *Manager) GetTestCount() int {
+	if m.groupManager == nil {
+		return 0
+	}
+	return m.groupManager.GetTestCount()
 }
 
 // noopLogger is a default logger that does nothing

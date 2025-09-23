@@ -27,12 +27,27 @@ from _pytest.terminal import TerminalReporter
 # Global reporter instance
 _reporter: Optional['ThreepioReporter'] = None
 
+# Worker detection flag
+_is_worker = False
+
+
+def is_xdist_worker() -> bool:
+    """Detect if running in an xdist worker process.
+
+    Returns True if this is an xdist worker process that should stay silent.
+    Returns False if this is a standalone run or xdist controller that should report.
+    """
+    # Primary detection: check for PYTEST_XDIST_WORKER environment variable
+    # This is present only in worker processes, not in the controller
+    return os.environ.get('PYTEST_XDIST_WORKER') is not None
+
 
 class ThreepioReporter:
     """pytest reporter that sends test events via IPC."""
 
     def __init__(self, ipc_path: str):
-        self.ipc_path = ipc_path
+        # Store the absolute path to the IPC file to handle directory changes
+        self.ipc_path = os.path.abspath(ipc_path)
         self.test_files = set()
         self.test_results = {}  # Track results per file
         self.current_test_file = None
@@ -46,6 +61,12 @@ class ThreepioReporter:
         self.group_starts = set()
         self.file_groups = {}
 
+        # Track processed skips to avoid duplicates
+        self.processed_skips = set()  # Track (file_path, test_name) tuples
+
+        # Track processed errors to avoid duplicates
+        self.processed_errors = set()  # Track (file_path, test_name, phase) tuples
+
         self._ensure_debug_log_dir()
         self._log_startup()
         
@@ -56,15 +77,15 @@ class ThreepioReporter:
             "payload": payload,
             "timestamp": time.time()
         }
-        
+
         try:
-            # Write to IPC file (append mode, create if doesn't exist)
+            # Write to IPC file (using absolute path stored in __init__)
             with open(self.ipc_path, 'a') as f:
                 f.write(json.dumps(event) + '\n')
                 f.flush()  # Ensure immediate write
         except Exception as e:
             # Log error to debug log but stay silent in console
-            self._log_error(f"Failed to send IPC event: {e}")
+            self._log_error(f"Failed to send IPC event to {self.ipc_path}: {e}")
     
     def _ensure_debug_log_dir(self) -> None:
         """Ensure the debug log directory exists."""
@@ -91,6 +112,39 @@ class ThreepioReporter:
         self._log("INFO", "Configuration:")
         self._log("INFO", f"  - IPC Path: {self.ipc_path}")
         self._log("INFO", f"  - Process ID: {os.getpid()}")
+
+        # Add comprehensive startup logging
+        self._log("INFO", "Path Analysis:")
+        self._log("INFO", f"  - Current working directory: {os.getcwd()}")
+        self._log("INFO", f"  - IPC path is absolute: {os.path.isabs(self.ipc_path)}")
+
+        # Check if IPC file exists
+        if os.path.exists(self.ipc_path):
+            self._log("INFO", f"  - IPC file exists: YES")
+            try:
+                # Check if we can write to it
+                with open(self.ipc_path, 'a') as f:
+                    f.write("")  # Try empty write
+                self._log("INFO", f"  - IPC file writable: YES")
+            except Exception as e:
+                self._log("ERROR", f"  - IPC file writable: NO - {e}")
+        else:
+            self._log("INFO", f"  - IPC file exists: NO")
+
+            # Check if parent directory exists
+            parent_dir = os.path.dirname(self.ipc_path)
+            if os.path.exists(parent_dir):
+                self._log("INFO", f"  - Parent directory exists: YES ({parent_dir})")
+            else:
+                self._log("INFO", f"  - Parent directory exists: NO ({parent_dir})")
+
+        # Try to resolve the absolute path
+        try:
+            abs_path = os.path.abspath(self.ipc_path)
+            self._log("INFO", f"  - Absolute IPC path: {abs_path}")
+        except Exception as e:
+            self._log("ERROR", f"  - Failed to resolve absolute path: {e}")
+
         self._log("INFO", "==================================")
     
     def _log_info(self, message: str) -> None:
@@ -283,15 +337,34 @@ class ThreepioReporter:
 
 def pytest_configure(config: Config) -> None:
     """Register the 3pio reporter if IPC path is set."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Detect if we're running in a worker process
+    _is_worker = is_xdist_worker()
+
     ipc_path = #__IPC_PATH__#"WILL_BE_REPLACED"#__IPC_PATH__#
-    
+
+    # Only initialize reporter in non-worker processes
+    if _is_worker:
+        # Log detection for debugging (to stderr since we're not initializing reporter)
+        try:
+            debug_log_path = Path.cwd() / ".3pio" / "debug.log"
+            debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(debug_log_path, 'a') as f:
+                timestamp = datetime.now().isoformat()
+                worker_id = os.environ.get('PYTEST_XDIST_WORKER', 'unknown')
+                f.write(f"{timestamp} INFO  | [pytest-adapter] Worker {worker_id} detected - staying silent\n")
+                f.flush()
+        except:
+            pass
+        return  # Don't initialize reporter in worker mode
+
     if True:  # IPC path will always be present after injection
         # Create the reporter instance
         _reporter = ThreepioReporter(ipc_path)
-        _reporter._log_info("Plugin initialized in pytest_configure")
-        
+        _reporter._log_info("Plugin initialized in pytest_configure (non-worker mode)")
+        _reporter._log_info(f"PYTEST_XDIST_WORKER env var: {os.environ.get('PYTEST_XDIST_WORKER', 'not set')}")
+
         # Store it in config for access in other hooks
         config._threepio_reporter = _reporter
         
@@ -314,8 +387,12 @@ def pytest_configure(config: Config) -> None:
 
 def pytest_collectreport(report: CollectReport) -> None:
     """Handle collection errors."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if not _reporter:
         return
     
@@ -338,8 +415,12 @@ def pytest_collectreport(report: CollectReport) -> None:
 
 def pytest_collection_finish(session) -> None:
     """Called after collection is completed."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if _reporter:
         # Send event to indicate collection finished
         # Get count of collected items
@@ -354,7 +435,11 @@ def pytest_collection_finish(session) -> None:
 
 def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
     """Called when running a single test."""
-    global _reporter
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
 
     if _reporter:
         file_path = _reporter.get_file_path(item)
@@ -363,7 +448,7 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
         if file_path not in _reporter.test_files:
             _reporter.test_files.add(file_path)
             # File discovery and group management handled by group events
-            _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "failed_tests": []}
+            _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "errored": 0, "failed_tests": []}
 
             # Discover the file as a root group and start it
             _reporter.ensure_groups_discovered(file_path, [])
@@ -382,26 +467,157 @@ def pytest_runtest_protocol(item: Item, nextitem: Optional[Item]) -> None:
             _reporter.current_test_file = file_path
 
 
+def _extract_skip_reason(report: TestReport) -> str:
+    """Extract skip reason from pytest report object."""
+    if hasattr(report, 'longrepr'):
+        if isinstance(report.longrepr, tuple) and len(report.longrepr) >= 3:
+            # Format: (category, condition, reason)
+            reason = str(report.longrepr[2])
+            # Remove 'Skipped: ' prefix if present
+            if reason.startswith('Skipped: '):
+                return reason[9:]
+            return reason
+        elif isinstance(report.longrepr, str):
+            return report.longrepr
+
+    return "Test skipped"
+
+
 def pytest_runtest_logreport(report: TestReport) -> None:
     """Process test reports."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if not _reporter:
         return
     
-    # Only process the 'call' phase (actual test execution)
-    if report.when != 'call':
-        return
-    
-    # Parse the test hierarchy from nodeid
+    # Parse test hierarchy from nodeid (needed for all phases)
     file_path, suite_chain, test_name = _reporter.parse_test_hierarchy(report.nodeid)
 
     # Initialize results for file if needed
     if file_path not in _reporter.test_results:
-        _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "failed_tests": []}
+        _reporter.test_results[file_path] = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "errored": 0, "failed_tests": []}
+
+    # Check if this is an xfail case (must check before skip handling)
+    has_xfail = hasattr(report, 'wasxfail')
+
+    # HANDLE SKIPPED TESTS IN ANY PHASE (but not xfail)
+    if report.skipped and report.when in ('setup', 'call') and not has_xfail:
+        # Check for duplicate processing
+        skip_key = (file_path, test_name)
+        if skip_key in _reporter.processed_skips:
+            return
+        _reporter.processed_skips.add(skip_key)
+
+        # Extract skip reason
+        skip_reason = _extract_skip_reason(report)
+
+        # Update skip count
+        _reporter.test_results[file_path]["skipped"] += 1
+
+        # Ensure all parent groups are discovered and started
+        _reporter.ensure_groups_discovered(file_path, suite_chain)
+
+        # Start all parent groups in the hierarchy
+        for i in range(len(suite_chain) + 1):
+            hierarchy = [file_path] + suite_chain[:i]
+            _reporter.ensure_group_started(hierarchy)
+
+        # Build complete hierarchy for this test case
+        parent_names = _reporter.build_hierarchy_from_file(file_path, suite_chain)
+
+        # Send IPC event for skipped test
+        _reporter.send_event("testCase", {
+            "testName": test_name,
+            "parentNames": parent_names,
+            "status": "SKIP",
+            "skipReason": skip_reason,
+            "skipPhase": report.when  # 'setup' or 'call'
+        })
+
+        # Track test in file group
+        if file_path in _reporter.file_groups:
+            _reporter.file_groups[file_path]['tests'].append({
+                'name': test_name,
+                'status': 'SKIP',
+                'duration': 0
+            })
+
+        return
+
+    # HANDLE ERRORED TESTS IN SETUP/TEARDOWN PHASE
+    if report.failed and report.when in ('setup', 'teardown'):
+        # Check for duplicate processing
+        error_key = (file_path, test_name, report.when)
+        if error_key in _reporter.processed_errors:
+            return
+        _reporter.processed_errors.add(error_key)
+
+        # Extract error information
+        error_str = str(report.longrepr) if hasattr(report, 'longrepr') else f"{report.when} failed"
+
+        # Create error object matching TestError struct
+        error_obj = {
+            "message": error_str,
+        }
+
+        # Try to extract error type
+        import re
+        error_type_match = re.match(r'^(\w+Error):', error_str)
+        if error_type_match:
+            error_obj["errorType"] = error_type_match.group(1)
+        elif 'Error' in error_str:
+            # Try to find any word ending with 'Error'
+            error_words = re.findall(r'(\w+Error)', error_str)
+            if error_words:
+                error_obj["errorType"] = error_words[0]
+        else:
+            error_obj["errorType"] = f"{report.when.capitalize()}Error"
+
+        # Set the stack trace (same as message for now)
+        error_obj["stack"] = error_str
+
+        # Update error count
+        _reporter.test_results[file_path]["errored"] += 1
+
+        # Ensure all parent groups are discovered and started
+        _reporter.ensure_groups_discovered(file_path, suite_chain)
+
+        # Start all parent groups in the hierarchy
+        for i in range(len(suite_chain) + 1):
+            hierarchy = [file_path] + suite_chain[:i]
+            _reporter.ensure_group_started(hierarchy)
+
+        # Build complete hierarchy for this test case
+        parent_names = _reporter.build_hierarchy_from_file(file_path, suite_chain)
+
+        # Send IPC event for errored test
+        _reporter.send_event("testCase", {
+            "testName": test_name,
+            "parentNames": parent_names,
+            "status": "ERROR",
+            "error": error_obj,  # Use error field with object instead of errorReason with string
+            "errorPhase": report.when
+        })
+
+        # Track test in file group
+        if file_path in _reporter.file_groups:
+            _reporter.file_groups[file_path]['tests'].append({
+                'name': test_name,
+                'status': 'ERROR',
+                'duration': 0
+            })
+
+        return
+
+    # Only process non-skip events from call phase
+    if report.when != 'call':
+        return
 
     # Determine test status
-    has_xfail = hasattr(report, 'wasxfail')
 
     if has_xfail:
         # Handle xfail/xpass cases
@@ -449,7 +665,37 @@ def pytest_runtest_logreport(report: TestReport) -> None:
     # Add error information for failures
     if report.failed:
         if hasattr(report, 'longrepr') and report.longrepr:
-            payload["error"] = str(report.longrepr)
+            # Parse the error into a structured format
+            error_str = str(report.longrepr)
+
+            # Create error object matching TestError struct
+            error_obj = {
+                "message": error_str,
+            }
+
+            # Try to extract error type from the traceback
+            if hasattr(report.longrepr, 'reprcrash'):
+                reprcrash = report.longrepr.reprcrash
+                if reprcrash and hasattr(reprcrash, 'message'):
+                    # Extract the error type from the message (e.g., "AssertionError: assert 'foo' == 'bar'")
+                    message_parts = reprcrash.message.split(':', 1)
+                    if len(message_parts) > 0:
+                        error_obj["errorType"] = message_parts[0]
+
+            # If we couldn't extract error type, try to parse from the error string
+            if "errorType" not in error_obj:
+                # Look for common error patterns like "AssertionError:", "ValueError:", etc.
+                import re
+                error_type_match = re.match(r'^(\w+Error):', error_str)
+                if error_type_match:
+                    error_obj["errorType"] = error_type_match.group(1)
+                elif 'AssertionError' in error_str:
+                    error_obj["errorType"] = "AssertionError"
+
+            # Set the stack trace (same as message for now)
+            error_obj["stack"] = error_str
+
+            payload["error"] = error_obj
         # Track failed test for file result
         _reporter.test_results[file_path]["failed_tests"].append({
             "name": test_name,
@@ -472,8 +718,12 @@ def pytest_runtest_logreport(report: TestReport) -> None:
 
 def pytest_sessionfinish(session, exitstatus: int) -> None:
     """Called after all tests have run."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     if not _reporter:
         return
     
@@ -485,7 +735,7 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
         file_group = _reporter.file_groups.get(file_path, {})
 
         # Determine overall file status
-        if results.get("failed", 0) > 0:
+        if results.get("failed", 0) > 0 or results.get("errored", 0) > 0:
             status = "FAIL"
         elif results.get("passed", 0) > 0:
             status = "PASS"
@@ -503,10 +753,11 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
         totals = {
             'total': (results.get("passed", 0) + results.get("failed", 0) +
                      results.get("skipped", 0) + results.get("xfailed", 0) +
-                     results.get("xpassed", 0)),
+                     results.get("xpassed", 0) + results.get("errored", 0)),
             'passed': results.get("passed", 0),
             'failed': results.get("failed", 0),
             'skipped': results.get("skipped", 0),
+            'errored': results.get("errored", 0),
             'xfailed': results.get("xfailed", 0),
             'xpassed': results.get("xpassed", 0)
         }
@@ -527,10 +778,14 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
 
 def pytest_unconfigure(config: Config) -> None:
     """Clean up when pytest is done."""
-    global _reporter
-    
+    global _reporter, _is_worker
+
+    # Skip in worker mode
+    if _is_worker:
+        return
+
     # Note: We don't restore stdout/stderr since we manage the entire test run
     # This prevents any buffered output from appearing after the tests complete
-    
+
     # Clear the global reporter
     _reporter = None

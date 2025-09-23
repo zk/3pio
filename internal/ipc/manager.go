@@ -140,6 +140,8 @@ func (m *Manager) watchLoop() {
 			m.logger.Error("Watcher error: %v", err)
 
 		case <-m.stopChan:
+			// Do one final read to catch any pending events before exiting
+			m.readEvents()
 			return
 		}
 	}
@@ -167,7 +169,15 @@ func (m *Manager) parseAndSendEvent(line []byte) {
 		// Only new group-based testCase events are supported
 		var e GroupTestCaseEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			m.logger.Debug("Failed to parse group test case event: %v", err)
+			m.logger.Error("Failed to parse group test case event: %v", err)
+			m.logger.Error("Failed JSON line: %s", string(line))
+			// Try to extract basic info for debugging
+			var basicInfo map[string]interface{}
+			if basicErr := json.Unmarshal(line, &basicInfo); basicErr == nil {
+				if payload, ok := basicInfo["payload"].(map[string]interface{}); ok {
+					m.logger.Error("Event had testName=%v, status=%v", payload["testName"], payload["status"])
+				}
+			}
 			return
 		}
 		event = e
@@ -272,8 +282,12 @@ func (m *Manager) Cleanup() error {
 		close(m.stopChan)
 	}
 
-	// Wait for watchLoop to finish before cleaning up resources
+	// Wait for watchLoop to finish (which will do final read)
 	<-m.stopped
+
+	// Do one more final read just to be absolutely sure we got everything
+	// This handles the case where events were written after the last file watcher notification
+	m.readEvents()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()

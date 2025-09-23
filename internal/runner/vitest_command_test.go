@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"os"
 	"testing"
 )
 
@@ -353,6 +354,71 @@ func TestVitestNpmCommandIssue(t *testing.T) {
 			t.Errorf("Arg mismatch at index %d: got %q, expected %q\nFull result: %v\nExpected: %v",
 				i, arg, expected[i], result, expected)
 			return
+		}
+	}
+}
+
+func TestVitestYarnExtractSimpleScript(t *testing.T) {
+	// Create a temp dir with a simple package.json script
+	tdir := t.TempDir()
+	cwd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(cwd) }()
+	_ = os.Chdir(tdir)
+
+	pkg := `{
+      "name": "tmp",
+      "version": "1.0.0",
+      "scripts": {"test": "vitest --run --typecheck"}
+    }`
+	if err := os.WriteFile("package.json", []byte(pkg), 0644); err != nil {
+		t.Fatalf("write package.json: %v", err)
+	}
+
+	vitest := NewVitestDefinition()
+	adapterPath := "/tmp/adapter.js"
+	args := []string{"yarn", "test"}
+
+	got := vitest.BuildCommand(args, adapterPath)
+	want := []string{"yarn", "vitest", "--reporter", adapterPath, "--reporter", "default", "--run", "--typecheck"}
+
+	if len(got) != len(want) {
+		t.Fatalf("len mismatch: got %v, want %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("arg %d mismatch: got %q, want %q\nfull: %v", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestVitestYarnNoExtractForCompoundScript(t *testing.T) {
+	tdir := t.TempDir()
+	cwd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(cwd) }()
+	_ = os.Chdir(tdir)
+
+	pkg := `{
+      "name": "tmp",
+      "version": "1.0.0",
+      "scripts": {"test": "vitest --run && echo done"}
+    }`
+	if err := os.WriteFile("package.json", []byte(pkg), 0644); err != nil {
+		t.Fatalf("write package.json: %v", err)
+	}
+
+	vitest := NewVitestDefinition()
+	adapterPath := "/tmp/adapter.js"
+	args := []string{"yarn", "test"}
+
+	got := vitest.BuildCommand(args, adapterPath)
+	want := []string{"yarn", "test", "--", "--reporter", adapterPath, "--reporter", "default"}
+
+	if len(got) != len(want) {
+		t.Fatalf("len mismatch: got %v, want %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("arg %d mismatch: got %q, want %q\nfull: %v", i, got[i], want[i], got)
 		}
 	}
 }

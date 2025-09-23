@@ -248,6 +248,66 @@ func TestTestGroup_UpdateStatusFromChildren(t *testing.T) {
 			},
 			expectedStatus: TestStatusRunning,
 		},
+		{
+			name: "All subgroups skipped",
+			setupGroup: func() *TestGroup {
+				return &TestGroup{
+					Status:    TestStatusRunning,
+					StartTime: time.Now(),
+					Subgroups: map[string]*TestGroup{
+						"sg1": {Status: TestStatusSkip},
+						"sg2": {Status: TestStatusSkip},
+					},
+				}
+			},
+			expectedStatus: TestStatusSkip,
+		},
+		{
+			name: "Mixed subgroup pass and skip => PASS",
+			setupGroup: func() *TestGroup {
+				return &TestGroup{
+					Status:    TestStatusRunning,
+					StartTime: time.Now(),
+					Subgroups: map[string]*TestGroup{
+						"sg1": {Status: TestStatusPass},
+						"sg2": {Status: TestStatusSkip},
+					},
+				}
+			},
+			expectedStatus: TestStatusPass,
+		},
+		{
+			name: "All subgroups pass",
+			setupGroup: func() *TestGroup {
+				return &TestGroup{
+					Status:    TestStatusRunning,
+					StartTime: time.Now(),
+					Subgroups: map[string]*TestGroup{
+						"sg1": {Status: TestStatusPass},
+						"sg2": {Status: TestStatusPass},
+					},
+				}
+			},
+			expectedStatus: TestStatusPass,
+		},
+		{
+			name: "Nested subgroup skip propagates PASS",
+			setupGroup: func() *TestGroup {
+				nested := &TestGroup{Status: TestStatusSkip}
+				parent := &TestGroup{Status: TestStatusRunning, Subgroups: map[string]*TestGroup{"nested": nested}}
+				// Recompute parent status from nested before checking top-level
+				parent.UpdateStats()
+				return &TestGroup{
+					Status:    TestStatusRunning,
+					StartTime: time.Now(),
+					Subgroups: map[string]*TestGroup{
+						"sg1": parent,
+						"sg2": {Status: TestStatusPass},
+					},
+				}
+			},
+			expectedStatus: TestStatusPass,
+		},
 	}
 
 	for _, tt := range tests {

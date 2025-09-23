@@ -7,7 +7,11 @@ const fs = require('fs');
 const path = require('path');
 
 // IPC Path will be replaced at runtime
-const IPC_PATH = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+const IPC_PATH_TEMPLATE = /*__IPC_PATH__*/"WILL_BE_REPLACED"/*__IPC_PATH__*/;
+
+// Convert to absolute path to handle working directory changes during test execution
+// This is critical for projects like Next.js that may change working directory during test runs
+const IPC_PATH = path.resolve(IPC_PATH_TEMPLATE);
 
 // Log level will be replaced at runtime
 const LOG_LEVEL = /*__LOG_LEVEL__*/"WARN"/*__LOG_LEVEL__*/;
@@ -180,14 +184,16 @@ class ThreePioJestReporter {
     if (testCaseResult) {
       const parentNames = [test.path, ...(testCaseResult.ancestorTitles || [])];
       const testName = testCaseResult.title;
-      
+
       let status = 'PASS';
-      if (testCaseResult.status === 'failed') {
+      // Check both status and failureMessages to catch snapshot failures
+      if (testCaseResult.status === 'failed' ||
+          (testCaseResult.failureMessages && testCaseResult.failureMessages.length > 0)) {
         status = 'FAIL';
       } else if (testCaseResult.status === 'skipped' || testCaseResult.status === 'pending') {
         status = 'SKIP';
       }
-      
+
       const error = testCaseResult.failureMessages?.join('\n\n');
       
       // Send the test case event with group hierarchy

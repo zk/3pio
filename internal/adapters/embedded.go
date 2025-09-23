@@ -65,8 +65,12 @@ func extractAdapter(name string, ipcPath string, runDir string, logLevel string)
 		isESM = false
 	case "mocha.js":
 		content = mochaAdapter
-		// Mocha reporter is CommonJS
-		filename = "mocha.js"
+		// Check if target project is ES module
+		if isProjectESM() {
+			filename = "mocha.cjs" // Use .cjs extension for ES module projects
+		} else {
+			filename = "mocha.js"
+		}
 		isESM = false
 	default:
 		return "", fmt.Errorf("unknown adapter: %s", name)

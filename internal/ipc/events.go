@@ -25,6 +25,7 @@ const (
 	TestStatusNoTests TestStatus = "NO_TESTS"
 	TestStatusXFail   TestStatus = "XFAIL" // Test failed as expected
 	TestStatusXPass   TestStatus = "XPASS" // Test passed unexpectedly
+	TestStatusError   TestStatus = "ERROR" // Test failed during setup/teardown
 )
 
 // Event is the base interface for all IPC events

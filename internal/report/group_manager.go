@@ -67,10 +67,17 @@ func (gm *GroupManager) logError(format string, args ...interface{}) {
 	}
 }
 
-// normalizeToAbsolutePath converts any path to an absolute path for consistent storage
-func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
-	// If it's not a file path (e.g., test names, suite names), return as-is
-	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") && !strings.Contains(name, "/") {
+// NormalizeToAbsolutePath converts any path to an absolute path for consistent storage.
+// This is a shared function used by both the report manager and orchestrator.
+func NormalizeToAbsolutePath(name string) string {
+	// Treat only absolute or dot-prefixed relative paths as file paths.
+	// Do NOT convert arbitrary strings that merely contain '/' (e.g., test titles like "GET /").
+	isAbs := strings.HasPrefix(name, "/")
+	isDotRel := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
+	// Basic Windows absolute path detection (e.g., C:\ or D:/)
+	isWinAbs := len(name) > 2 && (name[1] == ':' && (name[2] == '\\' || name[2] == '/'))
+
+	if !isAbs && !isDotRel && !isWinAbs {
 		return name
 	}
 
@@ -88,11 +95,13 @@ func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
 		return resolved
 	}
 
-	// If symlink resolution fails, it might be because:
-	// 1. The file doesn't exist yet (which is ok for test group names)
-	// 2. There's no symlink to resolve
-	// In either case, return the absolute path
+	// If symlink resolution fails, return the absolute path
 	return absPath
+}
+
+// normalizeToAbsolutePath converts any path to an absolute path for consistent storage
+func (gm *GroupManager) normalizeToAbsolutePath(name string) string {
+	return NormalizeToAbsolutePath(name)
 }
 
 // makeRelativePath converts absolute paths to relative for display purposes only
@@ -254,6 +263,21 @@ func (gm *GroupManager) ProcessGroupResult(event ipc.GroupResultEvent) error {
 		group = gm.groups[groupID]
 	}
 
+	// If group already marked as setup failure (from ProcessGroupError), don't override status
+	if group.Stats.SetupFailed {
+		gm.logInfo("Completed group (status preserved due to setup failure): %s", BuildHierarchicalPath(group))
+		// Still update times/duration if provided
+		group.EndTime = time.Now()
+		if payload.Duration > 0 {
+			group.Duration = time.Duration(payload.Duration) * time.Millisecond
+		} else if !group.StartTime.IsZero() {
+			group.Duration = group.EndTime.Sub(group.StartTime)
+		}
+		group.Updated = time.Now()
+		gm.propagateCompletion(group)
+		gm.scheduleReportUpdate(groupID)
+		return nil
+	}
 	// Update group status
 	switch payload.Status {
 	case "PASS":
@@ -327,8 +351,9 @@ func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
 		group = gm.groups[groupID]
 	}
 
-	// Set error status
-	group.Status = TestStatusError
+	// Treat group-level errors (e.g., setup failures) as FAIL status
+	// so any non-fully-passing subgroup is clearly marked as an issue.
+	group.Status = TestStatusFail
 	group.EndTime = time.Now()
 
 	// Use provided duration if available
@@ -347,7 +372,7 @@ func (gm *GroupManager) ProcessGroupError(event ipc.GroupErrorEvent) error {
 		}
 	}
 
-	// Set totals to indicate setup failure for group results display
+	// Mark that this group failed due to setup, used to prevent later overrides
 	group.Stats.SetupFailed = true
 
 	// Propagate completion to ancestors
@@ -389,9 +414,8 @@ func (gm *GroupManager) ProcessTestCase(event ipc.GroupTestCaseEvent) error {
 		parentGroup, exists = gm.groups[parentID]
 		if !exists {
 			// Auto-discover parent group hierarchy
-			gm.mu.Unlock()
+			// Note: ensureGroupHierarchy expects the mutex to be held
 			err := gm.ensureGroupHierarchy(parentNames)
-			gm.mu.Lock()
 			if err != nil {
 				return err
 			}
@@ -809,6 +833,9 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 		if group.Stats.SkippedTests > 0 {
 			content += fmt.Sprintf("- Group tests skipped: %d\n", group.Stats.SkippedTests)
 		}
+		if group.Stats.ErroredTests > 0 {
+			content += fmt.Sprintf("- Group tests errored: %d\n", group.Stats.ErroredTests)
+		}
 		if group.Stats.XFailedTests > 0 {
 			content += fmt.Sprintf("- Group tests xfailed: %d\n", group.Stats.XFailedTests)
 		}
@@ -886,6 +913,8 @@ func (gm *GroupManager) formatGroupReport(group *TestGroup) string {
 				icon = "⊗" // Expected failure
 			case TestStatusXPass:
 				icon = "⊕" // Unexpected pass
+			case TestStatusError:
+				icon = "!" // Setup/teardown error
 			default:
 				icon = "✓"
 			}
@@ -1053,13 +1082,14 @@ func (gm *GroupManager) generateSummaryReport() string {
 	content += fmt.Sprintf("Generated: %s\n\n", time.Now().Format(time.RFC3339))
 
 	// Calculate totals
-	var totalTests, passedTests, failedTests, skippedTests int
+	var totalTests, passedTests, failedTests, skippedTests, erroredTests int
 	for _, group := range gm.rootGroups {
 		group.UpdateStats()
 		totalTests += group.Stats.TotalTestsRecursive
 		passedTests += group.Stats.PassedTestsRecursive
 		failedTests += group.Stats.FailedTestsRecursive
 		skippedTests += group.Stats.SkippedTestsRecursive
+		erroredTests += group.Stats.ErroredTestsRecursive
 	}
 
 	// Overall statistics
@@ -1071,6 +1101,10 @@ func (gm *GroupManager) generateSummaryReport() string {
 		float64(failedTests)*100/float64(max(totalTests, 1)))
 	content += fmt.Sprintf("- Skipped: %d (%.1f%%)\n", skippedTests,
 		float64(skippedTests)*100/float64(max(totalTests, 1)))
+	if erroredTests > 0 {
+		content += fmt.Sprintf("- Errored: %d (%.1f%%)\n", erroredTests,
+			float64(erroredTests)*100/float64(max(totalTests, 1)))
+	}
 	content += "\n"
 
 	// Root groups
@@ -1090,6 +1124,8 @@ func (gm *GroupManager) generateSummaryReport() string {
 			icon = "⚡"
 		case TestStatusPending:
 			icon = "⏳"
+		case TestStatusError:
+			icon = "!" // Setup/teardown error
 		default:
 			icon = "✓"
 		}
@@ -1107,6 +1143,9 @@ func (gm *GroupManager) generateSummaryReport() string {
 			}
 			if group.Stats.SkippedTestsRecursive > 0 {
 				statParts = append(statParts, fmt.Sprintf("%d skipped", group.Stats.SkippedTestsRecursive))
+			}
+			if group.Stats.ErroredTestsRecursive > 0 {
+				statParts = append(statParts, fmt.Sprintf("%d errored", group.Stats.ErroredTestsRecursive))
 			}
 			if group.Stats.XFailedTestsRecursive > 0 {
 				statParts = append(statParts, fmt.Sprintf("%d xfailed", group.Stats.XFailedTestsRecursive))
@@ -1213,4 +1252,86 @@ func (gm *GroupManager) Flush() {
 				group.ID, err)
 		}
 	}
+}
+
+// GetStats returns aggregated test statistics across all groups
+// This is the single source of truth for test counts
+func (gm *GroupManager) GetStats() TestGroupStats {
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	stats := TestGroupStats{}
+
+	// Aggregate stats from all groups
+	for _, group := range gm.groups {
+		// Count direct test cases in each group
+		for _, tc := range group.TestCases {
+			stats.TotalTests++
+			stats.TotalTestsRecursive++
+
+			switch tc.Status {
+			case TestStatusPass:
+				stats.PassedTests++
+				stats.PassedTestsRecursive++
+			case TestStatusFail:
+				stats.FailedTests++
+				stats.FailedTestsRecursive++
+			case TestStatusSkip:
+				stats.SkippedTests++
+				stats.SkippedTestsRecursive++
+			case TestStatusError:
+				stats.ErroredTests++
+				stats.ErroredTestsRecursive++
+			case TestStatusXFail:
+				stats.XFailedTests++
+				stats.XFailedTestsRecursive++
+			case TestStatusXPass:
+				stats.XPassedTests++
+				stats.XPassedTestsRecursive++
+			}
+		}
+
+		// Check for setup failures
+		if group.Stats.SetupFailed {
+			stats.SetupFailed = true
+		}
+	}
+
+	return stats
+}
+
+// GetGroupStats returns statistics for a specific group by ID
+func (gm *GroupManager) GetGroupStats(groupID string) (TestGroupStats, bool) {
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	group, exists := gm.groups[groupID]
+	if !exists {
+		return TestGroupStats{}, false
+	}
+
+	// Return a copy to prevent race conditions
+	return group.Stats, true
+}
+
+// GetTestCount returns the total number of tests across all groups
+func (gm *GroupManager) GetTestCount() int {
+	stats := gm.GetStats()
+	return stats.TotalTests
+}
+
+// GetTestsByStatus returns count of tests by status
+func (gm *GroupManager) GetTestsByStatus(status TestStatus) int {
+	gm.mu.RLock()
+	defer gm.mu.RUnlock()
+
+	count := 0
+	for _, group := range gm.groups {
+		for _, tc := range group.TestCases {
+			if tc.Status == status {
+				count++
+			}
+		}
+	}
+	return count
 }

@@ -17,6 +17,7 @@ General guidlines:
 - Verify binary `build/3pio --version`
 - Create project clone directory if needed `mkdir -p /tmp/3pio-open-source`
 - The user will indicate the project to test, clone it to the `tmp/3pio-open-source` directory.
+  - Cloning can take many minutes for large projects, set the timeout for 10 minutes when cloning.
   - Identify the test framework used
   - Identify test commands
   - Check if dependencies have been installed, fi not install dependencies.
@@ -71,3 +72,10 @@ General guidlines:
   - Compare number of tests and type between baseline and 3pio runs
   - Compare exit codes
   - Compare performance (durations) of baseline and 3pio runs.
+  - This open source test passes if the following match exactly:
+    - Exit code
+    - Number of passing test cases
+    - Number of failing test cases
+    - Number of skipped test cases
+    - Number of xpass and xfail test cases
+    - Any difference in these numbers is a major issue and could indicate a fundamental issue with 3pio. This warrants deep analysis and finding the root cause of the discrepency.

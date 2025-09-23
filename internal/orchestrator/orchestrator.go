@@ -36,25 +36,22 @@ type Orchestrator struct {
 	detectedRunner string // Track which test runner was detected
 
 	// Console output state
-	startTime        time.Time
-	passedGroups     int
-	failedGroups     int
-	skippedGroups    int
-	xfailedGroups    int // Track groups with xfailed tests
-	xpassedGroups    int // Track groups with xpassed tests
-	totalGroups      int
-	passedTests      int                  // Track actual test cases
-	failedTests      int                  // Track actual test cases
-	skippedTests     int                  // Track actual test cases
-	xfailedTests     int                  // Track expected failures (xfail)
-	xpassedTests     int                  // Track unexpected passes (xpass)
-	totalTests       int                  // Track actual test cases
+	startTime     time.Time
+	passedGroups  int
+	failedGroups  int
+	skippedGroups int
+	xfailedGroups int // Track groups with xfailed tests
+	xpassedGroups int // Track groups with xpassed tests
+	totalGroups   int
+	// Test counting is now handled by GroupManager via GetStats()
+	// See report.Manager.GetStats() for test counts
 	displayedGroups  map[string]bool      // Track which groups we've already displayed
 	lastCollected    int                  // Track last collection count to avoid duplicates
 	groupStartTimes  map[string]time.Time // Track start time for each group
 	groupFailedTests map[string][]string  // Track failed test names by group
 	completedGroups  map[string]bool      // Track which groups have shown their final PASS/FAIL status
 	noTestGroups     map[string]bool      // Track packages with no test files (Go specific)
+	// Test case tracking now handled by GroupManager
 
 	// Error capture
 	stderrCapture strings.Builder
@@ -136,6 +133,7 @@ func New(config Config) (*Orchestrator, error) {
 		groupFailedTests: make(map[string][]string),
 		completedGroups:  make(map[string]bool),
 		noTestGroups:     make(map[string]bool),
+		// seenTestCases removed - GroupManager handles test tracking
 	}, nil
 }
 
@@ -161,28 +159,7 @@ func (o *Orchestrator) Run() error {
 	// Setup IPC in the run directory (do this early so it's available even if runner detection fails)
 	o.ipcPath = filepath.Join(o.runDir, "ipc.jsonl")
 
-	// Print test run header with metadata
-	testCommand := strings.Join(o.command, " ")
-	currentTime := time.Now().Format(time.RFC3339)
-	trunDir := o.runDir
-	fullReport := "$trun_dir/test-run.md"
-
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "unknown"
-	}
-
-	fmt.Println("---")
-	fmt.Printf("current_time: %s\n", currentTime)
-	fmt.Printf("cwd: %s\n", cwd)
-	fmt.Printf("test_command: `%s`\n", testCommand)
-	fmt.Printf("trun_dir: %s\n", trunDir)
-	fmt.Printf("full_report: %s\n", fullReport)
-	fmt.Println("---")
-	fmt.Println()
-	fmt.Println("Test execution starting, no output until test results.")
-	fmt.Println()
+	// We'll print the header after we build the final command to display the actual executed command
 
 	// Detect test runner
 	runnerDef, err := o.runnerManager.Detect(o.command)
@@ -312,6 +289,29 @@ func (o *Orchestrator) Run() error {
 		modifiedCommand = strings.Join(testCommandSlice, " ")
 		o.reportManager.UpdateModifiedCommand(modifiedCommand)
 	}
+
+	// Print test run header with metadata using the final command (applies to all runners)
+	finalCommand := strings.Join(testCommandSlice, " ")
+	currentTime := time.Now().Format(time.RFC3339)
+	trunDir := o.runDir
+	fullReport := "$trun_dir/test-run.md"
+
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "unknown"
+	}
+
+	fmt.Println("---")
+	fmt.Printf("current_time: %s\n", currentTime)
+	fmt.Printf("cwd: %s\n", cwd)
+	fmt.Printf("test_command: `%s`\n", finalCommand)
+	fmt.Printf("trun_dir: %s\n", trunDir)
+	fmt.Printf("full_report: %s\n", fullReport)
+	fmt.Println("---")
+	fmt.Println()
+	fmt.Println("Test execution starting, no output until test results.")
+	fmt.Println()
 
 	o.logger.Debug("Executing command: %v", testCommandSlice)
 	o.logger.Debug("IPC path: %s", o.ipcPath)
@@ -481,20 +481,35 @@ func (o *Orchestrator) Run() error {
 		done <- cmd.Wait()
 	}()
 
+	// Track if the command had a real execution error (not just non-zero exit code)
 	var commandErr error
 	select {
 	case err := <-done:
-		commandErr = err
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
+				// This is a normal exit with a non-zero code (e.g., test failures)
+				// Not an error in 3pio execution
 				o.exitCode = exitErr.ExitCode()
 				o.logger.Debug("Command completed with exit code: %d", exitErr.ExitCode())
 			} else {
+				// This is a real error (e.g., command not found, permission denied)
+				commandErr = err
 				o.exitCode = 1
 				o.logger.Debug("Command completed with error: %v", err)
 			}
 		} else {
-			o.logger.Debug("Command completed successfully")
+			// Even if no error, check the actual exit code
+			// Test runners may return non-zero exit codes for test failures
+			if cmd.ProcessState != nil {
+				o.exitCode = cmd.ProcessState.ExitCode()
+				if o.exitCode != 0 {
+					o.logger.Debug("Command completed with exit code: %d", o.exitCode)
+				} else {
+					o.logger.Debug("Command completed successfully")
+				}
+			} else {
+				o.logger.Debug("Command completed successfully")
+			}
 		}
 		// Command finished, signal cargo reader if it exists
 		if o.cargoProcessExited != nil {
@@ -540,49 +555,41 @@ func (o *Orchestrator) Run() error {
 	// All goroutines should be finished at this point
 	// (they were waited for via outputDone)
 
-	// Finalize report
+	// Finalize report - we no longer try to guess what's an error vs test failure
 	var errorDetails string
-	var shouldShowError bool
-	if commandErr != nil {
-		// Check if this is a configuration/startup error vs test failures
-		// Configuration errors happen when we have very few or no test groups
-		// or when the exit code suggests a setup problem
-		isConfigError := o.totalGroups == 0 ||
-			(o.exitCode != 0 && o.exitCode != 1 && o.totalGroups < 2) ||
-			(o.passedGroups == 0 && o.failedGroups == 0 && o.exitCode != 0)
+	shouldShowError := false
 
-		if isConfigError {
-			errorDetails = commandErr.Error()
-
-			// Include stderr content if available for command errors
-			stderrContent := strings.TrimSpace(o.stderrCapture.String())
-			if stderrContent != "" {
-				errorDetails = stderrContent
-			}
-
-			// For config/setup errors (non-zero exit with no tests run),
-			// show the actual output instead of generic "exit status N"
-			if (errorDetails == "exit status 1" || errorDetails == "exit status 2") && o.totalGroups == 0 {
-				// Read first part of output.log to show actual error
-				if outputContent, err := os.ReadFile(outputPath); err == nil {
-					lines := strings.Split(string(outputContent), "\n")
-					// Show first non-empty lines (up to 10 lines)
-					var errorLines []string
-					for i := 0; i < len(lines) && len(errorLines) < 10; i++ {
-						if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
-							errorLines = append(errorLines, lines[i])
-						}
-					}
-					if len(errorLines) > 0 {
-						errorDetails = strings.Join(errorLines, "\n")
-						shouldShowError = true
-					}
+	// If we have a non-zero exit code and no tests ran, show the output
+	// This is likely a configuration error even if commandErr is nil
+	stats := o.reportManager.GetStats()
+	if o.exitCode != 0 && o.totalGroups == 0 && stats.TotalTests == 0 {
+		// Read output to show what actually happened
+		if outputContent, err := os.ReadFile(outputPath); err == nil {
+			lines := strings.Split(string(outputContent), "\n")
+			// Show first non-empty lines (up to 20 lines for better context)
+			var outputLines []string
+			for i := 0; i < len(lines) && len(outputLines) < 20; i++ {
+				if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
+					outputLines = append(outputLines, lines[i])
 				}
-			} else {
+			}
+			if len(outputLines) > 0 {
+				errorDetails = strings.Join(outputLines, "\n")
 				shouldShowError = true
 			}
 		}
+
+		// If we still don't have details, at least show the exit status
+		if errorDetails == "" {
+			if commandErr != nil {
+				errorDetails = commandErr.Error()
+			} else {
+				errorDetails = fmt.Sprintf("Command failed with exit code %d", o.exitCode)
+			}
+			shouldShowError = true
+		}
 	}
+	// Pass errorDetails to Finalize to set ERRORED status when command fails with no tests
 	if err := o.reportManager.Finalize(o.exitCode, errorDetails); err != nil {
 		o.logger.Error("Failed to finalize report: %v", err)
 	}
@@ -596,11 +603,16 @@ func (o *Orchestrator) Run() error {
 	// Print completion message with TypeScript-style summary
 	fmt.Println()
 
-	// Print error details if command failed and we have error details
-	if (commandErr != nil && errorDetails != "" && shouldShowError) ||
-		(commandErr != nil && o.totalGroups == 0 && errorDetails != "") {
-		fmt.Printf("Error: %s\n", errorDetails)
-		fmt.Println()
+	// Print error details if we have a non-zero exit code with no tests
+	if o.exitCode != 0 && errorDetails != "" && shouldShowError {
+		// Non-zero exit with no tests - likely a configuration or setup error
+		stats := o.reportManager.GetStats()
+		if o.totalGroups == 0 && stats.TotalTests == 0 {
+			// This is likely a configuration error - show it with Error: prefix
+			fmt.Println("Error:")
+			fmt.Printf("%s\n", errorDetails)
+			fmt.Println()
+		}
 	}
 
 	// Add random failure exclamation if tests failed
@@ -625,26 +637,31 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Format results summary
-	// Show test case counts when we have actual test counts with skipped tests
+	// Show test case counts when we have actual test counts
 	// Otherwise show group counts (for compatibility with runners that don't report individual tests)
-	if o.totalTests > 0 && (o.skippedTests > 0 || o.xfailedTests > 0 || o.xpassedTests > 0 || strings.HasPrefix(o.detectedRunner, "cargo")) {
+	// Get test statistics from GroupManager (single source of truth)
+	stats = o.reportManager.GetStats()
+	if stats.TotalTests > 0 {
 		// Show test case counts
 		// Build the results string dynamically to only include non-zero counts
 		var parts []string
-		parts = append(parts, fmt.Sprintf("%d passed", o.passedTests))
-		if o.failedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d failed", o.failedTests))
+		parts = append(parts, fmt.Sprintf("%d passed", stats.PassedTests))
+		if stats.FailedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d failed", stats.FailedTests))
 		}
-		if o.skippedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d skipped", o.skippedTests))
+		if stats.SkippedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d skipped", stats.SkippedTests))
 		}
-		if o.xfailedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d xfailed", o.xfailedTests))
+		if stats.XFailedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d xfailed", stats.XFailedTests))
 		}
-		if o.xpassedTests > 0 {
-			parts = append(parts, fmt.Sprintf("%d xpassed", o.xpassedTests))
+		if stats.XPassedTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d xpassed", stats.XPassedTests))
 		}
-		parts = append(parts, fmt.Sprintf("%d total", o.totalTests))
+		if stats.ErroredTests > 0 {
+			parts = append(parts, fmt.Sprintf("%d errored", stats.ErroredTests))
+		}
+		parts = append(parts, fmt.Sprintf("%d total", stats.TotalTests))
 		fmt.Printf("Results:     %s\n", strings.Join(parts, ", "))
 	} else {
 		// Show group counts for other runners or when no test-level detail available
@@ -704,27 +721,7 @@ func (o *Orchestrator) normalizePath(filePath string) string {
 
 // normalizePathForReportManager normalizes paths the same way the report manager's GroupManager does
 func (o *Orchestrator) normalizePathForReportManager(name string) string {
-	// If it's not a file path (e.g., test names, suite names), return as-is
-	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "./") && !strings.Contains(name, "/") {
-		return name
-	}
-
-	// Convert to absolute path
-	absPath, err := filepath.Abs(name)
-	if err != nil {
-		// If we can't get absolute path, return original
-		return name
-	}
-
-	// Always attempt to resolve symlinks for absolute paths
-	// This is crucial for macOS where /tmp is a symlink to /private/tmp
-	resolved, err := filepath.EvalSymlinks(absPath)
-	if err == nil {
-		return resolved
-	}
-
-	// If symlink resolution fails, return the absolute path
-	return absPath
+	return report.NormalizeToAbsolutePath(name)
 }
 
 // makeRelativePath normalizes paths to relative paths (matching report manager)
@@ -807,20 +804,10 @@ func (o *Orchestrator) handleConsoleOutput(event ipc.Event) {
 		}
 
 	case ipc.GroupTestCaseEvent:
-		// Track test case counts
-		o.totalTests++
-		switch e.Payload.Status {
-		case "PASS":
-			o.passedTests++
-		case "FAIL":
-			o.failedTests++
-		case "SKIP":
-			o.skippedTests++
-		case "XFAIL":
-			o.xfailedTests++
-		case "XPASS":
-			o.xpassedTests++
-		}
+		// Test tracking now handled by GroupManager
+		// GroupManager correctly handles test state transitions (PENDING->PASS/FAIL/SKIP)
+		key := strings.Join(e.Payload.ParentNames, "::") + "::" + e.Payload.TestName
+		o.logger.Debug("Test case event received", "key", key, "status", e.Payload.Status)
 
 		// Track failed tests for hierarchical display
 		if e.Payload.Status == "FAIL" {
@@ -994,34 +981,17 @@ func (o *Orchestrator) displayGroupHierarchy(group *report.TestGroup, indent int
 
 	// Only display groups that have failures or no tests
 	// Use recursive stats to include subgroups
-	hasNoTestsAtAll := group.Stats.TotalTestsRecursive == 0 && group.Stats.SkippedTestsRecursive == 0
 
 	o.logger.Debug("Group %s: FailedTestsRecursive=%d, TotalTestsRecursive=%d, PassedTestsRecursive=%d, SkippedTestsRecursive=%d",
 		group.Name, group.Stats.FailedTestsRecursive, group.Stats.TotalTestsRecursive, group.Stats.PassedTestsRecursive, group.Stats.SkippedTestsRecursive)
 
-	if group.Stats.FailedTestsRecursive > 0 || hasNoTestsAtAll {
+	if group.Stats.FailedTestsRecursive > 0 {
 		// Build status string with fail/pass/skip counts
 		var statusParts []string
 
-		// Check if this is a NO_TESTS case first
-		if hasNoTestsAtAll && o.noTestGroups[group.Name] {
-			// For NO_TESTS groups, just show NO_TESTS without counts
-			statusParts = append(statusParts, "NO_TESTS")
-		} else {
-			// Add FAIL count if there are failures
-			if group.Stats.FailedTestsRecursive > 0 {
-				statusParts = append(statusParts, fmt.Sprintf("FAIL(%d)", group.Stats.FailedTestsRecursive))
-			}
-
-			// Add PASS count only if > 0
-			if group.Stats.PassedTestsRecursive > 0 {
-				statusParts = append(statusParts, fmt.Sprintf("PASS(%d)", group.Stats.PassedTestsRecursive))
-			}
-
-			// Add SKIP count only if > 0
-			if group.Stats.SkippedTestsRecursive > 0 {
-				statusParts = append(statusParts, fmt.Sprintf("SKIP(%d)", group.Stats.SkippedTestsRecursive))
-			}
+		// Add FAIL if there are failures
+		if group.Stats.FailedTestsRecursive > 0 {
+			statusParts = append(statusParts, "FAIL")
 		}
 
 		// Make the path relative before sanitizing for report path

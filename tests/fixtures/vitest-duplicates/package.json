@@ -1,0 +1,11 @@
+{
+  "name": "vitest-duplicates-fixture",
+  "version": "1.0.0",
+  "description": "Test fixture for duplicate test names in Vitest",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

@@ -1,4 +1,4 @@
-.PHONY: build clean test install dev adapters all
+.PHONY: build clean test test-integration install dev adapters all fixtures-deps
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.1-go")
@@ -52,6 +52,17 @@ test:
 test-integration:
 	@echo "Running integration tests..."
 	go test -v ./tests/integration_go/...
+
+# Install Node dependencies for JS fixtures (Unix)
+fixtures-deps:
+	@echo "Installing test fixture dependencies (npm) if available..."
+	@which npm >/dev/null 2>&1 || { echo "npm not found, skipping"; exit 0; }
+	@for dir in tests/fixtures/*/; do \
+	  if [ -f "$$dir/package.json" ]; then \
+	    echo "  → $$dir"; \
+	    (cd "$$dir" && if [ -f package-lock.json ]; then npm ci; else npm install --no-package-lock; fi); \
+	  fi; \
+	done
 
 # Generate test coverage
 coverage:

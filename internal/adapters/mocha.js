@@ -32,6 +32,12 @@ function sendEvent(event) {
 const discovered = new Set();
 const started = new Set();
 
+// Disambiguation for duplicate suite titles under the same parent
+// Map Mocha Suite object -> disambiguated title (e.g., "in router #2")
+const suiteNameMap = new WeakMap();
+// Map parent Suite object -> Map<title, count>
+const titleCounters = new WeakMap();
+
 function groupId(hierarchy) { return hierarchy.join(':'); }
 
 function discoverHierarchy(filePath, suiteChain) {
@@ -73,12 +79,23 @@ function ensureStarted(filePath, suiteChain) {
   }
 }
 
+// Build a disambiguated chain of suite titles for a test or suite
+function toDisambiguatedChain(node) {
+  const chain = [];
+  let cur = node.parent;
+  while (cur && !cur.root) {
+    const name = suiteNameMap.get(cur) || cur.title || '';
+    if (name) chain.unshift(name);
+    cur = cur.parent;
+  }
+  return chain;
+}
+
 // Mocha reporter API
 function ThreePioMochaReporter(runner /*, options */) {
-  // Track per-spec statistics
-  let specFile = null;
-  let startedAt = 0;
-  let passed = 0, failed = 0, skipped = 0;
+  // Track per-file statistics to support multi-file runs accurately
+  const fileStats = new Map(); // filePath -> { startedAt, passed, failed, skipped }
+  let currentFile = null;
 
   function resolveSpecFrom(obj) {
     if (!obj) return null;
@@ -109,56 +126,98 @@ function ThreePioMochaReporter(runner /*, options */) {
     return 'PENDING';
   }
 
+  let runStartedAt = 0;
   runner.on('start', () => {
-    startedAt = now();
+    runStartedAt = now();
   });
 
   runner.on('suite', (suite) => {
     // Ignore root suite (empty title)
     if (!suite || !suite.title) return;
-    if (!specFile) specFile = resolveSpecFrom(suite) || specFile;
-    const chain = toChain(suite);
+    const specFile = resolveSpecFrom(suite);
+    // Disambiguate this suite title under its parent
+    const parent = suite.parent;
+    if (parent) {
+      let counter = titleCounters.get(parent);
+      if (!counter) { counter = new Map(); titleCounters.set(parent, counter); }
+      const prev = counter.get(suite.title) || 0;
+      const next = prev + 1;
+      counter.set(suite.title, next);
+      const disName = next > 1 ? `${suite.title} #${next}` : suite.title;
+      suiteNameMap.set(suite, disName);
+    }
+    const chain = toDisambiguatedChain(suite);
     if (specFile) {
-      ensureDiscovered(specFile, chain.concat([suite.title]));
-      ensureStarted(specFile, chain.concat([suite.title]));
+      currentFile = specFile;
+      // Ensure file root discovered/started
+      ensureDiscovered(specFile, []);
+      ensureStarted(specFile, []);
+      // Ensure suite hierarchy discovered/started
+      const thisName = suiteNameMap.get(suite) || suite.title;
+      ensureDiscovered(specFile, chain.concat([thisName]));
+      ensureStarted(specFile, chain.concat([thisName]));
+      // Initialize per-file stats
+      if (!fileStats.has(specFile)) {
+        fileStats.set(specFile, { startedAt: now(), passed: 0, failed: 0, skipped: 0 });
+      }
     }
   });
 
   runner.on('test', (test) => {
-    if (!specFile) specFile = resolveSpecFrom(test) || specFile;
-    const chain = toChain(test); // excludes the test title itself
+    const specFile = resolveSpecFrom(test) || currentFile;
+    const chain = toDisambiguatedChain(test); // excludes the test title itself
     if (specFile) {
+      currentFile = specFile;
+      // Ensure file and parent groups exist and are started
       ensureDiscovered(specFile, chain);
-      ensureStarted(specFile, []); // ensure file-level started for RUNNING
+      ensureStarted(specFile, []);
+      if (!fileStats.has(specFile)) {
+        fileStats.set(specFile, { startedAt: now(), passed: 0, failed: 0, skipped: 0 });
+      }
     }
   });
 
   runner.on('pass', (test) => {
-    passed++;
+    const specFile = resolveSpecFrom(test) || currentFile;
+    if (specFile) {
+      const stats = fileStats.get(specFile) || { startedAt: now(), passed: 0, failed: 0, skipped: 0 };
+      stats.passed += 1;
+      fileStats.set(specFile, stats);
+    }
     emitTestCase(test, 'pass');
   });
 
   runner.on('fail', (test, err) => {
-    failed++;
+    const specFile = resolveSpecFrom(test) || currentFile;
+    if (specFile) {
+      const stats = fileStats.get(specFile) || { startedAt: now(), passed: 0, failed: 0, skipped: 0 };
+      stats.failed += 1;
+      fileStats.set(specFile, stats);
+    }
     emitTestCase(test, 'fail', err);
   });
 
   runner.on('pending', (test) => {
-    skipped++;
+    const specFile = resolveSpecFrom(test) || currentFile;
+    if (specFile) {
+      const stats = fileStats.get(specFile) || { startedAt: now(), passed: 0, failed: 0, skipped: 0 };
+      stats.skipped += 1;
+      fileStats.set(specFile, stats);
+    }
     emitTestCase(test, 'pending');
   });
 
   function emitTestCase(test, kind, err) {
-    if (!specFile) specFile = resolveSpecFrom(test) || 'unknown.spec';
-    const chain = toChain(test);
+    const testFile = resolveSpecFrom(test) || specFile || 'unknown.spec';
+    const chain = toDisambiguatedChain(test);
     const duration = typeof test.duration === 'number' ? test.duration : 0;
 
     // Ensure discovery for all parent groups
-    ensureDiscovered(specFile, chain);
+    ensureDiscovered(testFile, chain);
 
     const payload = {
       testName: test.title || 'Unnamed test',
-      parentNames: [specFile, ...chain],
+      parentNames: [testFile, ...chain],
       status: statusFrom(kind),
       duration,
     };
@@ -174,26 +233,31 @@ function ThreePioMochaReporter(runner /*, options */) {
   }
 
   runner.once('end', () => {
-    const endedAt = now();
-    const total = passed + failed + skipped;
-    const status = failed > 0 ? 'FAIL' : (passed > 0 && failed === 0 ? 'PASS' : (skipped > 0 ? 'SKIP' : 'PASS'));
-    const duration = endedAt - startedAt;
+    // Emit a file-level result for every file we saw
+    for (const [file, stats] of fileStats.entries()) {
+      const total = (stats.passed || 0) + (stats.failed || 0) + (stats.skipped || 0);
+      const status = (stats.failed || 0) > 0
+        ? 'FAIL'
+        : (stats.passed || 0) > 0 && (stats.failed || 0) === 0
+          ? 'PASS'
+          : (stats.skipped || 0) > 0 ? 'SKIP' : 'PASS';
+      const duration = Math.max(0, now() - (stats.startedAt || now()));
 
-    const file = specFile || 'unknown.spec';
-    // Ensure file group at least
-    ensureDiscovered(file, []);
-    ensureStarted(file, []);
+      // Ensure file group is discovered/started
+      ensureDiscovered(file, []);
+      ensureStarted(file, []);
 
-    sendEvent({
-      eventType: 'testGroupResult',
-      payload: {
-        groupName: file,
-        parentNames: [],
-        status,
-        duration,
-        totals: { passed, failed, skipped, total },
-      },
-    });
+      sendEvent({
+        eventType: 'testGroupResult',
+        payload: {
+          groupName: file,
+          parentNames: [],
+          status,
+          duration,
+          totals: { passed: stats.passed || 0, failed: stats.failed || 0, skipped: stats.skipped || 0, total },
+        },
+      });
+    }
 
     // End of run (optional, used by manager)
     sendEvent({ eventType: 'runComplete', payload: {} });
@@ -201,4 +265,3 @@ function ThreePioMochaReporter(runner /*, options */) {
 }
 
 module.exports = ThreePioMochaReporter;
-

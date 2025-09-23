@@ -1,7 +1,9 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/zk/3pio/internal/logger"
@@ -10,8 +12,12 @@ import (
 
 // Manager manages test runner definitions
 type Manager struct {
-	runners map[string]Definition
-	logger  *logger.FileLogger
+	// Use slice for deterministic iteration order
+	runners []struct {
+		name string
+		def  Definition
+	}
+	logger *logger.FileLogger
 }
 
 // Close closes the manager and its resources
@@ -25,13 +31,17 @@ func (m *Manager) Close() error {
 // NewManager creates a new runner manager
 func NewManager(fileLogger *logger.FileLogger) *Manager {
 	m := &Manager{
-		runners: make(map[string]Definition),
-		logger:  fileLogger,
+		runners: make([]struct {
+			name string
+			def  Definition
+		}, 0),
+		logger: fileLogger,
 	}
 
-	// Register built-in runners
+	// Register built-in runners in priority order
+	// More specific runners should come before generic ones
+	m.Register("vitest", NewVitestDefinition()) // Check Vitest before Jest
 	m.Register("jest", NewJestDefinition())
-	m.Register("vitest", NewVitestDefinition())
 	m.Register("cypress", NewCypressDefinition())
 	m.Register("mocha", NewMochaDefinition())
 	m.Register("pytest", NewPytestDefinition())
@@ -51,28 +61,113 @@ func NewManager(fileLogger *logger.FileLogger) *Manager {
 
 // Register adds a new test runner definition
 func (m *Manager) Register(name string, def Definition) {
-	m.runners[name] = def
+	m.runners = append(m.runners, struct {
+		name string
+		def  Definition
+	}{name, def})
 }
 
 // Detect identifies the test runner from command and returns its definition
 func (m *Manager) Detect(command []string) (Definition, error) {
-	// Check each runner to see if it matches
-	for _, def := range m.runners {
-		if def.Matches(command) {
-			return def, nil
+	// FIRST: Check if this is a package manager script command
+	if len(command) > 0 {
+		packageManager := command[0]
+		if isPackageManager(packageManager) && len(command) >= 2 {
+			// Check if we're running a script (not installing or other npm commands)
+			isScriptCommand := command[1] == "run" || command[1] == "test" ||
+				(packageManager != "npm" && !strings.HasPrefix(command[1], "-")) // yarn/pnpm allow direct script names
+
+			if isScriptCommand {
+				// Extract the script name
+				scriptName := ""
+				if command[1] == "run" && len(command) > 2 {
+					scriptName = command[2]
+				} else if command[1] != "run" {
+					scriptName = command[1]
+				}
+
+				if scriptName != "" {
+					// Read package.json and check what the script actually runs
+					if scriptCommand := resolvePackageScript(scriptName); scriptCommand != "" {
+						// Check if the resolved script directly invokes a known test runner
+						supportedRunners := []string{"jest", "vitest", "mocha", "cypress", "pytest"}
+						directInvocation := false
+
+						// Split the command to check the first part
+						scriptParts := strings.Fields(scriptCommand)
+						if len(scriptParts) > 0 {
+							firstCmd := scriptParts[0]
+
+							// Handle cross-env specifically - it's just a env var setter
+							if firstCmd == "cross-env" && len(scriptParts) > 1 {
+								// Skip cross-env and any environment variables (KEY=VALUE pairs)
+								for i := 1; i < len(scriptParts); i++ {
+									if !strings.Contains(scriptParts[i], "=") {
+										// This is the actual command after cross-env
+										firstCmd = scriptParts[i]
+										// Check if there's another arg for npx/yarn/pnpm cases
+										if i+1 < len(scriptParts) && (firstCmd == "npx" || firstCmd == "yarn" || firstCmd == "pnpm") {
+											// Check the next argument for the test runner
+											nextCmd := scriptParts[i+1]
+											for _, runner := range supportedRunners {
+												if nextCmd == runner {
+													directInvocation = true
+													break
+												}
+											}
+										} else {
+											// Check if this is a direct test runner
+											for _, runner := range supportedRunners {
+												if firstCmd == runner {
+													directInvocation = true
+													break
+												}
+											}
+										}
+										break
+									}
+								}
+							} else {
+								// Original logic for non-cross-env commands
+								// Check for direct invocation or via npx/yarn/pnpm
+								for _, runner := range supportedRunners {
+									if firstCmd == runner ||
+										(firstCmd == "npx" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+										(firstCmd == "yarn" && len(scriptParts) > 1 && scriptParts[1] == runner) ||
+										(firstCmd == "pnpm" && len(scriptParts) > 1 && scriptParts[1] == runner) {
+										directInvocation = true
+										break
+									}
+								}
+							}
+						}
+
+						// If the script doesn't directly invoke a test runner, fail immediately
+						if !directInvocation {
+							// Get any additional arguments safely
+							var additionalArgs string
+							if len(command) > 3 {
+								additionalArgs = strings.Join(command[3:], " ")
+							}
+
+							return nil, fmt.Errorf("3pio error: npm script '%s' uses a custom wrapper ('%s').\n"+
+								"3pio cannot inject adapters into custom wrapper scripts.\n"+
+								"Please either:\n"+
+								"  1. Run the test command directly: npx jest %s\n"+
+								"  2. Modify the script to directly invoke the test runner\n"+
+								"  3. Update the wrapper script to pass through all arguments",
+								scriptName, scriptCommand, additionalArgs)
+						}
+					}
+				}
+			}
 		}
 	}
 
-	// Special handling for npm/yarn/pnpm commands
-	if len(command) > 0 {
-		packageManager := command[0]
-		if isPackageManager(packageManager) {
-			// Try to detect from package.json test script
-			for _, def := range m.runners {
-				if def.Matches([]string{"test"}) {
-					return def, nil
-				}
-			}
+	// SECOND: Now check normal runner detection
+	for _, runner := range m.runners {
+		if runner.def.Matches(command) {
+			return runner.def, nil
 		}
 	}
 
@@ -81,8 +176,13 @@ func (m *Manager) Detect(command []string) (Definition, error) {
 
 // GetDefinition returns a specific runner definition by name
 func (m *Manager) GetDefinition(name string) (Definition, bool) {
-	def, ok := m.runners[name]
-	return def, ok
+	// Linear search is fine for ~8 items
+	for _, runner := range m.runners {
+		if runner.name == name {
+			return runner.def, true
+		}
+	}
+	return nil, false
 }
 
 // isPackageManager checks if a command is a package manager
@@ -104,6 +204,31 @@ func isPackageManager(cmd string) bool {
 		}
 	}
 	return false
+}
+
+// resolvePackageScript reads package.json and returns the actual command for a script
+func resolvePackageScript(scriptName string) string {
+	data, err := os.ReadFile("package.json")
+	if err != nil {
+		return ""
+	}
+
+	var pkg map[string]interface{}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return ""
+	}
+
+	scripts, ok := pkg["scripts"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	script, ok := scripts[scriptName].(string)
+	if !ok {
+		return ""
+	}
+
+	return script
 }
 
 // OutputParser interface for parsing test output

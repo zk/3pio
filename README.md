@@ -4,33 +4,39 @@
 
 # 3pio - A context-optimized test runner runner for coding agents
 
-3pio is a test runner runner (a thing that runs test runners) that translates traditional test output into a format optimized for coding agents.
-
-3pio provides context-efficient console output and file-based logs that play well with your agent's tools, especially on brownfield projects.
+3pio is the testing tool your coding agent is missing. Get more context-efficient test output and a whole lot more without chaging a line of code.
 
 3pio is not:
 - A test runner, it uses your test runner (vitest, pytest, cargo nextest, etc)
 - A test framework, it uses your existing tests.
 
-No code changes and no config, it's that simple.
+Test output designed for your agent = cleaner context = more time on track and fewer restarts.
+
+## How it works
+
+3pio translates your test runner's output into context-optimized console output and file-based heirarchical reports which play well with your agent's built in tools.
 
 ## Features
 
-- Zero-config, prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
-- Supports large test suites, 3pio has been tested on projects with many hundreds of test files containing thousands of test cases.
+- Zero code / config overhead, just prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
+- Test results are revisitable vs your agent running tests over and over to zero in on problems.
+- Supports large test suites, 3pio has been [tested on projects](docs/verified-libraries.md) with many hundreds of test files containing thousands of test cases.
+
 
 ## Supported Test Runners
 
 | Language | Runner | Example invocation |
 |---|---|---|
 | JS/TS | Jest | `3pio npm test` · `3pio npx jest` |
-| JS/TS | Vitest (v3+) | `3pio npx vitest run` · `3pio pnpm vitest run` |
+| JS/TS | Vitest (v2–v3) | `3pio npx vitest run` · `3pio pnpm vitest run` |
 | JS/TS | Mocha | `3pio npx mocha -- ./test/**/*.spec.js` |
 | JS/TS | Cypress | `3pio npx cypress run --headless` |
 | Python | pytest | `3pio pytest` · `3pio python -m pytest` |
 | Go | go test (>=1.10) | `3pio go test ./...` |
 | Rust | cargo test | `3pio cargo test` |
 | Rust | cargo nextest | `3pio cargo nextest run` |
+
+See [Verified Libraries](docs/verified-libraries.md) for a list of open source projects tested with 3pio.
 
 
 ## Installation
@@ -50,19 +56,28 @@ Install 3pio via the package manager that best fits with their project or use ca
 
 After installation, run `3pio --help` for context and usage.
 ```
-Copy-paste the following at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
-```bash
-When running tests use `3pio` by prefixing your test commands with `3pio`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+
 
 ## Usage
 
-Tell your agent to prefix any test command with `3pio`, works with any flags or arguments.
+Copy-paste the following at the beginning of your coding session, or add it to your CLAUDE.md / AGENTS.md / GEMINI.md, etc:
 
 ```bash
-$ 3pio npm test
-$ 3pio npx vitest -- ./path/to/test/file.test.js
-$ 3pio npx mocha -- ./test/**/*.spec.js
+Use 3pio when running tests by prefixing your test commands with `3pio`, e.g. `3pio npm test`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
+```
+
+## Example Ouptput
+
+When your agent runs your tests
+
+```bash
 $ 3pio go test ./...
+```
+
+They see
+
+``` bash
+
 ```
 
 Console output is focused on just which tests failed and provides path information on how to find out more.
@@ -267,7 +282,7 @@ Using 3pio, your agent can target the information it needs to know. It can revis
 ```
 
 
-## How it works
+## Implementation Details
 
 3pio injects a custom reporter into the provided test command `npm test` -> `npm test --reporter /custom/jest/reporter.js`. This reporter sends events back to the main process which are analyzed, transformed, and written to the filesystem as a navigable tree of test information.
 
