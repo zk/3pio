@@ -13,15 +13,26 @@ import (
 func TestVitestNoDuplicateTestEvents(t *testing.T) {
 	t.Parallel()
 
-	// Use the basic-vitest fixture
+	// Use an isolated copy of the basic-vitest fixture for each test run
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixtureDir := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "tests", "fixtures", "basic-vitest")
+	sourceFixtureDir := filepath.Join(filepath.Dir(filepath.Dir(cwd)), "tests", "fixtures", "basic-vitest")
+	if _, err := os.Stat(sourceFixtureDir); err != nil {
+		t.Skipf("Fixture directory not found: %s", sourceFixtureDir)
+	}
 
-	// Clean up any previous runs
-	_ = os.RemoveAll(filepath.Join(fixtureDir, ".3pio"))
+	tempDir := t.TempDir()
+	fixtureDir := filepath.Join(tempDir, "basic-vitest")
+	if err := copyDir(sourceFixtureDir, fixtureDir); err != nil {
+		t.Fatalf("Failed to copy fixture: %v", err)
+	}
+
+	// Ensure we start with a clean .3pio directory
+	if err := os.RemoveAll(filepath.Join(fixtureDir, ".3pio")); err != nil {
+		t.Fatalf("Failed to remove fixture .3pio directory: %v", err)
+	}
 
 	// Run 3pio with Vitest
 	_, _, exitCode := runBinary(t, fixtureDir, "npx", "vitest", "run")
@@ -49,6 +60,13 @@ func TestVitestNoDuplicateTestEvents(t *testing.T) {
 	ipcData, err := os.ReadFile(ipcPath)
 	if err != nil {
 		t.Fatalf("Failed to read IPC file: %v", err)
+	}
+	if len(ipcData) == 0 {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Fatalf("IPC file at %s is empty; entries: %v", ipcPath, names)
 	}
 
 	// Count test events by unique identifier

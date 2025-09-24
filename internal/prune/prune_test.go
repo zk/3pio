@@ -8,17 +8,57 @@ import (
 	"github.com/zk/3pio/internal/logger"
 )
 
+func mkdirAll(t *testing.T, path string, perm os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(path, perm); err != nil {
+		t.Fatalf("Failed to create directory %s: %v", path, err)
+	}
+}
+
+func writeFile(t *testing.T, path string, data []byte, perm os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, data, perm); err != nil {
+		t.Fatalf("Failed to write file %s: %v", path, err)
+	}
+}
+
+func chdirTo(t *testing.T, dir string) {
+	t.Helper()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Failed to change directory to %s: %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("Failed to restore working directory: %v", err)
+		}
+	})
+}
+
+func closeLogger(t *testing.T, l *logger.FileLogger) {
+	t.Helper()
+	if l == nil {
+		return
+	}
+	if err := l.Close(); err != nil {
+		t.Fatalf("Failed to close logger: %v", err)
+	}
+}
+
 func TestParseTimestamp(t *testing.T) {
 	// Create a pruner with a mock logger
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, ".3pio"), 0755)
-	os.Chdir(tmpDir)
+	mkdirAll(t, filepath.Join(tmpDir, ".3pio"), 0755)
+	chdirTo(t, tmpDir)
 
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer fileLogger.Close()
+	defer closeLogger(t, fileLogger)
 
 	p := &Pruner{
 		logger:  fileLogger,
@@ -70,12 +110,10 @@ func TestGetRuns(t *testing.T) {
 	tmpDir := t.TempDir()
 	baseDir := filepath.Join(tmpDir, ".3pio")
 	runsDir := filepath.Join(baseDir, "runs")
-	os.MkdirAll(runsDir, 0755)
+	mkdirAll(t, runsDir, 0755)
 
 	// Change to temp directory
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	chdirTo(t, tmpDir)
 
 	// Create test runs with different timestamps
 	testRuns := []string{
@@ -86,21 +124,21 @@ func TestGetRuns(t *testing.T) {
 
 	for _, run := range testRuns {
 		runPath := filepath.Join(runsDir, run)
-		os.MkdirAll(runPath, 0755)
+		mkdirAll(t, runPath, 0755)
 		// Create a test file in each run
 		testFile := filepath.Join(runPath, "test-run.md")
-		os.WriteFile(testFile, []byte("test content"), 0644)
+		writeFile(t, testFile, []byte("test content"), 0644)
 	}
 
 	// Create a non-directory file that should be ignored
-	os.WriteFile(filepath.Join(runsDir, "not-a-directory.txt"), []byte("ignore me"), 0644)
+	writeFile(t, filepath.Join(runsDir, "not-a-directory.txt"), []byte("ignore me"), 0644)
 
 	// Create logger
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer fileLogger.Close()
+	defer closeLogger(t, fileLogger)
 
 	p := &Pruner{
 		logger:  fileLogger,
@@ -151,20 +189,20 @@ func TestFormatSize(t *testing.T) {
 func TestPruneNoDirectory(t *testing.T) {
 	// Create temp directory without .3pio
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	chdirTo(t, tmpDir)
 
 	// Create logger in a temporary .3pio dir
-	os.MkdirAll(".3pio", 0755)
+	mkdirAll(t, ".3pio", 0755)
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer fileLogger.Close()
+	defer closeLogger(t, fileLogger)
 
 	// Remove .3pio to test missing directory
-	os.RemoveAll(".3pio")
+	if err := os.RemoveAll(".3pio"); err != nil {
+		t.Fatalf("Failed to remove .3pio directory: %v", err)
+	}
 
 	p := New(fileLogger, false, true)
 	err = p.Run()
@@ -177,17 +215,15 @@ func TestPruneNoRuns(t *testing.T) {
 	// Create temp directory with empty .3pio
 	tmpDir := t.TempDir()
 	baseDir := filepath.Join(tmpDir, ".3pio")
-	os.MkdirAll(baseDir, 0755)
+	mkdirAll(t, baseDir, 0755)
 
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	chdirTo(t, tmpDir)
 
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer fileLogger.Close()
+	defer closeLogger(t, fileLogger)
 
 	p := New(fileLogger, false, true)
 	err = p.Run()
@@ -202,18 +238,16 @@ func TestPruneSingleRun(t *testing.T) {
 	baseDir := filepath.Join(tmpDir, ".3pio")
 	runsDir := filepath.Join(baseDir, "runs")
 	runPath := filepath.Join(runsDir, "20240101_120000_single-run")
-	os.MkdirAll(runPath, 0755)
-	os.WriteFile(filepath.Join(runPath, "test-run.md"), []byte("test"), 0644)
+	mkdirAll(t, runPath, 0755)
+	writeFile(t, filepath.Join(runPath, "test-run.md"), []byte("test"), 0644)
 
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	chdirTo(t, tmpDir)
 
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer fileLogger.Close()
+	defer closeLogger(t, fileLogger)
 
 	p := New(fileLogger, false, true)
 	err = p.Run()
@@ -232,11 +266,9 @@ func TestPruneDryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 	baseDir := filepath.Join(tmpDir, ".3pio")
 	runsDir := filepath.Join(baseDir, "runs")
-	os.MkdirAll(runsDir, 0755)
+	mkdirAll(t, runsDir, 0755)
 
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	chdirTo(t, tmpDir)
 
 	// Create multiple test runs
 	testRuns := []string{
@@ -247,15 +279,15 @@ func TestPruneDryRun(t *testing.T) {
 
 	for _, run := range testRuns {
 		runPath := filepath.Join(runsDir, run)
-		os.MkdirAll(runPath, 0755)
-		os.WriteFile(filepath.Join(runPath, "test-run.md"), []byte("test"), 0644)
+		mkdirAll(t, runPath, 0755)
+		writeFile(t, filepath.Join(runPath, "test-run.md"), []byte("test"), 0644)
 	}
 
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer fileLogger.Close()
+	defer closeLogger(t, fileLogger)
 
 	// Run with dry-run flag
 	p := New(fileLogger, true, true)
@@ -278,11 +310,9 @@ func TestPruneMultipleRuns(t *testing.T) {
 	tmpDir := t.TempDir()
 	baseDir := filepath.Join(tmpDir, ".3pio")
 	runsDir := filepath.Join(baseDir, "runs")
-	os.MkdirAll(runsDir, 0755)
+	mkdirAll(t, runsDir, 0755)
 
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	chdirTo(t, tmpDir)
 
 	// Create multiple test runs
 	testRuns := []struct {
@@ -296,28 +326,31 @@ func TestPruneMultipleRuns(t *testing.T) {
 
 	for _, run := range testRuns {
 		runPath := filepath.Join(runsDir, run.name)
-		os.MkdirAll(runPath, 0755)
-		os.WriteFile(filepath.Join(runPath, "test-run.md"), []byte("test content"), 0644)
+		mkdirAll(t, runPath, 0755)
+		writeFile(t, filepath.Join(runPath, "test-run.md"), []byte("test content"), 0644)
 	}
 
 	// Create debug log
 	debugLogPath := filepath.Join(baseDir, "debug.log")
-	os.WriteFile(debugLogPath, []byte("debug log content to clear"), 0644)
+	writeFile(t, debugLogPath, []byte("debug log content to clear"), 0644)
 
 	fileLogger, err := logger.NewFileLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	// Close logger before pruning to avoid file lock issues
-	fileLogger.Close()
+	closeLogger(t, fileLogger)
 
 	// Run prune with force flag
 	p := New(nil, false, true) // Use nil logger to avoid conflicts
 	p.baseDir = ".3pio"
 	// Recreate logger after setting baseDir
-	newLogger, _ := logger.NewFileLogger()
+	newLogger, err := logger.NewFileLogger()
+	if err != nil {
+		t.Fatalf("Failed to recreate logger: %v", err)
+	}
 	p.logger = newLogger
-	defer p.logger.Close()
+	defer closeLogger(t, p.logger)
 
 	err = p.Run()
 	if err != nil {

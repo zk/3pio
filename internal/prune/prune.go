@@ -130,7 +130,9 @@ func (p *Pruner) Run() error {
 		fmt.Println("Clearing debug log...")
 		p.logger.Info("Clearing debug log file")
 		// Close the current logger before clearing
-		p.logger.Close()
+		if err := p.logger.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to close debug log before clearing: %v\n", err)
+		}
 
 		// Clear the file by truncating it
 		if err := os.Truncate(debugLogPath, 0); err != nil {
@@ -205,7 +207,7 @@ func (p *Pruner) parseTimestamp(dirname string) time.Time {
 
 func (p *Pruner) getDirSize(path string) int64 {
 	var size int64
-	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -214,6 +216,13 @@ func (p *Pruner) getDirSize(path string) int64 {
 		}
 		return nil
 	})
+	if err != nil {
+		if p.logger != nil {
+			p.logger.Warn("Failed to walk directory %s: %v", path, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to walk directory %s: %v\n", path, err)
+		}
+	}
 	return size
 }
 

@@ -8,6 +8,36 @@ import (
 	"testing"
 )
 
+func itMkdirAll(t *testing.T, path string, perm os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(path, perm); err != nil {
+		t.Fatalf("Failed to create directory %s: %v", path, err)
+	}
+}
+
+func itWriteFile(t *testing.T, path string, data []byte, perm os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, data, perm); err != nil {
+		t.Fatalf("Failed to write file %s: %v", path, err)
+	}
+}
+
+func itChdirTo(t *testing.T, dir string) {
+	t.Helper()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Failed to change directory to %s: %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("Failed to restore working directory: %v", err)
+		}
+	})
+}
+
 func TestPruneCommand(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -29,14 +59,12 @@ func TestPruneCommand(t *testing.T) {
 
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	itChdirTo(t, tmpDir)
 
 	// Create .3pio structure with multiple runs
 	baseDir := ".3pio"
 	runsDir := filepath.Join(baseDir, "runs")
-	os.MkdirAll(runsDir, 0755)
+	itMkdirAll(t, runsDir, 0755)
 
 	// Create test runs
 	runs := []string{
@@ -46,15 +74,15 @@ func TestPruneCommand(t *testing.T) {
 	}
 	for _, run := range runs {
 		runPath := filepath.Join(runsDir, run)
-		os.MkdirAll(runPath, 0755)
-		os.WriteFile(filepath.Join(runPath, "test-run.md"), []byte("# Test Run"), 0644)
-		os.MkdirAll(filepath.Join(runPath, "logs"), 0755)
-		os.WriteFile(filepath.Join(runPath, "output.log"), []byte("test output"), 0644)
+		itMkdirAll(t, runPath, 0755)
+		itWriteFile(t, filepath.Join(runPath, "test-run.md"), []byte("# Test Run"), 0644)
+		itMkdirAll(t, filepath.Join(runPath, "logs"), 0755)
+		itWriteFile(t, filepath.Join(runPath, "output.log"), []byte("test output"), 0644)
 	}
 
 	// Create debug log
 	debugLogPath := filepath.Join(baseDir, "debug.log")
-	os.WriteFile(debugLogPath, []byte("old debug log content\n"), 0644)
+	itWriteFile(t, debugLogPath, []byte("old debug log content\n"), 0644)
 
 	// Test 1: Dry run
 	t.Run("dry-run", func(t *testing.T) {
@@ -164,12 +192,10 @@ func TestPruneWithNoRuns(t *testing.T) {
 
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	itChdirTo(t, tmpDir)
 
 	// Create empty .3pio directory
-	os.MkdirAll(".3pio", 0755)
+	itMkdirAll(t, ".3pio", 0755)
 
 	// Run prune
 	cmd := exec.Command(binaryPath, "prune", "--force")
@@ -205,9 +231,7 @@ func TestPruneWithoutDirectory(t *testing.T) {
 
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	itChdirTo(t, tmpDir)
 
 	// Don't create .3pio directory
 
@@ -245,9 +269,7 @@ func TestPruneInvalidFlag(t *testing.T) {
 
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	itChdirTo(t, tmpDir)
 
 	// Run prune with invalid flag
 	cmd := exec.Command(binaryPath, "prune", "--invalid-flag")

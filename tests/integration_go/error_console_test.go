@@ -81,6 +81,20 @@ func copyDir(src, dst string) error {
 		// Create the destination path
 		dstPath := filepath.Join(dst, relPath)
 
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+				return err
+			}
+			if err := os.Symlink(target, dstPath); err != nil {
+				return err
+			}
+			return nil
+		}
+
 		if info.IsDir() {
 			// Create directory
 			return os.MkdirAll(dstPath, info.Mode())

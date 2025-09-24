@@ -240,11 +240,12 @@ func runPrune(args []string) error {
 	// Parse flags
 	var dryRun, force bool
 	for _, arg := range args {
-		if arg == "--dry-run" {
+		switch arg {
+		case "--dry-run":
 			dryRun = true
-		} else if arg == "--force" {
+		case "--force":
 			force = true
-		} else if arg == "--help" || arg == "-h" {
+		case "--help", "-h":
 			fmt.Println("Usage: 3pio prune [flags]")
 			fmt.Println("\nRemove all test runs except the most recent one and clear debug log.")
 			fmt.Println("\nFlags:")
@@ -252,7 +253,7 @@ func runPrune(args []string) error {
 			fmt.Println("  --force      Skip confirmation prompt")
 			fmt.Println("  --help, -h   Show help for prune command")
 			return nil
-		} else {
+		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
 			fmt.Fprintf(os.Stderr, "Run '3pio prune --help' for usage.\n")
 			return fmt.Errorf("unknown flag: %s", arg)
