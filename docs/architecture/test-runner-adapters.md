@@ -390,8 +390,8 @@ make adapters && make build
 # Test with sample project
 ./build/3pio npx [test-runner]
 
-# Check IPC events
-cat .3pio/ipc/*.jsonl | jq
+# Check IPC events (in the latest run)
+cat .3pio/runs/*/ipc.jsonl | tail -1 | xargs cat | jq
 
 # View debug logs
 tail -f .3pio/debug.log

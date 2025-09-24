@@ -93,7 +93,7 @@ make build
 ## Implementation Guidelines
 
 ### IPC Event Schema
-Events written to `.3pio/ipc/[timestamp].jsonl`:
+Events written to `.3pio/runs/[runID]/ipc.jsonl`:
 - `testGroupDiscovered`: `{ eventType: "testGroupDiscovered", payload: { groupName, parentNames } }`
 - `testGroupStart`: `{ eventType: "testGroupStart", payload: { groupName, parentNames } }`
 - `testCase`: `{ eventType: "testCase", payload: { testName, parentNames, status: "PASS"|"FAIL"|"SKIP", duration?, error? } }`
@@ -116,7 +116,7 @@ Events written to `.3pio/ipc/[timestamp].jsonl`:
 
 ### File Structure Conventions
 - Reports: `.3pio/runs/[ISO8601_timestamp]-[memorable-name]/`
-- IPC files: `.3pio/ipc/[timestamp].jsonl`
+- IPC file: `.3pio/runs/[timestamp]-[name]/ipc.jsonl` (adapter communication)
 - Output log: `.3pio/runs/[timestamp]-[name]/output.log` (contains all stdout/stderr from test run)
 - Test logs: `.3pio/runs/[timestamp]-[name]/logs/[sanitized-test-file].log` (per-file output with test case boundaries)
 

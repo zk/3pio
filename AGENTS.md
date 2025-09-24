@@ -32,7 +32,3 @@
 ## Security & Configuration Tips
 - Never commit `.3pio/` outputs or secrets. Be cautious with paths logged to reports; sanitize when adding new writers.
 - For releases/packaging, see `.goreleaser.yml`, `packaging/`, and `Makefile` targets.
-
-## Agent-Specific Notes
-- When running tests in this repo or downstream projects, prefer `3pio <your test command>` and consult `README.md` for adapter details.
-

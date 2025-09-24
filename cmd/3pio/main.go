@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zk/3pio/internal/logger"
 	"github.com/zk/3pio/internal/orchestrator"
+	"github.com/zk/3pio/internal/prune"
 )
 
 var (
@@ -25,7 +26,7 @@ context-optimized console output and file-based records.
 
 Structured reports are written to .3pio/runs/[timestamp]-[memorable-name]/:
 • test-run.md  - Main report with test summary and individual test results
-• output.log   - Complete stdout/stderr output from the entire test run  
+• output.log   - Complete stdout/stderr output from the entire test run
 • logs/*.log   - Per-file output with test case demarcation
 
 Examples:
@@ -57,6 +58,10 @@ Examples:
 				fmt.Printf("Commit: %s\n", commit)
 				fmt.Printf("Built: %s\n", date)
 				return nil
+			}
+			// Check for prune command
+			if firstArg == "prune" {
+				return runPrune(args[1:])
 			}
 			// Otherwise, assume it's a test command
 			return runTests(args)
@@ -225,6 +230,59 @@ func checkUnsupportedModes(args []string) error {
 		if strings.Contains(cmdStr, pattern) {
 			return fmt.Errorf("coverage mode is not supported. Please run tests without coverage flags")
 		}
+	}
+
+	return nil
+}
+
+// runPrune handles the prune command
+func runPrune(args []string) error {
+	// Parse flags
+	var dryRun, force bool
+	for _, arg := range args {
+		if arg == "--dry-run" {
+			dryRun = true
+		} else if arg == "--force" {
+			force = true
+		} else if arg == "--help" || arg == "-h" {
+			fmt.Println("Usage: 3pio prune [flags]")
+			fmt.Println("\nRemove all test runs except the most recent one and clear debug log.")
+			fmt.Println("\nFlags:")
+			fmt.Println("  --dry-run    Preview what would be deleted without actually deleting")
+			fmt.Println("  --force      Skip confirmation prompt")
+			fmt.Println("  --help, -h   Show help for prune command")
+			return nil
+		} else {
+			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
+			fmt.Fprintf(os.Stderr, "Run '3pio prune --help' for usage.\n")
+			return fmt.Errorf("unknown flag: %s", arg)
+		}
+	}
+
+	// Check if .3pio directory exists before creating logger
+	if _, err := os.Stat(".3pio"); os.IsNotExist(err) {
+		// No .3pio directory, nothing to prune
+		fmt.Println("No .3pio directory found - nothing to prune")
+		return nil
+	}
+
+	// Create file logger for prune operation
+	fileLogger, err := logger.NewFileLogger()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create debug logger: %v\n", err)
+		return err
+	}
+	defer func() {
+		if err := fileLogger.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close debug log: %v\n", err)
+		}
+	}()
+
+	// Create and run pruner
+	pruner := prune.New(fileLogger, dryRun, force)
+	if err := pruner.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Prune failed: %v\n", err)
+		return err
 	}
 
 	return nil

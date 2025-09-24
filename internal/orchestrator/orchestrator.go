@@ -687,6 +687,15 @@ func (o *Orchestrator) Run() error {
 	elapsed := time.Since(o.startTime).Seconds()
 	fmt.Printf("Total time:  %.3fs\n", elapsed)
 
+	// Display relative report path to test-run.md
+	reportPath := filepath.Join(o.runDir, "test-run.md")
+	relPath, err := filepath.Rel(".", reportPath)
+	if err != nil {
+		// If we can't get relative path, use absolute
+		relPath = reportPath
+	}
+	fmt.Printf("Report:      %s\n", relPath)
+
 	// Return command error if there was one
 	if commandErr != nil {
 		return fmt.Errorf("test command failed: %w", commandErr)
