@@ -200,6 +200,7 @@ func TestPruneNoDirectory(t *testing.T) {
 	defer closeLogger(t, fileLogger)
 
 	// Remove .3pio to test missing directory
+	closeLogger(t, fileLogger)
 	if err := os.RemoveAll(".3pio"); err != nil {
 		t.Fatalf("Failed to remove .3pio directory: %v", err)
 	}
@@ -209,6 +210,7 @@ func TestPruneNoDirectory(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error for missing .3pio directory, got: %v", err)
 	}
+	closeLogger(t, p.logger)
 }
 
 func TestPruneNoRuns(t *testing.T) {
@@ -254,6 +256,7 @@ func TestPruneSingleRun(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error for single run, got: %v", err)
 	}
+	closeLogger(t, p.logger)
 
 	// Verify the run still exists
 	if _, err := os.Stat(runPath); os.IsNotExist(err) {
