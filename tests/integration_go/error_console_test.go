@@ -90,7 +90,18 @@ func copyDir(src, dst string) error {
 				return err
 			}
 			if err := os.Symlink(target, dstPath); err != nil {
-				return err
+				resolved := target
+				if !filepath.IsAbs(resolved) {
+					resolved = filepath.Join(filepath.Dir(path), target)
+				}
+				resolvedInfo, statErr := os.Stat(resolved)
+				if statErr != nil {
+					return statErr
+				}
+				if resolvedInfo.IsDir() {
+					return copyDir(resolved, dstPath)
+				}
+				return copyFile(resolved, dstPath, resolvedInfo.Mode())
 			}
 			return nil
 		}
@@ -100,32 +111,33 @@ func copyDir(src, dst string) error {
 			return os.MkdirAll(dstPath, info.Mode())
 		} else {
 			// Copy file
-			srcFile, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = srcFile.Close() }()
-
-			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-				return err
-			}
-
-			dstFile, err := os.Create(dstPath)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = dstFile.Close() }()
-
-			// Copy the file content
-			if _, err = io.Copy(dstFile, srcFile); err != nil {
-				return err
-			}
-
-			// Preserve file permissions
-			return os.Chmod(dstPath, info.Mode())
+			return copyFile(path, dstPath, info.Mode())
 		}
 	})
+}
+
+func copyFile(src, dst string, perm os.FileMode) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dstFile.Close() }()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+
+	return os.Chmod(dst, perm)
 }
 
 // TestErrorReportingToConsole verifies that errors are properly displayed to the user
