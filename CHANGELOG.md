@@ -5,6 +5,21 @@ All notable changes to 3pio will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-09-24
+
+### Added
+- Introduced the `3pio prune` CLI command with `--dry-run` and `--force` flags to clean historic run artifacts.
+
+### Fixed
+- Hardened prune logging and error handling across platforms, including Windows symlink fallbacks.
+- Stabilized Vitest integration tests by isolating fixtures per run and skipping stale `.3pio` directories.
+
+### Tests
+- Added dedicated unit and integration coverage for the prune workflow, plus helper utilities for fixture management.
+
+### Documentation
+- Documented the prune command workflow in the README.
+
 ## [0.7.3] - 2025-09-23
 
 ### Fixed
@@ -51,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-platform support
 - Enhanced performance
 
+[0.8.0]: https://github.com/zk/3pio/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/zk/3pio/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/zk/3pio/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/zk/3pio/compare/v0.7.0...v0.7.1
