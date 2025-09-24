@@ -349,21 +349,6 @@ func SendEvent(event interface{}) error {
 	return nil
 }
 
-// EnsureIPCDirectory creates the .3pio/ipc directory if it doesn't exist
-func EnsureIPCDirectory() (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	ipcDir := filepath.Join(cwd, ".3pio", "ipc")
-	if err := os.MkdirAll(ipcDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create IPC directory: %w", err)
-	}
-
-	return ipcDir, nil
-}
-
 // noopLogger is a default logger that does nothing
 type noopLogger struct{}
 

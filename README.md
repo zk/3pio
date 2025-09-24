@@ -66,6 +66,20 @@ Copy-paste the following at the beginning of your coding session, or add it to y
 Use 3pio when running tests by prefixing your test commands with `3pio`, e.g. `3pio npm test`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
 ```
 
+### Clean Up Old Test Runs
+
+3pio stores structured reports under `.3pio/runs/`. To reclaim disk space while keeping the latest run handy, use the built-in prune command:
+
+```bash
+# Preview what would be deleted
+3pio prune --dry-run
+
+# Delete older runs and clear debug log without prompting
+3pio prune --force
+```
+
+Running `3pio prune` with no flags keeps the newest run, asks for confirmation, and removes older run directories along with truncating `.3pio/debug.log`.
+
 ## Example Ouptput
 
 When your agent runs your tests

@@ -136,14 +136,15 @@ func TestMonorepoIPCPathInjection(t *testing.T) {
 					}
 
 					// Check that the adapter contains a valid IPC path
+					// IPC files are now stored in runs directory: .3pio/runs/[runID]/ipc.jsonl
 					// On Windows, paths use backslashes which are escaped in JSON strings
-					hasForwardSlash := strings.Contains(content, ".3pio/ipc/")
-					hasBackslash := strings.Contains(content, ".3pio\\\\ipc\\\\") // Escaped backslashes in JSON
-					hasJsonl := strings.Contains(content, ".jsonl")
+					hasRunsForwardSlash := strings.Contains(content, ".3pio/runs/")
+					hasRunsBackslash := strings.Contains(content, ".3pio\\\\runs\\\\") // Escaped backslashes in JSON
+					hasJsonl := strings.Contains(content, "ipc.jsonl")
 
-					if !hasJsonl || (!hasForwardSlash && !hasBackslash) {
-						t.Logf("Adapter path check failed. Has forward slash: %v, Has escaped backslash: %v, Has .jsonl: %v",
-							hasForwardSlash, hasBackslash, hasJsonl)
+					if !hasJsonl || (!hasRunsForwardSlash && !hasRunsBackslash) {
+						t.Logf("Adapter path check failed. Has runs/ forward slash: %v, Has runs/ escaped backslash: %v, Has ipc.jsonl: %v",
+							hasRunsForwardSlash, hasRunsBackslash, hasJsonl)
 						t.Logf("Sample of adapter content: %s", content[:min(500, len(content))])
 						t.Error("Adapter does not contain a valid injected IPC path")
 					}

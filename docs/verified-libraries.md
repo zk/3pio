@@ -66,6 +66,14 @@ The verification process involves:
 - **Test Results**: 6758 passed, 126 skipped — identical with/without 3pio
 - **Notes**: Cybernetically enhanced web apps framework. Comprehensive test suite using Vitest v2. One test file (runtime-browser) requires Playwright browsers which weren't installed, resulting in 85 skipped tests consistently in both runs. 3pio correctly tracked all nested test suites and generated 27 test group reports with complete accuracy.
 
+### d3-array
+- **Repository**: https://github.com/d3/d3-array
+- **Date Verified**: 2025-09-22
+- **Commit Hash**: `v3.2.4`
+- **Test Command**: `npx mocha 'test/**/*-test.js'`
+- **Test Results**: 529 passed, 1 pending — identical with/without 3pio
+- **Notes**: D3 array manipulation and statistics module. Uses Mocha test runner with ESM modules. The single pending test is an intentionally unimplemented test case. 3pio correctly reports "skipped" for Mocha's "pending" tests for consistency across test runners.
+
 ### redux (partial)
 - Repository: https://github.com/reduxjs/redux
 - Date Verified: 2025-09-21
