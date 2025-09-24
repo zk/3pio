@@ -78,6 +78,15 @@ func copyDir(src, dst string) error {
 			return err
 		}
 
+		// Skip copying existing .3pio artifacts; tests create fresh run state
+		parts := strings.Split(relPath, string(os.PathSeparator))
+		if len(parts) > 0 && parts[0] == ".3pio" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		// Create the destination path
 		dstPath := filepath.Join(dst, relPath)
 
