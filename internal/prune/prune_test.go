@@ -353,12 +353,12 @@ func TestPruneMultipleRuns(t *testing.T) {
 		t.Fatalf("Failed to recreate logger: %v", err)
 	}
 	p.logger = newLogger
-	defer closeLogger(t, p.logger)
 
 	err = p.Run()
 	if err != nil {
 		t.Errorf("Prune failed: %v", err)
 	}
+	closeLogger(t, p.logger)
 
 	// Verify correct runs were deleted/kept
 	for _, run := range testRuns {
