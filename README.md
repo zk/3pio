@@ -4,13 +4,13 @@
 
 # 3pio - A context-optimized test runner runner for coding agents
 
-3pio is the testing tool your coding agent is missing. Get more context-efficient test output and a whole lot more without chaging a line of code.
+3pio gives your coding agent context-optimized test output and more without changing a line of code.
+
+Test output designed for your agent = less context bloat = better agentic coding sessions.
 
 3pio is not:
 - A test runner, it uses your test runner (vitest, pytest, cargo nextest, etc)
 - A test framework, it uses your existing tests.
-
-Test output designed for your agent = cleaner context = more time on track and fewer restarts.
 
 ## How it works
 
