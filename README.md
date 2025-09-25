@@ -19,7 +19,7 @@ Test output designed for your agent = less context bloat = better agentic coding
 ## Features
 
 - Zero code / config overhead, just prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
-- Test results are revisitable vs your agent running tests over and over to zero in on problems.
+- Test results are revisitable
 - Supports large test suites, 3pio has been [tested on projects](docs/verified-libraries.md) with many hundreds of test files containing thousands of test cases.
 
 
