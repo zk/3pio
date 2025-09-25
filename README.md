@@ -2,25 +2,34 @@
     <img src="./assets/3pio_logo_wide.jpg" width="1024" height="240" />
 </p>
 
-# 3pio - A context-optimized test runner runner for coding agents
+# 3pio
 
-3pio gives your coding agent context-optimized test output and more without changing a line of code.
+3pio is a drop-in test runner that context-optimizes your test output.
 
-Test output designed for your agent = less context bloat = better agentic coding sessions.
+- 3pio doesn't replace your test runner, it uses your existing test runner
+- 3pio is not a test framework, it uses your existing tests
 
-3pio is not:
-- A test runner, it uses your test runner (vitest, pytest, cargo nextest, etc)
-- A test framework, it uses your existing tests.
 
-## How it works
+## Why?
 
-3pio translates your test runner's output into context-optimized console output and file-based heirarchical reports which play well with your agent's built in tools.
+Test runners' output formatting, progress indicators, and stack traces designed for human readability. This creates unnecessary context overhead when agents need to understand test failures and fix code.
+
+3pio reduces test output context usage (anecdotally 2x) while preserving all essential information. Additionally, reports are saved as structured files that agents can search and reference without rerunning tests, making iterative debugging more efficient.
+
 
 ## Features
 
-- Zero code / config overhead, just prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
-- Test results are revisitable
-- Supports large test suites, 3pio has been [tested on projects](docs/verified-libraries.md) with many hundreds of test files containing thousands of test cases.
+* Zero code / config overhead, just prefix your test command with `3pio` to use, e.g. `3pio go test ./...`
+* Test results are revisitable
+* Supports large test suites, 3pio has been [tested on projects](docs/verified-libraries.md) with thousands of tests, adding low single-digit percentages to test run duration
+
+
+## How it works
+
+* Captures all test output via custom adapters embedded in the Go binary
+* Filters console output, removes individual success messages and other unecessary info
+* Generates heirarchical file-based reports that are easily navigable by your agent
+* Maintains incremental results even if test runs are interrupted
 
 
 ## Supported Test Runners
@@ -65,14 +74,6 @@ Copy-paste the following at the beginning of your coding session, or add it to y
 ```bash
 Use 3pio when running tests by prefixing your test commands with `3pio`, e.g. `3pio npm test`. Before using 3pio for the first time run `3pio --help` to understand how to use the tool.
 ```
-
-## Why?
-
-Testing tools designed for humans add noise to your agent's context. Often multiple test runs are required to complete tasks, compounding the issue, wasting valuable time and context space.
-
-3pio generates focused console output and creates a nested structure of files with just the right amount of signposting that makes it easy for agents to find what they're looking for without reading a lot of unrelated textual content.
-
-Using 3pio, your agent can target the information it needs to know. It can revisit results preventing unecessary test reruns altogether. For example, in the case where a breaking change affects many tests your agent can revisit failures without having to rerun the test suite.
 
 
 ## Examples
